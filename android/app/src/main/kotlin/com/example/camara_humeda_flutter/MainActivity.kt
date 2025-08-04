@@ -1,0 +1,5 @@
+package com.example.kontrollers_v2
+
+import io.flutter.embedding.android.FlutterActivity
+
+class MainActivity: FlutterActivity()
