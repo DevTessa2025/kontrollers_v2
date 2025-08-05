@@ -42,13 +42,14 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
     _currentSectionIndex = 0;
   }
 
-  Future<void> _loadDropdownData() async {
+  // Se corrige para aceptar el parámetro opcional forceSync
+  Future<void> _loadDropdownData({bool forceSync = false}) async {
     setState(() {
       _isLoadingDropdownData = true;
     });
 
     try {
-      Map<String, dynamic> dropdownData = await DropdownService.getChecklistDropdownData();
+      Map<String, dynamic> dropdownData = await DropdownService.getChecklistDropdownData(forceSync: forceSync);
       
       setState(() {
         fincas = dropdownData['fincas'] ?? [];
@@ -214,6 +215,7 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
   }
 
   void _showPhotoDialog(ChecklistItem item) async {
+    // Se corrige la llamada a showImageSourceDialog para que devuelva un ImageSource?
     ImageSource? source = await ImageService.showImageSourceDialog(context);
     
     if (source != null) {
@@ -297,6 +299,7 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
   }
 
   void _saveLocalChecklist() async {
+    // Validar que los datos básicos estén completos
     if (selectedFinca == null || selectedSupervisor == null || selectedPesador == null) {
       Fluttertoast.showToast(
         msg: 'Por favor complete todos los datos: Finca, Supervisor y Pesador',
@@ -304,6 +307,21 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
         textColor: Colors.white,
       );
       return;
+    }
+    
+    // Nueva validación: Asegurar que todos los ítems tengan una respuesta
+    for (var seccion in checklist.secciones) {
+      for (var item in seccion.items) {
+        if (item.respuesta == null) {
+          Fluttertoast.showToast(
+            msg: 'Por favor, complete todos los ítems antes de guardar',
+            backgroundColor: Colors.orange[600],
+            textColor: Colors.white,
+            toastLength: Toast.LENGTH_LONG,
+          );
+          return;
+        }
+      }
     }
 
     try {
@@ -344,140 +362,10 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
       MaterialPageRoute(builder: (context) => ChecklistRecordsScreen()),
     );
   }
-  
-  // Nuevo método para construir el FAB
-  Widget _buildFAB(BuildContext context) {
-    return FloatingActionButton.extended(
-      onPressed: () {
-        double cumplimiento = checklist.calcularPorcentajeCumplimiento();
-        int totalItems = 0;
-        int itemsCompletados = 0;
-        int itemsConFotos = 0;
-        int itemsConObs = 0;
-
-        for (var seccion in checklist.secciones) {
-          totalItems += seccion.items.length;
-          itemsCompletados += seccion.items.where((item) => item.respuesta != null).length;
-          itemsConFotos += seccion.items.where((item) => item.fotoBase64 != null).length;
-          itemsConObs += seccion.items.where((item) => item.observaciones != null && item.observaciones!.isNotEmpty).length;
-        }
-
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Progreso del Checklist'),
-            content: SingleChildScrollView(
-              child: ListBody(
-                children: [
-                  _buildProgressIndicator(
-                    'Progreso General',
-                    itemsCompletados / totalItems,
-                    'Items completados: $itemsCompletados/$totalItems',
-                  ),
-                  const SizedBox(height: 16),
-                  _buildProgressIndicator(
-                    'Cumplimiento',
-                    cumplimiento / 100,
-                    '${cumplimiento.toStringAsFixed(1)}%',
-                    Colors.red[600],
-                  ),
-                  const SizedBox(height: 16),
-                  _buildStatsRow(itemsConFotos, itemsConObs),
-                  const SizedBox(height: 16),
-                  const Text('Progreso por Sección:', style: TextStyle(fontWeight: FontWeight.bold)),
-                  ...checklist.secciones.map((seccion) {
-                    int seccionItemsRespondidos = seccion.items.where((item) => item.respuesta != null).length;
-                    int seccionTotalItems = seccion.items.length;
-                    return Padding(
-                      padding: const EdgeInsets.only(top: 8.0),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(seccion.nombre, style: const TextStyle(fontSize: 12)),
-                          ),
-                          Text('$seccionItemsRespondidos/$seccionTotalItems', style: const TextStyle(fontSize: 12)),
-                          const SizedBox(width: 8),
-                          SizedBox(
-                            width: 80,
-                            child: LinearProgressIndicator(
-                              value: seccionItemsRespondidos / seccionTotalItems,
-                              backgroundColor: Colors.grey[300],
-                              color: Colors.red[400],
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cerrar'),
-              ),
-            ],
-          ),
-        );
-      },
-      backgroundColor: Colors.red[700],
-      foregroundColor: Colors.white,
-      icon: const Icon(Icons.analytics),
-      label: const Text('Progreso'),
-    );
-  }
-
-  Widget _buildProgressIndicator(String title, double value, String label, [Color? color]) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-            Text(label),
-          ],
-        ),
-        const SizedBox(height: 8),
-        LinearProgressIndicator(
-          value: value,
-          backgroundColor: Colors.grey[300],
-          color: color ?? Colors.green[600],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStatsRow(int photos, int observations) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceAround,
-      children: [
-        _buildStatCard(Icons.photo_camera, 'Fotos', photos, Colors.blue[600]!),
-        _buildStatCard(Icons.comment, 'Observaciones', observations, Colors.orange[600]!),
-      ],
-    );
-  }
-
-  Widget _buildStatCard(IconData icon, String title, int value, Color color) {
-    return Column(
-      children: [
-        CircleAvatar(
-          backgroundColor: color.withOpacity(0.2),
-          child: Icon(icon, color: color),
-        ),
-        const SizedBox(height: 4),
-        Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-        Text(value.toString(), style: TextStyle(fontSize: 16, color: color)),
-      ],
-    );
-  }
-
 
   @override
   Widget build(BuildContext context) {
     var currentSection = checklist.secciones[_currentSectionIndex];
-    int totalSections = checklist.secciones.length;
     int itemsRespondidosSeccionActual = currentSection.items.where((item) => item.respuesta != null).length;
     int totalItemsSeccionActual = currentSection.items.length;
 
@@ -491,6 +379,11 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
         backgroundColor: Colors.red[700],
         iconTheme: IconThemeData(color: Colors.white),
         actions: [
+          IconButton(
+            icon: Icon(Icons.sync),
+            onPressed: () => _loadDropdownData(forceSync: true),
+            tooltip: 'Sincronizar datos',
+          ),
           IconButton(
             icon: Icon(Icons.save),
             onPressed: _saveLocalChecklist,
@@ -516,7 +409,6 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-
                 if (_isLoadingDropdownData)
                   Center(
                     child: Padding(
@@ -1024,7 +916,130 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
       ),
       
       // Botón flotante para mostrar progreso
-      floatingActionButton: _buildFAB(context),
+      // floatingActionButton: FloatingActionButton.extended(
+      //   onPressed: () {
+      //     double cumplimiento = checklist.calcularPorcentajeCumplimiento();
+      //     int totalItems = 0;
+      //     int itemsCompletados = 0;
+      //     int itemsConFotos = 0;
+      //     int itemsConObs = 0;
+
+      //     for (var seccion in checklist.secciones) {
+      //       totalItems += seccion.items.length;
+      //       itemsCompletados += seccion.items.where((item) => item.respuesta != null).length;
+      //       itemsConFotos += seccion.items.where((item) => item.fotoBase64 != null).length;
+      //       itemsConObs += seccion.items.where((item) => item.observaciones != null && item.observaciones!.isNotEmpty).length;
+      //     }
+
+      //     showDialog(
+      //       context: context,
+      //       builder: (context) => AlertDialog(
+      //         title: const Text('Progreso del Checklist'),
+      //         content: SingleChildScrollView(
+      //           child: ListBody(
+      //             children: [
+      //               _buildProgressIndicator(
+      //                 'Progreso General',
+      //                 itemsCompletados / totalItems,
+      //                 'Items completados: $itemsCompletados/$totalItems',
+      //               ),
+      //               const SizedBox(height: 16),
+      //               _buildProgressIndicator(
+      //                 'Cumplimiento',
+      //                 cumplimiento / 100,
+      //                 '${cumplimiento.toStringAsFixed(1)}%',
+      //                 Colors.red[600],
+      //               ),
+      //               const SizedBox(height: 16),
+      //               _buildStatsRow(itemsConFotos, itemsConObs),
+      //               const SizedBox(height: 16),
+      //               const Text('Progreso por Sección:', style: TextStyle(fontWeight: FontWeight.bold)),
+      //               ...checklist.secciones.map((seccion) {
+      //                 int seccionItemsRespondidos = seccion.items.where((item) => item.respuesta != null).length;
+      //                 int seccionTotalItems = seccion.items.length;
+      //                 return Padding(
+      //                   padding: const EdgeInsets.only(top: 8.0),
+      //                   child: Row(
+      //                     children: [
+      //                       Expanded(
+      //                         child: Text(seccion.nombre, style: const TextStyle(fontSize: 12)),
+      //                       ),
+      //                       Text('$seccionItemsRespondidos/$seccionTotalItems', style: const TextStyle(fontSize: 12)),
+      //                       const SizedBox(width: 8),
+      //                       SizedBox(
+      //                         width: 80,
+      //                         child: LinearProgressIndicator(
+      //                           value: seccionItemsRespondidos / seccionTotalItems,
+      //                           backgroundColor: Colors.grey[300],
+      //                           color: Colors.red[400],
+      //                         ),
+      //                       ),
+      //                     ],
+      //                   ),
+      //                 );
+      //               }).toList(),
+      //             ],
+      //           ),
+      //         ),
+      //         actions: [
+      //           TextButton(
+      //             onPressed: () => Navigator.pop(context),
+      //             child: const Text('Cerrar'),
+      //           ),
+      //         ],
+      //       ),
+      //     );
+      //   },
+      //   backgroundColor: Colors.red[700],
+      //   foregroundColor: Colors.white,
+      //   icon: const Icon(Icons.analytics),
+      //   label: const Text('Progreso'),
+      // ),
+    );
+  }
+
+  Widget _buildProgressIndicator(String title, double value, String label, [Color? color]) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text(label),
+          ],
+        ),
+        const SizedBox(height: 8),
+        LinearProgressIndicator(
+          value: value,
+          backgroundColor: Colors.grey[300],
+          color: color ?? Colors.green[600],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatsRow(int photos, int observations) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceAround,
+      children: [
+        _buildStatCard(Icons.photo_camera, 'Fotos', photos, Colors.blue[600]!),
+        _buildStatCard(Icons.comment, 'Observaciones', observations, Colors.orange[600]!),
+      ],
+    );
+  }
+
+  Widget _buildStatCard(IconData icon, String title, int value, Color color) {
+    return Column(
+      children: [
+        CircleAvatar(
+          backgroundColor: color.withOpacity(0.2),
+          child: Icon(icon, color: color),
+        ),
+        const SizedBox(height: 4),
+        Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+        Text(value.toString(), style: TextStyle(fontSize: 16, color: color)),
+      ],
     );
   }
 

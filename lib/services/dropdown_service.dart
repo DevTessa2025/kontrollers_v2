@@ -69,7 +69,7 @@ class DropdownService {
   }
 
   // Obtener todos los datos necesarios para el checklist
-  static Future<Map<String, dynamic>> getChecklistDropdownData() async {
+  static Future<Map<String, dynamic>> getChecklistDropdownData({required bool forceSync}) async {
     try {
       // Ejecutar todas las consultas en paralelo
       List<Future> futures = [
