@@ -90,9 +90,9 @@ class ImageService {
     }
   }
 
-  // Mostrar dialog para seleccionar fuente de imagen
-  static Future<String?> showImageSourceDialog(context) async {
-    return await showDialog<String?>(
+  // Modificado para devolver la fuente de la imagen directamente
+  static Future<ImageSource?> showImageSourceDialog(context) async {
+    return await showDialog<ImageSource?>(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
@@ -109,23 +109,15 @@ class ImageService {
               ListTile(
                 leading: Icon(Icons.camera_alt, color: Colors.red[700]),
                 title: Text('Tomar Foto'),
-                onTap: () async {
-                  Navigator.pop(context);
-                  String? result = await pickAndCompressImage(
-                    source: ImageSource.camera,
-                  );
-                  Navigator.pop(context, result);
+                onTap: () {
+                  Navigator.pop(context, ImageSource.camera);
                 },
               ),
               ListTile(
                 leading: Icon(Icons.photo_library, color: Colors.red[700]),
                 title: Text('Desde Galería'),
-                onTap: () async {
-                  Navigator.pop(context);
-                  String? result = await pickAndCompressImage(
-                    source: ImageSource.gallery,
-                  );
-                  Navigator.pop(context, result);
+                onTap: () {
+                  Navigator.pop(context, ImageSource.gallery);
                 },
               ),
             ],

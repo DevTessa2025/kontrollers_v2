@@ -55,20 +55,21 @@ class ChecklistValores {
     required this.min,
   });
 
-  Map<String, dynamic> toJson() {
-    return {
-      'max': max,
-      'promedio': promedio,
-      'min': min,
-    };
-  }
-
+  // Este es el método que la aplicación busca para crear una instancia de la clase a partir de JSON
   factory ChecklistValores.fromJson(Map<String, dynamic> json) {
     return ChecklistValores(
       max: json['max']?.toDouble(),
       promedio: json['promedio']?.toDouble(),
       min: json['min']?.toDouble(),
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'max': max,
+      'promedio': promedio,
+      'min': min,
+    };
   }
 
   // Obtener las opciones disponibles para el SI
@@ -84,7 +85,6 @@ class ChecklistValores {
     return getOpcionesSi().length > 1;
   }
 }
-
 class ChecklistSeccion {
   final String nombre;
   final List<ChecklistItem> items;
@@ -112,8 +112,6 @@ class ChecklistSeccion {
 }
 
 class ChecklistBodega {
-  final String titulo;
-  final String subtitulo;
   final List<ChecklistSeccion> secciones;
   Finca? finca;
   Supervisor? supervisor;
@@ -121,8 +119,6 @@ class ChecklistBodega {
   DateTime? fecha;
 
   ChecklistBodega({
-    required this.titulo,
-    required this.subtitulo,
     required this.secciones,
     this.finca,
     this.supervisor,
@@ -132,8 +128,6 @@ class ChecklistBodega {
 
   Map<String, dynamic> toJson() {
     return {
-      'titulo': titulo,
-      'subtitulo': subtitulo,
       'secciones': secciones.map((seccion) => seccion.toJson()).toList(),
       'finca': finca?.toJson(),
       'supervisor': supervisor?.toJson(),
@@ -144,8 +138,6 @@ class ChecklistBodega {
 
   factory ChecklistBodega.fromJson(Map<String, dynamic> json) {
     return ChecklistBodega(
-      titulo: json['titulo'],
-      subtitulo: json['subtitulo'],
       secciones: (json['secciones'] as List)
           .map((seccion) => ChecklistSeccion.fromJson(seccion))
           .toList(),
@@ -215,9 +207,6 @@ class ChecklistBodega {
 class ChecklistDataBodega {
   static ChecklistBodega getChecklistBodega() {
     return ChecklistBodega(
-      titulo: "LISTA DE CHEQUEO BODEGA",
-      subtitulo: "APLICACIONES FITOSANITARIAS",
-      fecha: DateTime.now(),
       secciones: [
         ChecklistSeccion(
           nombre: "APLICACIONES FITOSANITARIAS",
@@ -260,7 +249,7 @@ class ChecklistDataBodega {
             ChecklistItem(
               id: 7,
               proceso: "Envases y etiquetado de productos",
-              valores: ChecklistValores(max: 5, promedio: null, min: null),
+              valores: ChecklistValores(max: 5, promedio: null, min: 0),
             ),
             ChecklistItem(
               id: 8,

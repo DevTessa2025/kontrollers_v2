@@ -1,3 +1,5 @@
+// En el archivo lib/services/sql_server_service.dart
+
 import 'dart:io';
 import 'dart:convert';
 import 'package:mssql_connection/mssql_connection.dart';
@@ -443,10 +445,19 @@ class SqlServerService {
       }
 
       print('Ejecutando query: $query');
-      String result = await connection.getData(query);
-      print('Resultado de la query: $result');
       
-      return result;
+      // Determinar si la consulta es de lectura o escritura
+      String upperCaseQuery = query.trim().toUpperCase();
+      if (upperCaseQuery.startsWith('SELECT')) {
+        String result = await connection.getData(query);
+        print('Resultado de la query: $result');
+        return result;
+      } else {
+        // Asumimos que es una operación de escritura (INSERT, UPDATE, DELETE, etc.)
+        String result = await connection.writeData(query);
+        print('Resultado de la query: $result');
+        return result;
+      }
       
     } catch (e) {
       print('Error executing query: $e');

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:intl/intl.dart';
+import 'package:uuid/uuid.dart'; // Importe el paquete uuid
 import '../services/checklist_storage_service.dart';
 import '../services/sql_server_service.dart';
 import '../data/checklist_data.dart';
@@ -29,7 +31,7 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
     try {
       List<Map<String, dynamic>> loadedRecords = await ChecklistStorageService.getLocalChecklists();
       Map<String, int> loadedStats = await ChecklistStorageService.getLocalStats();
-      
+
       setState(() {
         records = loadedRecords;
         stats = loadedStats;
@@ -39,7 +41,7 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
       setState(() {
         _isLoading = false;
       });
-      
+
       Fluttertoast.showToast(
         msg: 'Error cargando registros: $e',
         backgroundColor: Colors.red[600],
@@ -54,34 +56,23 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
     });
 
     try {
-      // Obtener el registro completo
-      ChecklistBodega? checklist = await ChecklistStorageService.getChecklistById(recordId);
-      if (checklist == null) {
-        throw Exception('Registro no encontrado');
-      }
+      var record = records.firstWhere((r) => r['id'] == recordId);
 
-      // Obtener datos del registro para el envío
-      Map<String, dynamic> record = records.firstWhere((r) => r['id'] == recordId);
-      
-      // Crear query de inserción para el servidor
       String insertQuery = _generateInsertQuery(record);
-      
-      // Ejecutar query en el servidor
+
       await SqlServerService.executeQuery(insertQuery);
-      
-      // Marcar como enviado
+
       await ChecklistStorageService.markAsEnviado(recordId);
-      
+
       Fluttertoast.showToast(
         msg: 'Registro enviado exitosamente al servidor',
         backgroundColor: Colors.green[600],
         textColor: Colors.white,
         toastLength: Toast.LENGTH_LONG,
       );
-      
-      // Recargar registros
+
       await _loadRecords();
-      
+
     } catch (e) {
       Fluttertoast.showToast(
         msg: 'Error enviando registro: $e',
@@ -97,43 +88,56 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
   }
 
   String _generateInsertQuery(Map<String, dynamic> record) {
-    // Escapar comillas simples para evitar errores SQL
-    String escapeString(String? str) {
-      if (str == null) return 'NULL';
-      return "'${str.replaceAll("'", "''")}'";
+    String escapeValue(dynamic value) {
+      if (value == null) return 'NULL';
+      if (value is String) return "'${value.replaceAll("'", "''")}'";
+      return value.toString();
     }
 
-    return '''
-INSERT INTO checklist_bodega_servidor (
-  titulo, 
-  subtitulo, 
-  finca_nombre, 
-  supervisor_id, 
-  supervisor_nombre,
-  pesador_id, 
-  pesador_nombre,
-  usuario_id, 
-  usuario_nombre,
-  fecha_creacion, 
-  porcentaje_cumplimiento,
-  checklist_data,
-  fecha_envio
-) VALUES (
-  ${escapeString(record['titulo'])},
-  ${escapeString(record['subtitulo'])},
-  ${escapeString(record['finca_nombre'])},
-  ${record['supervisor_id'] ?? 'NULL'},
-  ${escapeString(record['supervisor_nombre'])},
-  ${record['pesador_id'] ?? 'NULL'},
-  ${escapeString(record['pesador_nombre'])},
-  ${record['usuario_id'] ?? 'NULL'},
-  ${escapeString(record['usuario_nombre'])},
-  ${escapeString(record['fecha_creacion'])},
-  ${record['porcentaje_cumplimiento'] ?? 0.0},
-  ${escapeString(record['checklist_data'])},
-  GETDATE()
-);
-    ''';
+    String formatDate(String dateString) {
+      try {
+        DateTime date = DateTime.parse(dateString);
+        return DateFormat("yyyy-MM-dd HH:mm:ss").format(date);
+      } catch (e) {
+        return dateString;
+      }
+    }
+
+    // Generar un UUID único para este checklist
+    var uuid = const Uuid();
+    String checklistUuid = uuid.v4();
+
+    List<String> columnNames = [
+      'checklist_uuid', // Añada esta columna
+      'finca_nombre', 'supervisor_id', 'supervisor_nombre', 'pesador_id', 'pesador_nombre',
+      'usuario_id', 'usuario_nombre', 'fecha_creacion', 'porcentaje_cumplimiento', 'fecha_envio'
+    ];
+    List<String> values = [
+      escapeValue(checklistUuid), // Añada este valor
+      escapeValue(record['finca_nombre']),
+      escapeValue(record['supervisor_id']),
+      escapeValue(record['supervisor_nombre']),
+      escapeValue(record['pesador_id']),
+      escapeValue(record['pesador_nombre']),
+      escapeValue(record['usuario_id']),
+      escapeValue(record['usuario_nombre']),
+      escapeValue(formatDate(record['fecha_creacion'])),
+      escapeValue(record['porcentaje_cumplimiento']),
+      'GETDATE()'
+    ];
+
+    for (int i = 1; i <= 20; i++) {
+      columnNames.add('item_${i}_respuesta');
+      values.add(escapeValue(record['item_${i}_respuesta']));
+      columnNames.add('item_${i}_valor_numerico');
+      values.add(escapeValue(record['item_${i}_valor_numerico']));
+      columnNames.add('item_${i}_observaciones');
+      values.add(escapeValue(record['item_${i}_observaciones']));
+      columnNames.add('item_${i}_foto_base64');
+      values.add(escapeValue(record['item_${i}_foto_base64']));
+    }
+
+    return 'INSERT INTO check_bodega (${columnNames.join(', ')}) VALUES (${values.join(', ')})';
   }
 
   Future<void> _deleteRecord(int recordId) async {
@@ -166,7 +170,7 @@ INSERT INTO checklist_bodega_servidor (
       try {
         await ChecklistStorageService.deleteLocalChecklist(recordId);
         await _loadRecords();
-        
+
         Fluttertoast.showToast(
           msg: 'Registro eliminado correctamente',
           backgroundColor: Colors.orange[600],
@@ -212,9 +216,9 @@ INSERT INTO checklist_bodega_servidor (
                 _buildDetailRow('Fecha:', checklist.fecha != null 
                     ? '${checklist.fecha!.day.toString().padLeft(2, '0')}/${checklist.fecha!.month.toString().padLeft(2, '0')}/${checklist.fecha!.year}'
                     : 'No definida'),
-                
+
                 SizedBox(height: 16),
-                
+
                 Container(
                   padding: EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -241,20 +245,20 @@ INSERT INTO checklist_bodega_servidor (
                     ],
                   ),
                 ),
-                
+
                 SizedBox(height: 16),
-                
+
                 Text(
                   'Progreso por Secciones:',
                   style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey[800]),
                 ),
                 SizedBox(height: 8),
-                
+
                 ...checklist.secciones.map((seccion) {
                   int completados = seccion.items.where((item) => item.respuesta != null).length;
                   int conFotos = seccion.items.where((item) => item.fotoBase64 != null).length;
                   int conObservaciones = seccion.items.where((item) => item.observaciones != null).length;
-                  
+
                   return Container(
                     margin: EdgeInsets.only(bottom: 8),
                     padding: EdgeInsets.all(8),
@@ -515,7 +519,7 @@ INSERT INTO checklist_bodega_servidor (
                                             ],
                                           ),
                                         ),
-                                        
+
                                         // Indicador de cumplimiento
                                         Column(
                                           children: [
@@ -568,9 +572,9 @@ INSERT INTO checklist_bodega_servidor (
                                             ),
                                           ),
                                         ),
-                                        
+
                                         SizedBox(width: 8),
-                                        
+
                                         if (!enviado) ...[
                                           Expanded(
                                             child: ElevatedButton.icon(
@@ -593,10 +597,10 @@ INSERT INTO checklist_bodega_servidor (
                                               ),
                                             ),
                                           ),
-                                          
+
                                           SizedBox(width: 8),
                                         ],
-                                        
+
                                         IconButton(
                                           onPressed: () => _deleteRecord(record['id']),
                                           icon: Icon(Icons.delete, color: Colors.red[600]),
