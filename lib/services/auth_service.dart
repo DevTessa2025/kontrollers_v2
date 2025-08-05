@@ -1,6 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import '../database/database_helper.dart';
 import 'sql_server_service.dart';
+import 'dropdown_service.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
 class AuthService {
@@ -206,7 +207,7 @@ class AuthService {
     }
   }
 
-  // Sincronizar datos desde servidor
+  // Sincronizar datos desde servidor (usuarios + dropdown)
   static Future<Map<String, dynamic>> syncData() async {
     try {
       var connectivityResult = await (Connectivity().checkConnectivity());
@@ -217,22 +218,41 @@ class AuthService {
         };
       }
 
-      // Obtener usuarios del servidor
+      print('Iniciando sincronización completa...');
+      
+      // Sincronizar usuarios
       List<Map<String, dynamic>> serverUsers = await SqlServerService.getUsersFromServer();
       
-      // Usar insertOrUpdate en lugar de limpiar todo
       DatabaseHelper dbHelper = DatabaseHelper();
-      int syncedCount = 0;
+      int usersSynced = 0;
       
       for (Map<String, dynamic> user in serverUsers) {
         await dbHelper.insertOrUpdateUser(user);
-        syncedCount++;
+        usersSynced++;
+      }
+
+      // Sincronizar datos de dropdown
+      int dropdownSynced = 0;
+      String dropdownMessage = '';
+      try {
+        Map<String, dynamic> dropdownResult = await DropdownService.syncDropdownData();
+        if (dropdownResult['success']) {
+          dropdownSynced = dropdownResult['count'] ?? 0;
+          dropdownMessage = 'Dropdown sincronizado correctamente.';
+        } else {
+          dropdownMessage = 'Error en dropdown: ${dropdownResult['message']}';
+        }
+      } catch (e) {
+        dropdownMessage = 'Error sincronizando dropdown: $e';
+        print('Error sincronizando datos de dropdown: $e');
       }
 
       return {
         'success': true,
-        'message': 'Sincronización exitosa. $syncedCount usuarios sincronizados.',
-        'count': syncedCount
+        'message': 'Sincronización exitosa. $usersSynced usuarios y $dropdownSynced datos adicionales sincronizados. $dropdownMessage',
+        'count': usersSynced + dropdownSynced,
+        'usersSynced': usersSynced,
+        'dropdownSynced': dropdownSynced
       };
 
     } catch (e) {

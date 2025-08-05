@@ -42,8 +42,10 @@ class _LoginScreenState extends State<LoginScreen> {
         Map<String, dynamic> result = await AuthService.syncData();
         
         if (result['success']) {
+          int users = result['usersSynced'] ?? 0;
+          int dropdown = result['dropdownSynced'] ?? 0;
           Fluttertoast.showToast(
-            msg: "Sincronización automática exitosa: ${result['count']} usuarios",
+            msg: "Auto-sync exitoso: $users usuarios, $dropdown datos adicionales",
             toastLength: Toast.LENGTH_SHORT,
             gravity: ToastGravity.BOTTOM,
             backgroundColor: Colors.green,
