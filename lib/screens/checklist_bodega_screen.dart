@@ -214,29 +214,47 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
     );
   }
 
-  void _showPhotoDialog(ChecklistItem item) async {
-    // Se corrige la llamada a showImageSourceDialog para que devuelva un ImageSource?
-    ImageSource? source = await ImageService.showImageSourceDialog(context);
-    
-    if (source != null) {
-      String? base64Image = await ImageService.pickAndCompressImage(
-        source: source,
-      );
+  // Actualizar este método en checklist_bodega_screen.dart
 
-      if (base64Image != null) {
-        setState(() {
-          item.fotoBase64 = base64Image;
-        });
-        
-        double sizeKB = ImageService.getImageSizeKB(base64Image);
-        Fluttertoast.showToast(
-          msg: 'Foto agregada (${sizeKB.toStringAsFixed(1)} KB)',
-          backgroundColor: Colors.green[600],
-          textColor: Colors.white,
-        );
-      }
+void _showPhotoDialog(ChecklistItem item) async {
+  // Usar el nuevo diálogo que devuelve un Map con source y highQuality
+  Map<String, dynamic>? result = await ImageService.showImageSourceDialog(context);
+  
+  if (result != null) {
+    ImageSource source = result['source'];
+    bool highQuality = result['highQuality'] ?? false;
+    
+    String? base64Image;
+    
+    if (highQuality) {
+      // Usar configuración de alta calidad
+      base64Image = await ImageService.pickHighQualityImage(source: source);
+    } else {
+      // Usar configuración estándar (ya mejorada)
+      base64Image = await ImageService.pickAndCompressImage(source: source);
+    }
+
+    if (base64Image != null) {
+      setState(() {
+        item.fotoBase64 = base64Image;
+      });
+      
+      // Mostrar información de la imagen
+      Map<String, dynamic> imageInfo = ImageService.getImageInfo(base64Image);
+      
+      String message = highQuality 
+          ? 'Foto HD agregada (${imageInfo['sizeKB'].toStringAsFixed(1)} KB, ${imageInfo['resolution']})'
+          : 'Foto agregada (${imageInfo['sizeKB'].toStringAsFixed(1)} KB, ${imageInfo['resolution']})';
+      
+      Fluttertoast.showToast(
+        msg: message,
+        backgroundColor: Colors.green[600],
+        textColor: Colors.white,
+        toastLength: Toast.LENGTH_LONG,
+      );
     }
   }
+}
 
   void _viewPhoto(ChecklistItem item) {
     if (item.fotoBase64 == null) return;
