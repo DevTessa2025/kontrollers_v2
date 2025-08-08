@@ -2,6 +2,8 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import '../data/checklist_data.dart';
 import '../models/dropdown_models.dart';
 import '../services/dropdown_service.dart';
@@ -10,6 +12,14 @@ import '../services/checklist_storage_service.dart';
 import 'checklist_records_screen.dart';
 
 class ChecklistBodegaScreen extends StatefulWidget {
+  final ChecklistBodega? checklistToEdit;
+  final int? recordId;
+
+  ChecklistBodegaScreen({
+    this.checklistToEdit,
+    this.recordId,
+  });
+
   @override
   _ChecklistBodegaScreenState createState() => _ChecklistBodegaScreenState();
 }
@@ -27,18 +37,42 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
   Finca? selectedFinca;
   Supervisor? selectedSupervisor;
   Pesador? selectedPesador;
+  DateTime selectedDate = DateTime.now(); // Fecha seleccionada
   
   bool _isLoadingDropdownData = true;
+  bool _isEditMode = false;
 
   @override
   void initState() {
     super.initState();
-    _resetChecklist();
+    _initializeDateFormatting();
+    _isEditMode = widget.checklistToEdit != null;
+    
+    if (_isEditMode) {
+      _loadExistingChecklist();
+    } else {
+      _resetChecklist();
+    }
+    
     _loadDropdownData();
+  }
+
+  Future<void> _initializeDateFormatting() async {
+    await initializeDateFormatting('es_ES', null);
+  }
+
+  void _loadExistingChecklist() {
+    checklist = widget.checklistToEdit!;
+    selectedFinca = checklist.finca;
+    selectedSupervisor = checklist.supervisor;
+    selectedPesador = checklist.pesador;
+    selectedDate = checklist.fecha ?? DateTime.now(); // Cargar fecha existente o actual
+    _currentSectionIndex = 0;
   }
   
   void _resetChecklist() {
     checklist = ChecklistDataBodega.getChecklistBodega();
+    selectedDate = DateTime.now(); // Inicializar con fecha actual
     _currentSectionIndex = 0;
   }
 
@@ -214,47 +248,30 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
     );
   }
 
-  // Actualizar este método en checklist_bodega_screen.dart
-
-void _showPhotoDialog(ChecklistItem item) async {
-  // Usar el nuevo diálogo que devuelve un Map con source y highQuality
-  Map<String, dynamic>? result = await ImageService.showImageSourceDialog(context);
-  
-  if (result != null) {
-    ImageSource source = result['source'];
-    bool highQuality = result['highQuality'] ?? false;
+  void _showPhotoDialog(ChecklistItem item) async {
+    // Usar el diálogo simplificado que devuelve ImageSource
+    ImageSource? source = await ImageService.showImageSourceDialog(context);
     
-    String? base64Image;
-    
-    if (highQuality) {
-      // Usar configuración de alta calidad
-      base64Image = await ImageService.pickHighQualityImage(source: source);
-    } else {
-      // Usar configuración estándar (ya mejorada)
-      base64Image = await ImageService.pickAndCompressImage(source: source);
-    }
+    if (source != null) {
+      String? base64Image = await ImageService.pickAndCompressImage(source: source);
 
-    if (base64Image != null) {
-      setState(() {
-        item.fotoBase64 = base64Image;
-      });
-      
-      // Mostrar información de la imagen
-      Map<String, dynamic> imageInfo = ImageService.getImageInfo(base64Image);
-      
-      String message = highQuality 
-          ? 'Foto HD agregada (${imageInfo['sizeKB'].toStringAsFixed(1)} KB, ${imageInfo['resolution']})'
-          : 'Foto agregada (${imageInfo['sizeKB'].toStringAsFixed(1)} KB, ${imageInfo['resolution']})';
-      
-      Fluttertoast.showToast(
-        msg: message,
-        backgroundColor: Colors.green[600],
-        textColor: Colors.white,
-        toastLength: Toast.LENGTH_LONG,
-      );
+      if (base64Image != null) {
+        setState(() {
+          item.fotoBase64 = base64Image;
+        });
+        
+        // Mostrar información de la imagen
+        Map<String, dynamic> imageInfo = ImageService.getImageInfo(base64Image);
+        
+        Fluttertoast.showToast(
+          msg: 'Foto agregada (${imageInfo['sizeKB'].toStringAsFixed(1)} KB, ${imageInfo['resolution']})',
+          backgroundColor: Colors.green[600],
+          textColor: Colors.white,
+          toastLength: Toast.LENGTH_LONG,
+        );
+      }
     }
   }
-}
 
   void _viewPhoto(ChecklistItem item) {
     if (item.fotoBase64 == null) return;
@@ -316,29 +333,80 @@ void _showPhotoDialog(ChecklistItem item) async {
     );
   }
 
+  Future<void> _selectDate() async {
+    final DateTime? pickedDate = await showDatePicker(
+      context: context,
+      initialDate: selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(Duration(days: 30)), // Permitir fechas hasta 30 días en el futuro
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: _isEditMode ? Colors.blue[700]! : Colors.red[700]!, // Color del header
+              onPrimary: Colors.white, // Color del texto del header
+              surface: Colors.white, // Color de fondo
+              onSurface: Colors.black, // Color del texto
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (pickedDate != null && pickedDate != selectedDate) {
+      setState(() {
+        selectedDate = pickedDate;
+      });
+    }
+  }
+
   void _saveLocalChecklist() async {
     // Validar que los datos básicos estén completos
     if (selectedFinca == null || selectedSupervisor == null || selectedPesador == null) {
       Fluttertoast.showToast(
-        msg: 'Por favor complete todos los datos: Finca, Supervisor y Pesador',
+        msg: 'Por favor complete todos los datos: Finca, Supervisor, Pesador y Fecha',
         backgroundColor: Colors.orange[600],
         textColor: Colors.white,
       );
       return;
     }
+
+    // Validar que la fecha no sea futura (más de hoy)
+    DateTime today = DateTime.now();
+    DateTime todayOnly = DateTime(today.year, today.month, today.day);
+    DateTime selectedDateOnly = DateTime(selectedDate.year, selectedDate.month, selectedDate.day);
     
-    // Nueva validación: Asegurar que todos los ítems tengan una respuesta
-    for (var seccion in checklist.secciones) {
-      for (var item in seccion.items) {
-        if (item.respuesta == null) {
-          Fluttertoast.showToast(
-            msg: 'Por favor, complete todos los ítems antes de guardar',
-            backgroundColor: Colors.orange[600],
-            textColor: Colors.white,
-            toastLength: Toast.LENGTH_LONG,
-          );
-          return;
-        }
+    if (selectedDateOnly.isAfter(todayOnly)) {
+      bool? continueWithFutureDate = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(
+            'Fecha Futura',
+            style: TextStyle(color: Colors.orange[800], fontWeight: FontWeight.bold),
+          ),
+          content: Text(
+            'Ha seleccionado una fecha futura (${DateFormat('dd/MM/yyyy').format(selectedDate)}). ¿Está seguro que desea continuar?'
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text('Cancelar', style: TextStyle(color: Colors.grey[600])),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange[600],
+                foregroundColor: Colors.white,
+              ),
+              child: Text('Continuar'),
+            ),
+          ],
+        ),
+      );
+
+      if (continueWithFutureDate != true) {
+        return;
       }
     }
 
@@ -346,24 +414,38 @@ void _showPhotoDialog(ChecklistItem item) async {
       checklist.finca = selectedFinca;
       checklist.supervisor = selectedSupervisor;
       checklist.pesador = selectedPesador;
-      checklist.fecha = DateTime.now();
+      checklist.fecha = selectedDate; // Usar la fecha seleccionada
 
-      int recordId = await ChecklistStorageService.saveChecklistLocal(checklist);
+      int recordId;
       
-      Fluttertoast.showToast(
-        msg: 'Checklist guardado localmente (ID: $recordId)',
-        backgroundColor: Colors.green[600],
-        textColor: Colors.white,
-        toastLength: Toast.LENGTH_LONG,
-      );
+      if (_isEditMode && widget.recordId != null) {
+        // Actualizar registro existente
+        await ChecklistStorageService.updateChecklistLocal(widget.recordId!, checklist);
+        recordId = widget.recordId!;
+        
+        Fluttertoast.showToast(
+          msg: 'Checklist actualizado localmente (ID: $recordId)',
+          backgroundColor: Colors.blue[600],
+          textColor: Colors.white,
+          toastLength: Toast.LENGTH_LONG,
+        );
+      } else {
+        // Guardar nuevo registro
+        recordId = await ChecklistStorageService.saveChecklistLocal(checklist);
+        
+        Fluttertoast.showToast(
+          msg: 'Checklist guardado localmente (ID: $recordId)',
+          backgroundColor: Colors.green[600],
+          textColor: Colors.white,
+          toastLength: Toast.LENGTH_LONG,
+        );
+      }
 
-      setState(() {
-        selectedFinca = null;
-        selectedSupervisor = null;
-        selectedPesador = null;
-        checklist = ChecklistDataBodega.getChecklistBodega();
-        _currentSectionIndex = 0;
-      });
+      // Navegar a la pantalla de records
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => ChecklistRecordsScreen()),
+      );
 
     } catch (e) {
       Fluttertoast.showToast(
@@ -372,6 +454,17 @@ void _showPhotoDialog(ChecklistItem item) async {
         textColor: Colors.white,
       );
     }
+  }
+
+  bool _isChecklistComplete() {
+    for (var seccion in checklist.secciones) {
+      for (var item in seccion.items) {
+        if (item.respuesta == null) {
+          return false;
+        }
+      }
+    }
+    return true;
   }
 
   void _navigateToRecords() {
@@ -387,682 +480,970 @@ void _showPhotoDialog(ChecklistItem item) async {
     int itemsRespondidosSeccionActual = currentSection.items.where((item) => item.respuesta != null).length;
     int totalItemsSeccionActual = currentSection.items.length;
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: Text(
-          'Checklist Bodega',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: Colors.red[700],
-        iconTheme: IconThemeData(color: Colors.white),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.sync),
-            onPressed: () => _loadDropdownData(forceSync: true),
-            tooltip: 'Sincronizar datos',
-          ),
-          IconButton(
-            icon: Icon(Icons.save),
-            onPressed: _saveLocalChecklist,
-            tooltip: 'Guardar localmente',
-          ),
-          IconButton(
-            icon: Icon(Icons.folder_open),
-            onPressed: _navigateToRecords,
-            tooltip: 'Ver registros',
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // Header con información general
-          Container(
-            width: double.infinity,
-            padding: EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.red[50],
-              border: Border(bottom: BorderSide(color: Colors.red[200]!)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (_isLoadingDropdownData)
-                  Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(16),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.red[700],
-                            ),
-                          ),
-                          SizedBox(width: 12),
-                          Text(
-                            'Cargando datos...',
-                            style: TextStyle(color: Colors.red[700]),
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                else
-                  Column(
-                    children: [
-                      // Dropdown de Finca (ancho completo)
-                      DropdownButtonFormField<Finca>(
-                        value: selectedFinca,
-                        decoration: InputDecoration(
-                          labelText: 'Finca',
-                          labelStyle: TextStyle(color: Colors.red[700]),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide(color: Colors.red[700]!),
-                          ),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          prefixIcon: Icon(Icons.location_on, color: Colors.red[700]),
-                        ),
-                        items: fincas.map((Finca finca) {
-                          return DropdownMenuItem<Finca>(
-                            value: finca,
-                            child: Text(
-                              finca.nombre,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          );
-                        }).toList(),
-                        onChanged: (Finca? newValue) {
-                          setState(() {
-                            selectedFinca = newValue;
-                          });
-                        },
-                        hint: Text('Seleccione una finca'),
-                        isExpanded: true,
-                      ),
-                      
-                      SizedBox(height: 12),
-                      
-                      // Row con Supervisor y Pesador
-                      Row(
-                        children: [
-                          // Dropdown de Supervisor
-                          Expanded(
-                            child: DropdownButtonFormField<Supervisor>(
-                              value: selectedSupervisor,
-                              decoration: InputDecoration(
-                                labelText: 'Supervisor',
-                                labelStyle: TextStyle(color: Colors.red[700]),
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide(color: Colors.red[700]!),
-                                ),
-                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                prefixIcon: Icon(Icons.supervisor_account, color: Colors.red[700]),
-                              ),
-                              items: supervisores.map((Supervisor supervisor) {
-                                return DropdownMenuItem<Supervisor>(
-                                  value: supervisor,
-                                  child: Text(
-                                    supervisor.nombre,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                );
-                              }).toList(),
-                              onChanged: (Supervisor? newValue) {
-                                setState(() {
-                                  selectedSupervisor = newValue;
-                                });
-                              },
-                              hint: Text('Supervisor'),
-                              isExpanded: true,
-                            ),
-                          ),
-                          
-                          SizedBox(width: 12),
-                          
-                          // Dropdown de Pesador
-                          Expanded(
-                            child: DropdownButtonFormField<Pesador>(
-                              value: selectedPesador,
-                              decoration: InputDecoration(
-                                labelText: 'Pesador',
-                                labelStyle: TextStyle(color: Colors.red[700]),
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide(color: Colors.red[700]!),
-                                ),
-                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                prefixIcon: Icon(Icons.scale, color: Colors.red[700]),
-                              ),
-                              items: pesadores.map((Pesador pesador) {
-                                return DropdownMenuItem<Pesador>(
-                                  value: pesador,
-                                  child: Text(
-                                    pesador.nombre,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                );
-                              }).toList(),
-                              onChanged: (Pesador? newValue) {
-                                setState(() {
-                                  selectedPesador = newValue;
-                                });
-                              },
-                              hint: Text('Pesador'),
-                              isExpanded: true,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-              ],
-            ),
-          ),
+    // Calcular progreso general
+    int totalItemsGeneral = 0;
+    int itemsRespondidosGeneral = 0;
+    for (var seccion in checklist.secciones) {
+      totalItemsGeneral += seccion.items.length;
+      itemsRespondidosGeneral += seccion.items.where((item) => item.respuesta != null).length;
+    }
 
-          // Navegación de secciones
-          Container(
-            height: 60,
-            color: Colors.white,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              padding: EdgeInsets.symmetric(horizontal: 8),
-              itemCount: checklist.secciones.length,
-              itemBuilder: (context, index) {
-                bool isSelected = index == _currentSectionIndex;
-                var seccion = checklist.secciones[index];
-                
-                int itemsRespondidos = seccion.items.where((item) => item.respuesta != null).length;
-                int totalItems = seccion.items.length;
-                
-                return GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _currentSectionIndex = index;
-                    });
-                  },
-                  child: Container(
-                    margin: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: isSelected ? Colors.red[700] : Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: isSelected ? Colors.red[700]! : Colors.red[300]!,
-                        width: 2,
-                      ),
-                    ),
+    double progressPercentage = totalItemsGeneral > 0 ? itemsRespondidosGeneral / totalItemsGeneral : 0;
+
+    return Scaffold(
+      backgroundColor: Colors.grey[50],
+      body: CustomScrollView(
+        slivers: [
+          // AppBar moderno con gradiente y progreso
+          SliverAppBar(
+            expandedHeight: 160, // Aumentado de 140 a 160
+            floating: false,
+            pinned: true,
+            elevation: 0,
+            backgroundColor: _isEditMode ? Colors.blue[700] : Colors.red[700],
+            flexibleSpace: FlexibleSpaceBar(
+              background: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: _isEditMode 
+                        ? [Colors.blue[800]!, Colors.blue[600]!, Colors.blue[700]!]
+                        : [Colors.red[800]!, Colors.red[600]!, Colors.red[700]!],
+                  ),
+                ),
+                child: SafeArea(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(16, 70, 16, 16), // Ajustado top padding
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min, // Agregado para evitar overflow
                       children: [
-                        Text(
-                          seccion.nombre,
-                          style: TextStyle(
-                            color: isSelected ? Colors.white : Colors.red[700],
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12,
+                        Flexible( // Agregado Flexible
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center, // Agregado para centrar verticalmente
+                            children: [
+                              Container(
+                                padding: EdgeInsets.all(6), // Reducido de 8 a 6
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(10), // Reducido de 12 a 10
+                                ),
+                                child: Icon(
+                                  _isEditMode ? Icons.edit_note : Icons.assignment,
+                                  color: Colors.white,
+                                  size: 20, // Reducido de 24 a 20
+                                ),
+                              ),
+                              SizedBox(width: 10), // Reducido de 12 a 10
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      _isEditMode ? 'Editando Checklist' : 'Nuevo Checklist',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 16, // Reducido de 18 a 16
+                                        fontWeight: FontWeight.bold,
+                                        height: 1.1, // Agregado para reducir altura de línea
+                                      ),
+                                      maxLines: 1, // Agregado para limitar a 1 línea
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    if (_isEditMode) ...[
+                                      SizedBox(height: 2), // Reducido spacing
+                                      Text(
+                                        'ID: ${widget.recordId}',
+                                        style: TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 12, // Reducido de 13 a 12
+                                          height: 1.0,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
-                          textAlign: TextAlign.center,
                         ),
-                        SizedBox(height: 2),
-                        Text(
-                          '$itemsRespondidos/$totalItems',
-                          style: TextStyle(
-                            color: isSelected ? Colors.white70 : Colors.red[500],
-                            fontSize: 10,
-                            fontWeight: FontWeight.w500,
+                        SizedBox(height: 8), // Reducido de 12 a 8
+                        // Barra de progreso
+                        Container(
+                          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6), // Reducido vertical padding
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min, // Agregado
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          'Progreso General',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 11, // Reducido de 12 a 11
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                        Text(
+                                          '$itemsRespondidosGeneral/$totalItemsGeneral',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 11, // Reducido de 12 a 11
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    SizedBox(height: 4), // Reducido de 6 a 4
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(4),
+                                      child: LinearProgressIndicator(
+                                        value: progressPercentage,
+                                        backgroundColor: Colors.white.withOpacity(0.3),
+                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                        minHeight: 3, // Reducido de 4 a 3
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              SizedBox(width: 12),
+                              Text(
+                                '${(progressPercentage * 100).toInt()}%',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14, // Reducido de 16 a 14
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
                     ),
                   ),
-                );
-              },
-            ),
-          ),
-
-          // Título de la sección actual y progreso
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            color: Colors.red[100]!.withOpacity(0.5),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Text(
-                    currentSection.nombre,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.red[800],
-                    ),
-                  ),
                 ),
-                Text(
-                  'Progreso: $itemsRespondidosSeccionActual/$totalItemsSeccionActual',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.red[700],
-                    fontWeight: FontWeight.bold,
+              ),
+            ),
+            actions: [
+              if (!_isEditMode) ...[
+                IconButton(
+                  icon: Container(
+                    padding: EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(Icons.sync, color: Colors.white, size: 20),
                   ),
+                  onPressed: () => _loadDropdownData(forceSync: true),
+                  tooltip: 'Sincronizar datos',
+                ),
+                IconButton(
+                  icon: Container(
+                    padding: EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(Icons.folder_open, color: Colors.white, size: 20),
+                  ),
+                  onPressed: _navigateToRecords,
+                  tooltip: 'Ver registros',
                 ),
               ],
-            ),
+              IconButton(
+                icon: Container(
+                  padding: EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(Icons.save, color: Colors.white, size: 20),
+                ),
+                onPressed: _saveLocalChecklist,
+                tooltip: _isEditMode ? 'Actualizar' : 'Guardar localmente',
+              ),
+              SizedBox(width: 8),
+            ],
           ),
 
-          // Lista de items de la sección actual
-          Expanded(
-            child: ListView.builder(
-              padding: EdgeInsets.all(16),
-              itemCount: currentSection.items.length,
-              itemBuilder: (context, index) {
-                var item = currentSection.items[index];
-                
-                return Container(
-                  margin: EdgeInsets.only(bottom: 12),
+          // Contenido principal
+          SliverToBoxAdapter(
+            child: Column(
+              children: [
+                // Formulario principal con diseño mejorado
+                Container(
+                  margin: EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: item.respuesta == null 
-                          ? Colors.grey[300]! 
-                          : Colors.red[200]!,
-                      width: 1.5,
-                    ),
+                    borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.red.withOpacity(0.1),
-                        spreadRadius: 1,
-                        blurRadius: 4,
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 10,
                         offset: Offset(0, 2),
                       ),
                     ],
                   ),
-                  child: Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Header del item
-                        Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Header del formulario
+                      Container(
+                        padding: EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: (_isEditMode ? Colors.blue[50] : Colors.red[50]),
+                          borderRadius: BorderRadius.only(
+                            topLeft: Radius.circular(16),
+                            topRight: Radius.circular(16),
+                          ),
+                        ),
+                        child: Row(
                           children: [
                             Container(
-                              width: 32,
-                              height: 32,
+                              padding: EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: Colors.red[700],
-                                shape: BoxShape.circle,
+                                color: _isEditMode ? Colors.blue[100] : Colors.red[100],
+                                borderRadius: BorderRadius.circular(12),
                               ),
-                              child: Center(
-                                child: Text(
-                                  item.id.toString(),
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                  ),
-                                ),
+                              child: Icon(
+                                Icons.assignment_outlined,
+                                color: _isEditMode ? Colors.blue[700] : Colors.red[700],
+                                size: 24,
                               ),
                             ),
-                            SizedBox(width: 12),
+                            SizedBox(width: 16),
                             Expanded(
-                              child: Text(
-                                item.proceso,
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.grey[800],
-                                ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Información del Checklist',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.grey[800],
+                                    ),
+                                  ),
+                                  Text(
+                                    'Complete todos los campos requeridos',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ),
-                            IconButton(
-                              icon: Icon(
-                                Icons.comment_outlined,
-                                color: item.observaciones != null 
-                                    ? Colors.red[700] 
-                                    : Colors.grey[400],
-                              ),
-                              onPressed: () => _showObservationsDialog(item),
-                              tooltip: 'Observaciones',
-                            ),
-                            IconButton(
-                              icon: Icon(
-                                item.fotoBase64 != null ? Icons.photo : Icons.photo_camera_outlined,
-                                color: item.fotoBase64 != null 
-                                    ? Colors.blue[700] 
-                                    : Colors.grey[400],
-                              ),
-                              onPressed: () {
-                                if (item.fotoBase64 != null) {
-                                  _viewPhoto(item);
-                                } else {
-                                  _showPhotoDialog(item);
-                                }
-                              },
-                              tooltip: item.fotoBase64 != null ? 'Ver foto' : 'Agregar foto',
                             ),
                           ],
                         ),
+                      ),
 
-                        SizedBox(height: 12),
-
-                        // Información de valores
-                        if (item.valores.tieneOpcionesMultiples())
-                          Container(
-                            padding: EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.blue[50],
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(color: Colors.blue[200]!),
-                            ),
-                            child: Text(
-                              'Valores SI: ${item.valores.getOpcionesSi().join(', ')}',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.blue[700],
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-
-                        if (item.valores.tieneOpcionesMultiples()) SizedBox(height: 12),
-
-                        // Botones de respuesta
-                        Row(
-                          children: [
-                            // Botón SI
-                            Expanded(
-                              child: ElevatedButton(
-                                onPressed: () => _showValueSelector(item),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: item.respuesta == 'si' 
-                                      ? Colors.green[600] 
-                                      : Colors.grey[200],
-                                  foregroundColor: item.respuesta == 'si' 
-                                      ? Colors.white 
-                                      : Colors.grey[700],
-                                  padding: EdgeInsets.symmetric(vertical: 12),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                ),
+                      // Contenido del formulario
+                      Padding(
+                        padding: EdgeInsets.all(20),
+                        child: _isLoadingDropdownData
+                            ? Center(
                                 child: Column(
                                   children: [
-                                    Text(
-                                      'SÍ',
-                                      style: TextStyle(fontWeight: FontWeight.bold),
+                                    CircularProgressIndicator(
+                                      color: _isEditMode ? Colors.blue[700] : Colors.red[700],
                                     ),
-                                    if (item.respuesta == 'si' && item.valorNumerico != null)
-                                      Text(
-                                        '(${item.valorNumerico})',
-                                        style: TextStyle(fontSize: 12),
+                                    SizedBox(height: 16),
+                                    Text(
+                                      'Cargando datos...',
+                                      style: TextStyle(
+                                        color: _isEditMode ? Colors.blue[700] : Colors.red[700],
+                                        fontWeight: FontWeight.w500,
                                       ),
+                                    ),
                                   ],
                                 ),
-                              ),
-                            ),
-
-                            SizedBox(width: 8),
-
-                            // Botón NO
-                            Expanded(
-                              child: ElevatedButton(
-                                onPressed: item.valores.min != null 
-                                    ? () => _updateItemResponse(item.id, 'no', valorNumerico: item.valores.min)
-                                    : null,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: item.respuesta == 'no' 
-                                      ? Colors.red[600] 
-                                      : Colors.grey[200],
-                                  foregroundColor: item.respuesta == 'no' 
-                                      ? Colors.white 
-                                      : Colors.grey[700],
-                                  padding: EdgeInsets.symmetric(vertical: 12),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                ),
-                                child: Text(
-                                  'NO',
-                                  style: TextStyle(fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                            ),
-
-                            SizedBox(width: 8),
-
-                            // Botón N/A
-                            Expanded(
-                              child: ElevatedButton(
-                                onPressed: () => _updateItemResponse(item.id, 'na'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: item.respuesta == 'na' 
-                                      ? Colors.orange[600] 
-                                      : Colors.grey[200],
-                                  foregroundColor: item.respuesta == 'na' 
-                                      ? Colors.white 
-                                      : Colors.grey[700],
-                                  padding: EdgeInsets.symmetric(vertical: 12),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                ),
-                                child: Text(
-                                  'N/A',
-                                  style: TextStyle(fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        // Mostrar observaciones y foto si existen
-                        if (item.observaciones != null || item.fotoBase64 != null) ...[
-                          SizedBox(height: 8),
-                          
-                          if (item.observaciones != null)
-                            Container(
-                              width: double.infinity,
-                              margin: EdgeInsets.only(bottom: 8),
-                              padding: EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: Colors.yellow[50],
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: Colors.yellow[300]!),
-                              ),
-                              child: Text(
-                                'Obs: ${item.observaciones}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.orange[800],
-                                  fontStyle: FontStyle.italic,
-                                ),
-                              ),
-                            ),
-                          
-                          if (item.fotoBase64 != null)
-                            GestureDetector(
-                              onTap: () => _viewPhoto(item),
-                              child: Container(
-                                width: double.infinity,
-                                height: 100,
-                                decoration: BoxDecoration(
-                                  color: Colors.blue[50],
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(color: Colors.blue[200]!),
-                                ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(6),
-                                  child: Image.memory(
-                                    ImageService.base64ToBytes(item.fotoBase64!),
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (context, error, stackTrace) {
-                                      return Center(
-                                        child: Column(
-                                          mainAxisAlignment: MainAxisAlignment.center,
-                                          children: [
-                                            Icon(Icons.error, color: Colors.red),
-                                            Text(
-                                              'Error cargando imagen',
-                                              style: TextStyle(fontSize: 12),
-                                            ),
-                                          ],
-                                        ),
-                                      );
+                              )
+                            : Column(
+                                children: [
+                                  // Dropdown de Finca con nuevo diseño
+                                  _buildModernDropdown<Finca>(
+                                    label: 'Finca',
+                                    icon: Icons.location_on,
+                                    value: selectedFinca,
+                                    items: fincas,
+                                    itemBuilder: (finca) => finca.nombre,
+                                    onChanged: (Finca? newValue) {
+                                      setState(() {
+                                        selectedFinca = newValue;
+                                      });
                                     },
+                                    hint: 'Seleccione una finca',
+                                  ),
+
+                                  SizedBox(height: 16),
+
+                                  // Row con Supervisor y Pesador
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: _buildModernDropdown<Supervisor>(
+                                          label: 'Supervisor',
+                                          icon: Icons.supervisor_account,
+                                          value: selectedSupervisor,
+                                          items: supervisores,
+                                          itemBuilder: (supervisor) => supervisor.nombre,
+                                          onChanged: (Supervisor? newValue) {
+                                            setState(() {
+                                              selectedSupervisor = newValue;
+                                            });
+                                          },
+                                          hint: 'Supervisor',
+                                        ),
+                                      ),
+                                      SizedBox(width: 16),
+                                      Expanded(
+                                        child: _buildModernDropdown<Pesador>(
+                                          label: 'Pesador',
+                                          icon: Icons.scale,
+                                          value: selectedPesador,
+                                          items: pesadores,
+                                          itemBuilder: (pesador) => pesador.nombre,
+                                          onChanged: (Pesador? newValue) {
+                                            setState(() {
+                                              selectedPesador = newValue;
+                                            });
+                                          },
+                                          hint: 'Pesador',
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+
+                                  SizedBox(height: 16),
+
+                                  // Campo de fecha moderno
+                                  _buildModernDateField(),
+                                ],
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Navegación de secciones mejorada
+                Container(
+                  height: 90, // Aumentado de 80 a 90
+                  margin: EdgeInsets.symmetric(horizontal: 16),
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    padding: EdgeInsets.symmetric(horizontal: 4),
+                    itemCount: checklist.secciones.length,
+                    itemBuilder: (context, index) {
+                      bool isSelected = index == _currentSectionIndex;
+                      var seccion = checklist.secciones[index];
+                      
+                      int itemsRespondidos = seccion.items.where((item) => item.respuesta != null).length;
+                      int totalItems = seccion.items.length;
+                      double sectionProgress = totalItems > 0 ? itemsRespondidos / totalItems : 0;
+                      
+                      Color sectionColor = _isEditMode ? Colors.blue[700]! : Colors.red[700]!;
+                      
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _currentSectionIndex = index;
+                          });
+                        },
+                        child: Container(
+                          width: 180,
+                          margin: EdgeInsets.symmetric(horizontal: 6, vertical: 6), // Reducido vertical margin
+                          decoration: BoxDecoration(
+                            color: isSelected ? sectionColor : Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: isSelected ? sectionColor : Colors.grey[300]!,
+                              width: 2,
+                            ),
+                            boxShadow: isSelected ? [
+                              BoxShadow(
+                                color: sectionColor.withOpacity(0.3),
+                                blurRadius: 8,
+                                offset: Offset(0, 2),
+                              ),
+                            ] : [],
+                          ),
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 10, vertical: 8), // Ajustado padding
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min, // Agregado para evitar overflow
+                              children: [
+                                Flexible( // Agregado Flexible
+                                  child: Text(
+                                    seccion.nombre,
+                                    style: TextStyle(
+                                      color: isSelected ? Colors.white : sectionColor,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 9, // Reducido de 10 a 9
+                                      height: 1.1, // Reducido height
+                                    ),
+                                    textAlign: TextAlign.center,
+                                    maxLines: 3,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
-                              ),
+                                SizedBox(height: 4), // Reducido
+                                Container(
+                                  padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2), // Más compacto
+                                  decoration: BoxDecoration(
+                                    color: isSelected 
+                                        ? Colors.white.withOpacity(0.2)
+                                        : sectionColor.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Text(
+                                    '$itemsRespondidos/$totalItems',
+                                    style: TextStyle(
+                                      color: isSelected ? Colors.white : sectionColor,
+                                      fontSize: 10, // Reducido
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(height: 3),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(2),
+                                  child: LinearProgressIndicator(
+                                    value: sectionProgress,
+                                    backgroundColor: isSelected 
+                                        ? Colors.white.withOpacity(0.3)
+                                        : Colors.grey[300],
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      isSelected ? Colors.white : sectionColor,
+                                    ),
+                                    minHeight: 2, // Reducido de 3 a 2
+                                  ),
+                                ),
+                              ],
                             ),
-                        ],
-                      ],
-                    ),
+                          ),
+                        ),
+                      );
+                    },
                   ),
-                );
-              },
+                ),
+
+                SizedBox(height: 20),
+              ],
             ),
+          ),
+
+          // Lista de items con diseño mejorado
+          SliverPadding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  var item = currentSection.items[index];
+                  return _buildModernItemCard(item);
+                },
+                childCount: currentSection.items.length,
+              ),
+            ),
+          ),
+
+          // Espaciado final
+          SliverToBoxAdapter(
+            child: SizedBox(height: 100),
           ),
         ],
       ),
-      
-      // Botón flotante para mostrar progreso
-      // floatingActionButton: FloatingActionButton.extended(
-      //   onPressed: () {
-      //     double cumplimiento = checklist.calcularPorcentajeCumplimiento();
-      //     int totalItems = 0;
-      //     int itemsCompletados = 0;
-      //     int itemsConFotos = 0;
-      //     int itemsConObs = 0;
-
-      //     for (var seccion in checklist.secciones) {
-      //       totalItems += seccion.items.length;
-      //       itemsCompletados += seccion.items.where((item) => item.respuesta != null).length;
-      //       itemsConFotos += seccion.items.where((item) => item.fotoBase64 != null).length;
-      //       itemsConObs += seccion.items.where((item) => item.observaciones != null && item.observaciones!.isNotEmpty).length;
-      //     }
-
-      //     showDialog(
-      //       context: context,
-      //       builder: (context) => AlertDialog(
-      //         title: const Text('Progreso del Checklist'),
-      //         content: SingleChildScrollView(
-      //           child: ListBody(
-      //             children: [
-      //               _buildProgressIndicator(
-      //                 'Progreso General',
-      //                 itemsCompletados / totalItems,
-      //                 'Items completados: $itemsCompletados/$totalItems',
-      //               ),
-      //               const SizedBox(height: 16),
-      //               _buildProgressIndicator(
-      //                 'Cumplimiento',
-      //                 cumplimiento / 100,
-      //                 '${cumplimiento.toStringAsFixed(1)}%',
-      //                 Colors.red[600],
-      //               ),
-      //               const SizedBox(height: 16),
-      //               _buildStatsRow(itemsConFotos, itemsConObs),
-      //               const SizedBox(height: 16),
-      //               const Text('Progreso por Sección:', style: TextStyle(fontWeight: FontWeight.bold)),
-      //               ...checklist.secciones.map((seccion) {
-      //                 int seccionItemsRespondidos = seccion.items.where((item) => item.respuesta != null).length;
-      //                 int seccionTotalItems = seccion.items.length;
-      //                 return Padding(
-      //                   padding: const EdgeInsets.only(top: 8.0),
-      //                   child: Row(
-      //                     children: [
-      //                       Expanded(
-      //                         child: Text(seccion.nombre, style: const TextStyle(fontSize: 12)),
-      //                       ),
-      //                       Text('$seccionItemsRespondidos/$seccionTotalItems', style: const TextStyle(fontSize: 12)),
-      //                       const SizedBox(width: 8),
-      //                       SizedBox(
-      //                         width: 80,
-      //                         child: LinearProgressIndicator(
-      //                           value: seccionItemsRespondidos / seccionTotalItems,
-      //                           backgroundColor: Colors.grey[300],
-      //                           color: Colors.red[400],
-      //                         ),
-      //                       ),
-      //                     ],
-      //                   ),
-      //                 );
-      //               }).toList(),
-      //             ],
-      //           ),
-      //         ),
-      //         actions: [
-      //           TextButton(
-      //             onPressed: () => Navigator.pop(context),
-      //             child: const Text('Cerrar'),
-      //           ),
-      //         ],
-      //       ),
-      //     );
-      //   },
-      //   backgroundColor: Colors.red[700],
-      //   foregroundColor: Colors.white,
-      //   icon: const Icon(Icons.analytics),
-      //   label: const Text('Progreso'),
-      // ),
-    );
-  }
-
-  Widget _buildProgressIndicator(String title, double value, String label, [Color? color]) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-            Text(label),
-          ],
-        ),
-        const SizedBox(height: 8),
-        LinearProgressIndicator(
-          value: value,
-          backgroundColor: Colors.grey[300],
-          color: color ?? Colors.green[600],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStatsRow(int photos, int observations) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceAround,
-      children: [
-        _buildStatCard(Icons.photo_camera, 'Fotos', photos, Colors.blue[600]!),
-        _buildStatCard(Icons.comment, 'Observaciones', observations, Colors.orange[600]!),
-      ],
-    );
-  }
-
-  Widget _buildStatCard(IconData icon, String title, int value, Color color) {
-    return Column(
-      children: [
-        CircleAvatar(
-          backgroundColor: color.withOpacity(0.2),
-          child: Icon(icon, color: color),
-        ),
-        const SizedBox(height: 4),
-        Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-        Text(value.toString(), style: TextStyle(fontSize: 16, color: color)),
-      ],
     );
   }
 
   @override
   void dispose() {
     super.dispose();
+  }
+
+  // Widget para dropdowns modernos
+  Widget _buildModernDropdown<T>({
+    required String label,
+    required IconData icon,
+    required T? value,
+    required List<T> items,
+    required String Function(T) itemBuilder,
+    required void Function(T?) onChanged,
+    required String hint,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: DropdownButtonFormField<T>(
+        value: value,
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: TextStyle(
+            color: _isEditMode ? Colors.blue[700] : Colors.red[700],
+            fontWeight: FontWeight.w500,
+          ),
+          border: InputBorder.none,
+          contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          prefixIcon: Container(
+            margin: EdgeInsets.all(8),
+            padding: EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: (_isEditMode ? Colors.blue[700] : Colors.red[700])?.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              icon,
+              color: _isEditMode ? Colors.blue[700] : Colors.red[700],
+              size: 20,
+            ),
+          ),
+        ),
+        items: items.map((T item) {
+          return DropdownMenuItem<T>(
+            value: item,
+            child: Text(
+              itemBuilder(item),
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          );
+        }).toList(),
+        onChanged: onChanged,
+        hint: Text(
+          hint,
+          style: TextStyle(color: Colors.grey[500]),
+        ),
+        isExpanded: true,
+        dropdownColor: Colors.white,
+        icon: Container(
+          margin: EdgeInsets.only(right: 8),
+          child: Icon(
+            Icons.keyboard_arrow_down,
+            color: _isEditMode ? Colors.blue[700] : Colors.red[700],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Widget para el campo de fecha moderno
+  Widget _buildModernDateField() {
+    return GestureDetector(
+      onTap: _selectDate,
+      child: Container(
+        width: double.infinity,
+        padding: EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.grey[50],
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey[200]!),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: (_isEditMode ? Colors.blue[700] : Colors.red[700])?.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                Icons.calendar_today,
+                color: _isEditMode ? Colors.blue[700] : Colors.red[700],
+                size: 20,
+              ),
+            ),
+            SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Fecha del Checklist',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: _isEditMode ? Colors.blue[700] : Colors.red[700],
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    '${selectedDate.day.toString().padLeft(2, '0')}/${selectedDate.month.toString().padLeft(2, '0')}/${selectedDate.year}',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.grey[800],
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.grey[200],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                Icons.edit_calendar,
+                color: Colors.grey[600],
+                size: 16,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Widget para las tarjetas de items modernos
+  Widget _buildModernItemCard(ChecklistItem item) {
+    Color primaryColor = _isEditMode ? Colors.blue[700]! : Colors.red[700]!;
+    
+    return Container(
+      margin: EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: item.respuesta != null 
+              ? primaryColor.withOpacity(0.3)
+              : Colors.grey[200]!,
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header del item
+          Container(
+            padding: EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: item.respuesta != null 
+                  ? primaryColor.withOpacity(0.05)
+                  : Colors.grey[50],
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(16),
+                topRight: Radius.circular(16),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: item.respuesta != null ? primaryColor : Colors.grey[400],
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Center(
+                    child: Text(
+                      item.id.toString(),
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.proceso,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey[800],
+                        ),
+                      ),
+                      if (item.valores.tieneOpcionesMultiples()) ...[
+                        SizedBox(height: 4),
+                        Container(
+                          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.blue[50],
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            'Valores: ${item.valores.getOpcionesSi().join(', ')}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.blue[700],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildActionButton(
+                      icon: Icons.comment_outlined,
+                      isActive: item.observaciones != null,
+                      onTap: () => _showObservationsDialog(item),
+                      activeColor: Colors.orange[600]!,
+                    ),
+                    SizedBox(width: 8),
+                    _buildActionButton(
+                      icon: item.fotoBase64 != null ? Icons.photo : Icons.photo_camera_outlined,
+                      isActive: item.fotoBase64 != null,
+                      onTap: () {
+                        if (item.fotoBase64 != null) {
+                          _viewPhoto(item);
+                        } else {
+                          _showPhotoDialog(item);
+                        }
+                      },
+                      activeColor: Colors.blue[600]!,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          // Botones de respuesta
+          Padding(
+            padding: EdgeInsets.all(16),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildResponseButton(
+                        label: 'SÍ',
+                        isSelected: item.respuesta == 'si',
+                        color: Colors.green[600]!,
+                        onPressed: () => _showValueSelector(item),
+                        subtitle: item.respuesta == 'si' && item.valorNumerico != null
+                            ? '(${item.valorNumerico})'
+                            : null,
+                      ),
+                    ),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: _buildResponseButton(
+                        label: 'NO',
+                        isSelected: item.respuesta == 'no',
+                        color: Colors.red[600]!,
+                        onPressed: item.valores.min != null 
+                            ? () => _updateItemResponse(item.id, 'no', valorNumerico: item.valores.min)
+                            : null,
+                      ),
+                    ),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: _buildResponseButton(
+                        label: 'N/A',
+                        isSelected: item.respuesta == 'na',
+                        color: Colors.orange[600]!,
+                        onPressed: () => _updateItemResponse(item.id, 'na'),
+                      ),
+                    ),
+                  ],
+                ),
+
+                // Mostrar observaciones y foto si existen
+                if (item.observaciones != null || item.fotoBase64 != null) ...[
+                  SizedBox(height: 16),
+                  
+                  if (item.observaciones != null)
+                    Container(
+                      width: double.infinity,
+                      margin: EdgeInsets.only(bottom: 12),
+                      padding: EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange[50],
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.orange[200]!),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.comment, color: Colors.orange[600], size: 16),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              item.observaciones!,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.orange[800],
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  
+                  if (item.fotoBase64 != null)
+                    GestureDetector(
+                      onTap: () => _viewPhoto(item),
+                      child: Container(
+                        width: double.infinity,
+                        height: 120,
+                        decoration: BoxDecoration(
+                          color: Colors.blue[50],
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.blue[200]!),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Stack(
+                            children: [
+                              Image.memory(
+                                ImageService.base64ToBytes(item.fotoBase64!),
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                                height: double.infinity,
+                                errorBuilder: (context, error, stackTrace) {
+                                  return Center(
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons.error, color: Colors.red),
+                                        Text(
+                                          'Error cargando imagen',
+                                          style: TextStyle(fontSize: 12),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                              Positioned(
+                                top: 8,
+                                right: 8,
+                                child: Container(
+                                  padding: EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.6),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Icon(
+                                    Icons.zoom_in,
+                                    color: Colors.white,
+                                    size: 16,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Widget para botones de acción
+  Widget _buildActionButton({
+    required IconData icon,
+    required bool isActive,
+    required VoidCallback onTap,
+    required Color activeColor,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: isActive ? activeColor.withOpacity(0.1) : Colors.grey[100],
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isActive ? activeColor.withOpacity(0.3) : Colors.grey[300]!,
+          ),
+        ),
+        child: Icon(
+          icon,
+          color: isActive ? activeColor : Colors.grey[500],
+          size: 20,
+        ),
+      ),
+    );
+  }
+
+  // Widget para botones de respuesta
+  Widget _buildResponseButton({
+    required String label,
+    required bool isSelected,
+    required Color color,
+    required VoidCallback? onPressed,
+    String? subtitle,
+  }) {
+    return GestureDetector(
+      onTap: onPressed,
+      child: Container(
+        padding: EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? color : Colors.grey[100],
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelected ? color : Colors.grey[300]!,
+            width: 1.5,
+          ),
+        ),
+        child: Column(
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? Colors.white : Colors.grey[700],
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+            ),
+            if (subtitle != null)
+              Text(
+                subtitle,
+                style: TextStyle(
+                  color: isSelected ? Colors.white70 : Colors.grey[500],
+                  fontSize: 12,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 }

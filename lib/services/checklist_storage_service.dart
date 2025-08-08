@@ -182,6 +182,52 @@ class ChecklistStorageService {
     }
   }
 
+  // Actualizar checklist existente
+  static Future<void> updateChecklistLocal(int id, ChecklistBodega checklist) async {
+    try {
+      Database db = await database;
+      
+      Map<String, dynamic>? currentUser = await AuthService.getCurrentUser();
+      
+      Map<String, dynamic> record = {
+        'finca_nombre': checklist.finca?.nombre,
+        'supervisor_id': checklist.supervisor?.id,
+        'supervisor_nombre': checklist.supervisor?.nombre,
+        'pesador_id': checklist.pesador?.id,
+        'pesador_nombre': checklist.pesador?.nombre,
+        'usuario_id': currentUser?['id'],
+        'usuario_nombre': currentUser?['nombre'] ?? currentUser?['username'],
+        'porcentaje_cumplimiento': checklist.calcularPorcentajeCumplimiento(),
+        // No actualizar fecha_creacion ni enviado
+      };
+
+      for (var seccion in checklist.secciones) {
+        for (var item in seccion.items) {
+          record['item_${item.id}_respuesta'] = item.respuesta;
+          record['item_${item.id}_valor_numerico'] = item.valorNumerico;
+          record['item_${item.id}_observaciones'] = item.observaciones;
+          record['item_${item.id}_foto_base64'] = item.fotoBase64;
+        }
+      }
+
+      int rowsAffected = await db.update(
+        'checklist_bodega',
+        record,
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      
+      if (rowsAffected > 0) {
+        print('Checklist actualizado localmente con ID: $id');
+      } else {
+        throw Exception('No se encontró el checklist con ID: $id');
+      }
+    } catch (e) {
+      print('Error actualizando checklist local: $e');
+      rethrow;
+    }
+  }
+
   // Obtener todos los checklist locales
   static Future<List<Map<String, dynamic>>> getLocalChecklists() async {
     try {
@@ -237,6 +283,26 @@ class ChecklistStorageService {
     }
   }
 
+  // Verificar si un checklist está completo
+  static Future<bool> isChecklistComplete(int id) async {
+    try {
+      ChecklistBodega? checklist = await getChecklistById(id);
+      if (checklist == null) return false;
+      
+      for (var seccion in checklist.secciones) {
+        for (var item in seccion.items) {
+          if (item.respuesta == null) {
+            return false;
+          }
+        }
+      }
+      return true;
+    } catch (e) {
+      print('Error verificando completitud del checklist: $e');
+      return false;
+    }
+  }
+
   // Marcar checklist como enviado
   static Future<void> markAsEnviado(int id) async {
     try {
@@ -270,7 +336,7 @@ class ChecklistStorageService {
     }
   }
 
-  // Obtener estadísticas de checklist locales
+  // Obtener estadísticas de checklist locales con información de completitud
   static Future<Map<String, int>> getLocalStats() async {
     try {
       Database db = await database;
@@ -287,10 +353,32 @@ class ChecklistStorageService {
       int enviados = enviadosResult.first['enviados'] ?? 0;
       int pendientes = total - enviados;
       
+      // Calcular completos e incompletos
+      List<Map<String, dynamic>> allRecords = await db.query('checklist_bodega');
+      int completos = 0;
+      int incompletos = 0;
+      
+      for (Map<String, dynamic> record in allRecords) {
+        bool isComplete = true;
+        for (int i = 1; i <= 20; i++) {
+          if (record['item_${i}_respuesta'] == null) {
+            isComplete = false;
+            break;
+          }
+        }
+        if (isComplete) {
+          completos++;
+        } else {
+          incompletos++;
+        }
+      }
+      
       return {
         'total': total,
         'enviados': enviados,
         'pendientes': pendientes,
+        'completos': completos,
+        'incompletos': incompletos,
       };
     } catch (e) {
       print('Error obteniendo estadísticas: $e');
@@ -298,6 +386,8 @@ class ChecklistStorageService {
         'total': 0,
         'enviados': 0,
         'pendientes': 0,
+        'completos': 0,
+        'incompletos': 0,
       };
     }
   }

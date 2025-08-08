@@ -8,19 +8,19 @@ import 'package:image/image.dart' as img;
 class ImageService {
   static final ImagePicker _picker = ImagePicker();
 
-  // Seleccionar imagen desde galería o cámara con compresión más suave
+  // Seleccionar imagen desde galería o cámara con compresión balanceada
   static Future<String?> pickAndCompressImage({
     required ImageSource source,
-    int maxWidth = 1200,        // Aumentado de 800 a 1200
-    int maxHeight = 900,        // Aumentado de 600 a 900
-    int quality = 85,           // Aumentado de 70 a 85
+    int maxWidth = 1200,        // Resolución balanceada
+    int maxHeight = 900,        // Resolución balanceada
+    int quality = 85,           // Calidad balanceada
   }) async {
     try {
       final XFile? pickedFile = await _picker.pickImage(
         source: source,
         maxWidth: maxWidth.toDouble(),
         maxHeight: maxHeight.toDouble(),
-        imageQuality: quality,    // Esta calidad ya es mejor ahora
+        imageQuality: quality,
       );
 
       if (pickedFile == null) return null;
@@ -28,7 +28,7 @@ class ImageService {
       // Leer el archivo
       Uint8List imageBytes = await pickedFile.readAsBytes();
       
-      // Comprimir la imagen con parámetros mejorados
+      // Comprimir la imagen con parámetros balanceados
       String compressedBase64 = await compressImageToBase64(
         imageBytes,
         maxWidth: maxWidth,
@@ -43,12 +43,12 @@ class ImageService {
     }
   }
 
-  // Comprimir imagen y convertir a base64 con mejor calidad
+  // Comprimir imagen y convertir a base64 con calidad balanceada
   static Future<String> compressImageToBase64(
     Uint8List imageBytes, {
-    int maxWidth = 1200,        // Aumentado
-    int maxHeight = 900,        // Aumentado
-    int quality = 85,           // Aumentado
+    int maxWidth = 1200,        
+    int maxHeight = 900,        
+    int quality = 85,           
   }) async {
     try {
       // Decodificar la imagen
@@ -57,20 +57,20 @@ class ImageService {
 
       // Solo redimensionar si es realmente necesario (imágenes muy grandes)
       if (image.width > maxWidth || image.height > maxHeight) {
-        // Usar algoritmo de interpolación de mejor calidad
+        // Usar algoritmo de interpolación de buena calidad
         image = img.copyResize(
           image,
           width: image.width > maxWidth ? maxWidth : null,
           height: image.height > maxHeight ? maxHeight : null,
           maintainAspect: true,
-          interpolation: img.Interpolation.cubic, // Mejor algoritmo de interpolación
+          interpolation: img.Interpolation.cubic, // Buena interpolación
         );
       }
 
-      // Comprimir como JPEG con mejor calidad
+      // Comprimir como JPEG con calidad balanceada
       List<int> compressedBytes = img.encodeJpg(
         image, 
-        quality: quality  // Ahora usa 85 en lugar de 70
+        quality: quality
       );
 
       // Convertir a base64
@@ -95,44 +95,9 @@ class ImageService {
     }
   }
 
-  // Versión para casos donde necesites máxima calidad
-  static Future<String?> pickHighQualityImage({
-    required ImageSource source,
-    int maxWidth = 1920,        // Resolución más alta
-    int maxHeight = 1440,       // Resolución más alta
-    int quality = 95,           // Calidad muy alta
-  }) async {
-    try {
-      final XFile? pickedFile = await _picker.pickImage(
-        source: source,
-        maxWidth: maxWidth.toDouble(),
-        maxHeight: maxHeight.toDouble(),
-        imageQuality: quality,
-      );
-
-      if (pickedFile == null) return null;
-
-      // Leer el archivo
-      Uint8List imageBytes = await pickedFile.readAsBytes();
-      
-      // Comprimir la imagen con alta calidad
-      String compressedBase64 = await compressImageToBase64(
-        imageBytes,
-        maxWidth: maxWidth,
-        maxHeight: maxHeight,
-        quality: quality,
-      );
-
-      return compressedBase64;
-    } catch (e) {
-      print('Error seleccionando imagen de alta calidad: $e');
-      return null;
-    }
-  }
-
-  // Diálogo mejorado con opción de calidad
-  static Future<Map<String, dynamic>?> showImageSourceDialog(context) async {
-    return await showDialog<Map<String, dynamic>?>(
+  // Diálogo simplificado con una sola opción por fuente
+  static Future<ImageSource?> showImageSourceDialog(context) async {
+    return await showDialog<ImageSource?>(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
@@ -149,46 +114,18 @@ class ImageService {
               ListTile(
                 leading: Icon(Icons.camera_alt, color: Colors.red[700]),
                 title: Text('Tomar Foto'),
-                subtitle: Text('Calidad estándar'),
+                subtitle: Text('Usar cámara del dispositivo'),
                 onTap: () {
-                  Navigator.pop(context, {
-                    'source': ImageSource.camera,
-                    'highQuality': false
-                  });
-                },
-              ),
-              ListTile(
-                leading: Icon(Icons.camera_alt_outlined, color: Colors.red[500]),
-                title: Text('Tomar Foto HD'),
-                subtitle: Text('Mayor calidad y tamaño'),
-                onTap: () {
-                  Navigator.pop(context, {
-                    'source': ImageSource.camera,
-                    'highQuality': true
-                  });
+                  Navigator.pop(context, ImageSource.camera);
                 },
               ),
               Divider(),
               ListTile(
                 leading: Icon(Icons.photo_library, color: Colors.red[700]),
                 title: Text('Desde Galería'),
-                subtitle: Text('Calidad estándar'),
+                subtitle: Text('Seleccionar imagen guardada'),
                 onTap: () {
-                  Navigator.pop(context, {
-                    'source': ImageSource.gallery,
-                    'highQuality': false
-                  });
-                },
-              ),
-              ListTile(
-                leading: Icon(Icons.photo_library_outlined, color: Colors.red[500]),
-                title: Text('Desde Galería HD'),
-                subtitle: Text('Mayor calidad y tamaño'),
-                onTap: () {
-                  Navigator.pop(context, {
-                    'source': ImageSource.gallery,
-                    'highQuality': true
-                  });
+                  Navigator.pop(context, ImageSource.gallery);
                 },
               ),
             ],
@@ -231,11 +168,11 @@ class ImageService {
     }
   }
 
-  // Crear thumbnail de la imagen con mejor calidad
+  // Crear thumbnail de la imagen con buena calidad
   static Future<String> createThumbnail(
     String base64String, {
-    int thumbnailSize = 200,    // Aumentado de 150 a 200
-    int quality = 80,           // Aumentado de 60 a 80
+    int thumbnailSize = 200,    
+    int quality = 80,           
   }) async {
     try {
       Uint8List imageBytes = base64Decode(base64String);
@@ -243,14 +180,14 @@ class ImageService {
       
       if (image == null) throw Exception('No se pudo decodificar la imagen');
 
-      // Crear thumbnail cuadrado con mejor algoritmo
+      // Crear thumbnail cuadrado con buen algoritmo
       img.Image thumbnail = img.copyResizeCropSquare(
         image, 
         size: thumbnailSize,
-        interpolation: img.Interpolation.cubic, // Mejor interpolación
+        interpolation: img.Interpolation.cubic,
       );
       
-      // Comprimir como JPEG con mejor calidad
+      // Comprimir como JPEG con buena calidad
       List<int> thumbnailBytes = img.encodeJpg(thumbnail, quality: quality);
       
       return base64Encode(thumbnailBytes);
@@ -304,7 +241,7 @@ class ImageService {
         'sizeMB': sizeKB / 1024,
         'aspectRatio': image.width / image.height,
         'resolution': '${image.width}x${image.height}',
-        'estimatedQuality': sizeKB > 500 ? 'Alta' : sizeKB > 200 ? 'Media' : 'Baja',
+        'estimatedQuality': sizeKB > 400 ? 'Buena' : sizeKB > 150 ? 'Media' : 'Básica',
       };
     } catch (e) {
       return {

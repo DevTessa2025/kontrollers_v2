@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:intl/intl.dart';
-import 'package:uuid/uuid.dart'; // Importe el paquete uuid
+import 'package:uuid/uuid.dart';
 import '../services/checklist_storage_service.dart';
 import '../services/sql_server_service.dart';
 import '../data/checklist_data.dart';
+import 'checklist_bodega_screen.dart';
 
 class ChecklistRecordsScreen extends StatefulWidget {
   @override
@@ -51,6 +52,43 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
   }
 
   Future<void> _sendToServer(int recordId) async {
+    // Verificar que el checklist esté completo antes de enviar
+    bool isComplete = await ChecklistStorageService.isChecklistComplete(recordId);
+    
+    if (!isComplete) {
+      bool? continueEdit = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(
+            'Checklist Incompleto',
+            style: TextStyle(color: Colors.orange[800], fontWeight: FontWeight.bold),
+          ),
+          content: Text(
+            'Este checklist no está completo. No se puede enviar al servidor hasta que todos los ítems tengan una respuesta.\n\n¿Desea continuar llenándolo?'
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text('Cancelar', style: TextStyle(color: Colors.grey[600])),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue[700],
+                foregroundColor: Colors.white,
+              ),
+              child: Text('Continuar Llenando'),
+            ),
+          ],
+        ),
+      );
+
+      if (continueEdit == true) {
+        await _editChecklist(recordId);
+      }
+      return;
+    }
+
     setState(() {
       _isSending = true;
     });
@@ -87,6 +125,64 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
     });
   }
 
+  Future<void> _editChecklist(int recordId) async {
+    try {
+      ChecklistBodega? checklist = await ChecklistStorageService.getChecklistById(recordId);
+      
+      if (checklist == null) {
+        Fluttertoast.showToast(
+          msg: 'No se pudo cargar el checklist para editar',
+          backgroundColor: Colors.red[600],
+          textColor: Colors.white,
+        );
+        return;
+      }
+
+      // Verificar si ya fue enviado
+      var record = records.firstWhere((r) => r['id'] == recordId);
+      if (record['enviado'] == 1) {
+        Fluttertoast.showToast(
+          msg: 'No se puede editar un checklist que ya fue enviado al servidor',
+          backgroundColor: Colors.orange[600],
+          textColor: Colors.white,
+        );
+        return;
+      }
+
+      // Navegar a la pantalla de edición
+      bool? updated = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ChecklistBodegaScreen(
+            checklistToEdit: checklist,
+            recordId: recordId,
+          ),
+        ),
+      );
+
+      // Si se actualizó, recargar la lista
+      if (updated == true) {
+        await _loadRecords();
+      }
+
+    } catch (e) {
+      Fluttertoast.showToast(
+        msg: 'Error cargando checklist para editar: $e',
+        backgroundColor: Colors.red[600],
+        textColor: Colors.white,
+      );
+    }
+  }
+
+  bool _isRecordComplete(Map<String, dynamic> record) {
+    for (int i = 1; i <= 20; i++) {
+      if (record['item_${i}_respuesta'] == null) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   String _generateInsertQuery(Map<String, dynamic> record) {
     String escapeValue(dynamic value) {
       if (value == null) return 'NULL';
@@ -108,12 +204,12 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
     String checklistUuid = uuid.v4();
 
     List<String> columnNames = [
-      'checklist_uuid', // Añada esta columna
+      'checklist_uuid',
       'finca_nombre', 'supervisor_id', 'supervisor_nombre', 'pesador_id', 'pesador_nombre',
       'usuario_id', 'usuario_nombre', 'fecha_creacion', 'porcentaje_cumplimiento', 'fecha_envio'
     ];
     List<String> values = [
-      escapeValue(checklistUuid), // Añada este valor
+      escapeValue(checklistUuid),
       escapeValue(record['finca_nombre']),
       escapeValue(record['supervisor_id']),
       escapeValue(record['supervisor_nombre']),
@@ -141,6 +237,14 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
   }
 
   Future<void> _deleteRecord(int recordId) async {
+    // Verificar si ya fue enviado
+    var record = records.firstWhere((r) => r['id'] == recordId);
+    bool enviado = record['enviado'] == 1;
+
+    String confirmMessage = enviado 
+        ? '¿Está seguro que desea eliminar este registro enviado? Esta acción no se puede deshacer.'
+        : '¿Está seguro que desea eliminar este registro? Esta acción no se puede deshacer.';
+
     bool? confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -148,7 +252,7 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
           'Confirmar Eliminación',
           style: TextStyle(color: Colors.red[800], fontWeight: FontWeight.bold),
         ),
-        content: Text('¿Está seguro que desea eliminar este registro? Esta acción no se puede deshacer.'),
+        content: Text(confirmMessage),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -366,7 +470,7 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
             )
           : Column(
               children: [
-                // Estadísticas
+                // Estadísticas mejoradas
                 Container(
                   width: double.infinity,
                   padding: EdgeInsets.all(16),
@@ -374,12 +478,17 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
                     color: Colors.red[50],
                     border: Border(bottom: BorderSide(color: Colors.red[200]!)),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  child: Column(
                     children: [
-                      _buildStatCard('Total', stats['total'] ?? 0, Colors.blue[600]!),
-                      _buildStatCard('Enviados', stats['enviados'] ?? 0, Colors.green[600]!),
-                      _buildStatCard('Pendientes', stats['pendientes'] ?? 0, Colors.orange[600]!),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          _buildStatCard('Total', stats['total'] ?? 0, Colors.blue[600]!),
+                          _buildStatCard('Completos', stats['completos'] ?? 0, Colors.green[600]!),
+                          _buildStatCard('Incompletos', stats['incompletos'] ?? 0, Colors.orange[600]!),
+                          _buildStatCard('Enviados', stats['enviados'] ?? 0, Colors.purple[600]!),
+                        ],
+                      ),
                     ],
                   ),
                 ),
@@ -422,6 +531,7 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
                           itemBuilder: (context, index) {
                             Map<String, dynamic> record = records[index];
                             bool enviado = record['enviado'] == 1;
+                            bool completo = _isRecordComplete(record);
                             DateTime fecha = DateTime.parse(record['fecha_creacion']);
 
                             return Container(
@@ -430,7 +540,11 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
                                 color: Colors.white,
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                  color: enviado ? Colors.green[200]! : Colors.red[200]!,
+                                  color: enviado 
+                                      ? Colors.green[200]!
+                                      : completo
+                                          ? Colors.blue[200]!
+                                          : Colors.orange[200]!,
                                   width: 1.5,
                                 ),
                                 boxShadow: [
@@ -453,18 +567,48 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
                                         Container(
                                           padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                           decoration: BoxDecoration(
-                                            color: enviado ? Colors.green[100] : Colors.orange[100],
+                                            color: enviado 
+                                                ? Colors.green[100]
+                                                : completo
+                                                    ? Colors.blue[100]
+                                                    : Colors.orange[100],
                                             borderRadius: BorderRadius.circular(12),
                                           ),
                                           child: Text(
-                                            enviado ? 'ENVIADO' : 'PENDIENTE',
+                                            enviado 
+                                                ? 'ENVIADO'
+                                                : completo
+                                                    ? 'COMPLETO'
+                                                    : 'INCOMPLETO',
                                             style: TextStyle(
                                               fontSize: 10,
                                               fontWeight: FontWeight.bold,
-                                              color: enviado ? Colors.green[700] : Colors.orange[700],
+                                              color: enviado 
+                                                  ? Colors.green[700]
+                                                  : completo
+                                                      ? Colors.blue[700]
+                                                      : Colors.orange[700],
                                             ),
                                           ),
                                         ),
+                                        if (!completo && !enviado) ...[
+                                          SizedBox(width: 8),
+                                          Container(
+                                            padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: Colors.red[100],
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: Text(
+                                              'NECESITA COMPLETARSE',
+                                              style: TextStyle(
+                                                fontSize: 8,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.red[700],
+                                              ),
+                                            ),
+                                          ),
+                                        ],
                                         Spacer(),
                                         Text(
                                           '${fecha.day.toString().padLeft(2, '0')}/${fecha.month.toString().padLeft(2, '0')}/${fecha.year} ${fecha.hour.toString().padLeft(2, '0')}:${fecha.minute.toString().padLeft(2, '0')}',
@@ -577,26 +721,42 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
 
                                         if (!enviado) ...[
                                           Expanded(
-                                            child: ElevatedButton.icon(
-                                              onPressed: _isSending ? null : () => _sendToServer(record['id']),
-                                              icon: _isSending 
-                                                  ? SizedBox(
-                                                      width: 16,
-                                                      height: 16,
-                                                      child: CircularProgressIndicator(
-                                                        strokeWidth: 2,
-                                                        color: Colors.white,
-                                                      ),
-                                                    )
-                                                  : Icon(Icons.cloud_upload, size: 16),
-                                              label: Text(_isSending ? 'Enviando...' : 'Enviar'),
-                                              style: ElevatedButton.styleFrom(
-                                                backgroundColor: Colors.green[600],
-                                                foregroundColor: Colors.white,
+                                            child: OutlinedButton.icon(
+                                              onPressed: () => _editChecklist(record['id']),
+                                              icon: Icon(Icons.edit, size: 16),
+                                              label: Text(completo ? 'Editar' : 'Completar'),
+                                              style: OutlinedButton.styleFrom(
+                                                foregroundColor: completo ? Colors.blue[700] : Colors.orange[700],
+                                                side: BorderSide(color: completo ? Colors.blue[300]! : Colors.orange[300]!),
                                                 padding: EdgeInsets.symmetric(vertical: 8),
                                               ),
                                             ),
                                           ),
+
+                                          SizedBox(width: 8),
+
+                                          if (completo)
+                                            Expanded(
+                                              child: ElevatedButton.icon(
+                                                onPressed: _isSending ? null : () => _sendToServer(record['id']),
+                                                icon: _isSending 
+                                                    ? SizedBox(
+                                                        width: 16,
+                                                        height: 16,
+                                                        child: CircularProgressIndicator(
+                                                          strokeWidth: 2,
+                                                          color: Colors.white,
+                                                        ),
+                                                      )
+                                                    : Icon(Icons.cloud_upload, size: 16),
+                                                label: Text(_isSending ? 'Enviando...' : 'Enviar'),
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: Colors.green[600],
+                                                  foregroundColor: Colors.white,
+                                                  padding: EdgeInsets.symmetric(vertical: 8),
+                                                ),
+                                              ),
+                                            ),
 
                                           SizedBox(width: 8),
                                         ],
