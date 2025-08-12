@@ -10,6 +10,7 @@ import '../services/dropdown_service.dart';
 import '../services/image_service.dart';
 import '../services/checklist_storage_service.dart';
 import 'checklist_records_screen.dart';
+import 'image_editor_screen.dart';
 
 class ChecklistBodegaScreen extends StatefulWidget {
   final ChecklistBodega? checklistToEdit;
@@ -144,36 +145,67 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
             'Seleccionar Valor',
             style: TextStyle(color: Colors.red[800], fontWeight: FontWeight.bold),
           ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                item.proceso,
-                style: TextStyle(fontSize: 14, color: Colors.grey[700]),
-              ),
-              SizedBox(height: 16),
-              ...opciones.map((valor) => Container(
-                width: double.infinity,
-                margin: EdgeInsets.only(bottom: 8),
-                child: ElevatedButton(
-                  onPressed: () {
-                    _updateItemResponse(item.id, 'si', valorNumerico: valor);
-                    Navigator.of(context).pop();
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red[700],
-                    foregroundColor: Colors.white,
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                  ),
+          content: Container(
+            width: double.maxFinite, // CORRECCIÓN: Ancho específico
+            constraints: BoxConstraints(
+              maxHeight: 400, // CORRECCIÓN: Altura máxima
+              maxWidth: 350,  // CORRECCIÓN: Ancho máximo
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min, // CORRECCIÓN: Tamaño mínimo
+              children: [
+                // Título del proceso con altura limitada
+                Container(
+                  constraints: BoxConstraints(maxHeight: 80),
+                  margin: EdgeInsets.only(bottom: 16),
                   child: Text(
-                    valor == item.valores.max 
-                        ? '$valor (Excelente)' 
-                        : '$valor (Satisfactorio)',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                    item.proceso,
+                    style: TextStyle(
+                      fontSize: 14, 
+                      color: Colors.grey[700],
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 4,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
                   ),
                 ),
-              )).toList(),
-            ],
+                // Lista de opciones con scroll si es necesario
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: opciones.map((valor) => Container(
+                        width: double.infinity,
+                        margin: EdgeInsets.only(bottom: 12),
+                        child: ElevatedButton(
+                          onPressed: () {
+                            _updateItemResponse(item.id, 'si', valorNumerico: valor);
+                            Navigator.of(context).pop();
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red[700],
+                            foregroundColor: Colors.white,
+                            padding: EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          child: Text(
+                            valor == item.valores.max 
+                                ? '$valor (Excelente)' 
+                                : '$valor (Satisfactorio)',
+                            style: TextStyle(
+                              fontSize: 16, 
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      )).toList(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -198,29 +230,54 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
             'Observaciones',
             style: TextStyle(color: Colors.red[800], fontWeight: FontWeight.bold),
           ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                item.proceso,
-                style: TextStyle(fontSize: 14, color: Colors.grey[700]),
-              ),
-              SizedBox(height: 16),
-              TextField(
-                controller: observationsController,
-                maxLines: 4,
-                decoration: InputDecoration(
-                  hintText: 'Agregar observaciones...',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: Colors.red[700]!),
+          content: Container(
+            width: double.maxFinite, // CORRECCIÓN: Ancho específico
+            constraints: BoxConstraints(
+              maxHeight: 300, // CORRECCIÓN: Altura máxima
+              maxWidth: 400,  // CORRECCIÓN: Ancho máximo
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min, // CORRECCIÓN: Tamaño mínimo
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Título del proceso con altura limitada
+                Container(
+                  constraints: BoxConstraints(maxHeight: 60),
+                  child: Text(
+                    item.proceso,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[700],
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-              ),
-            ],
+                SizedBox(height: 16),
+                // Campo de texto con altura fija
+                Container(
+                  height: 120, // CORRECCIÓN: Altura fija para el TextField
+                  child: TextField(
+                    controller: observationsController,
+                    maxLines: null, // Permitir múltiples líneas
+                    expands: true,  // CORRECCIÓN: Expandir dentro del contenedor
+                    textAlignVertical: TextAlignVertical.top,
+                    decoration: InputDecoration(
+                      hintText: 'Agregar observaciones...',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(color: Colors.red[700]!),
+                      ),
+                      contentPadding: EdgeInsets.all(12),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -248,20 +305,222 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
     );
   }
 
+  
+
+  
+
+  void _deletePhoto(ChecklistItem item) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          'Eliminar Foto',
+          style: TextStyle(color: Colors.red[800], fontWeight: FontWeight.bold),
+        ),
+        content: Container(
+          width: double.maxFinite, // CORRECCIÓN: Ancho específico
+          constraints: BoxConstraints(
+            maxWidth: 300,  // CORRECCIÓN: Ancho máximo
+          ),
+          child: Text(
+            '¿Está seguro que desea eliminar esta foto?',
+            style: TextStyle(fontSize: 16),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancelar', style: TextStyle(color: Colors.grey[600])),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              setState(() {
+                item.fotoBase64 = null;
+              });
+              Navigator.pop(context);
+              Fluttertoast.showToast(
+                msg: 'Foto eliminada',
+                backgroundColor: Colors.orange[600],
+                textColor: Colors.white,
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red[700],
+              foregroundColor: Colors.white,
+            ),
+            child: Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Método para editar foto existente
+  Future<void> _editPhoto(ChecklistItem item) async {
+    if (item.fotoBase64 == null) return;
+
+    try {
+      final editedImage = await Navigator.push<String>(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ImageEditorScreen(
+            base64Image: item.fotoBase64!,
+          ),
+        ),
+      );
+
+      if (editedImage != null) {
+        setState(() {
+          item.fotoBase64 = editedImage;
+        });
+
+        Map<String, dynamic> imageInfo = ImageService.getImageInfo(editedImage);
+        
+        Fluttertoast.showToast(
+          msg: 'Foto editada (${imageInfo['sizeKB'].toStringAsFixed(1)} KB)',
+          backgroundColor: Colors.green[600],
+          textColor: Colors.white,
+          toastLength: Toast.LENGTH_LONG,
+        );
+      }
+    } catch (e) {
+      Fluttertoast.showToast(
+        msg: 'Error abriendo editor: $e',
+        backgroundColor: Colors.red[600],
+        textColor: Colors.white,
+      );
+    }
+  }
+
   void _showPhotoDialog(ChecklistItem item) async {
-    // Usar el diálogo simplificado que devuelve ImageSource
+    // Seleccionar fuente de imagen primero
     ImageSource? source = await ImageService.showImageSourceDialog(context);
     
     if (source != null) {
+      // Seleccionar la imagen
       String? base64Image = await ImageService.pickAndCompressImage(source: source);
 
       if (base64Image != null) {
+        // Preguntar si quiere editar - DIÁLOGO CORREGIDO
+        bool? shouldEdit = await showDialog<bool>(
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: Text(
+                'Editar Imagen',
+                style: TextStyle(
+                  color: Colors.red[800],
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              content: Container(
+                width: double.maxFinite, // CORRECCIÓN: Ancho específico
+                constraints: BoxConstraints(
+                  maxHeight: 300, // CORRECCIÓN: Altura máxima
+                  maxWidth: 400,  // CORRECCIÓN: Ancho máximo
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min, // CORRECCIÓN: Tamaño mínimo
+                  children: [
+                    // Contenedor de imagen con tamaño fijo
+                    Container(
+                      height: 180, // CORRECCIÓN: Altura fija
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey[300]!),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.memory(
+                          ImageService.base64ToBytes(base64Image),
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(
+                              color: Colors.grey[200],
+                              child: Icon(
+                                Icons.error,
+                                color: Colors.grey[500],
+                                size: 50,
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: 16),
+                    // Texto con restricción de altura
+                    Flexible( // CORRECCIÓN: Usar Flexible en lugar de texto sin restricción
+                      child: Text(
+                        '¿Desea editar esta imagen?\nPodrá dibujar y agregar anotaciones.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.grey[700],
+                          fontSize: 14,
+                        ),
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                OutlinedButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: Text('Usar como está'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.grey[600],
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red[700],
+                    foregroundColor: Colors.white,
+                  ),
+                  child: Text('Editar'),
+                ),
+              ],
+            );
+          },
+        );
+        
+        String finalImage = base64Image;
+        
+        if (shouldEdit == true) {
+          // Navegar al editor
+          try {
+            final editedImage = await Navigator.push<String>(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ImageEditorScreen(
+                  base64Image: base64Image,
+                ),
+              ),
+            );
+            
+            if (editedImage != null) {
+              finalImage = editedImage;
+            }
+          } catch (e) {
+            // Si no está disponible el editor, usar la imagen original
+            print('Editor no disponible: $e');
+            Fluttertoast.showToast(
+              msg: 'Editor no disponible, usando imagen original',
+              backgroundColor: Colors.orange[600],
+              textColor: Colors.white,
+            );
+          }
+        }
+
+        // Guardar la imagen final
         setState(() {
-          item.fotoBase64 = base64Image;
+          item.fotoBase64 = finalImage;
         });
         
         // Mostrar información de la imagen
-        Map<String, dynamic> imageInfo = ImageService.getImageInfo(base64Image);
+        Map<String, dynamic> imageInfo = ImageService.getImageInfo(finalImage);
         
         Fluttertoast.showToast(
           msg: 'Foto agregada (${imageInfo['sizeKB'].toStringAsFixed(1)} KB, ${imageInfo['resolution']})',
@@ -271,6 +530,121 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
         );
       }
     }
+  }
+
+  // NUEVO MÉTODO: Diálogo de opciones de foto también corregido
+  void _showPhotoOptionsDialog(ChecklistItem item) async {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          'Opciones de Foto',
+          style: TextStyle(color: Colors.red[800], fontWeight: FontWeight.bold),
+        ),
+        content: Container(
+          width: double.maxFinite, // CORRECCIÓN: Ancho específico
+          constraints: BoxConstraints(
+            maxHeight: 300, // CORRECCIÓN: Altura máxima
+            maxWidth: 350,  // CORRECCIÓN: Ancho máximo
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min, // CORRECCIÓN: Tamaño mínimo
+            children: [
+              _buildOptionTile(
+                icon: Icons.visibility,
+                color: Colors.blue[700]!,
+                title: 'Ver Foto',
+                subtitle: 'Visualizar imagen actual',
+                onTap: () {
+                  Navigator.pop(context);
+                  _viewPhoto(item);
+                },
+              ),
+              _buildOptionTile(
+                icon: Icons.edit,
+                color: Colors.green[700]!,
+                title: 'Editar Foto',
+                subtitle: 'Dibujar y agregar anotaciones',
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _editPhoto(item);
+                },
+              ),
+              _buildOptionTile(
+                icon: Icons.camera_alt,
+                color: Colors.orange[700]!,
+                title: 'Tomar Nueva Foto',
+                subtitle: 'Reemplazar con nueva imagen',
+                onTap: () {
+                  Navigator.pop(context);
+                  _showPhotoDialog(item);
+                },
+              ),
+              _buildOptionTile(
+                icon: Icons.delete,
+                color: Colors.red[700]!,
+                title: 'Eliminar Foto',
+                subtitle: 'Remover imagen actual',
+                onTap: () {
+                  Navigator.pop(context);
+                  _deletePhoto(item);
+                },
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancelar', style: TextStyle(color: Colors.grey[600])),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Widget helper para las opciones
+  Widget _buildOptionTile({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return Container(
+      margin: EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: Container(
+          padding: EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, color: color, size: 20),
+        ),
+        title: Text(
+          title,
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 14,
+          ),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.grey[600],
+          ),
+        ),
+        onTap: onTap,
+        dense: true,
+        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+        ),
+        tileColor: Colors.grey[50],
+      ),
+    );
   }
 
   void _viewPhoto(ChecklistItem item) {
@@ -292,18 +666,20 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
               ),
               actions: [
                 IconButton(
+                  icon: Icon(Icons.edit),
+                  onPressed: () async {
+                    Navigator.pop(context);
+                    await _editPhoto(item);
+                  },
+                  tooltip: 'Editar foto',
+                ),
+                IconButton(
                   icon: Icon(Icons.delete),
                   onPressed: () {
-                    setState(() {
-                      item.fotoBase64 = null;
-                    });
                     Navigator.pop(context);
-                    Fluttertoast.showToast(
-                      msg: 'Foto eliminada',
-                      backgroundColor: Colors.orange[600],
-                      textColor: Colors.white,
-                    );
+                    _deletePhoto(item);
                   },
+                  tooltip: 'Eliminar foto',
                 ),
               ],
             ),
@@ -1224,7 +1600,7 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
                       isActive: item.fotoBase64 != null,
                       onTap: () {
                         if (item.fotoBase64 != null) {
-                          _viewPhoto(item);
+                          _showPhotoOptionsDialog(item);
                         } else {
                           _showPhotoDialog(item);
                         }

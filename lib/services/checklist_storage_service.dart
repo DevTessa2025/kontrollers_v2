@@ -183,6 +183,9 @@ class ChecklistStorageService {
   }
 
   // Actualizar checklist existente
+  // Agregar estos métodos al final de la clase ChecklistStorageService
+
+  // Actualizar checklist existente
   static Future<void> updateChecklistLocal(int id, ChecklistBodega checklist) async {
     try {
       Database db = await database;
@@ -197,8 +200,9 @@ class ChecklistStorageService {
         'pesador_nombre': checklist.pesador?.nombre,
         'usuario_id': currentUser?['id'],
         'usuario_nombre': currentUser?['nombre'] ?? currentUser?['username'],
+        'fecha_creacion': checklist.fecha?.toIso8601String() ?? DateTime.now().toIso8601String(),
         'porcentaje_cumplimiento': checklist.calcularPorcentajeCumplimiento(),
-        // No actualizar fecha_creacion ni enviado
+        'enviado': 0, // Reiniciar estado de enviado al actualizar
       };
 
       for (var seccion in checklist.secciones) {
@@ -210,20 +214,20 @@ class ChecklistStorageService {
         }
       }
 
-      int rowsAffected = await db.update(
+      int rowsUpdated = await db.update(
         'checklist_bodega',
         record,
         where: 'id = ?',
         whereArgs: [id],
       );
       
-      if (rowsAffected > 0) {
-        print('Checklist actualizado localmente con ID: $id');
+      if (rowsUpdated > 0) {
+        print('Checklist $id actualizado correctamente');
       } else {
-        throw Exception('No se encontró el checklist con ID: $id');
+        throw Exception('No se pudo actualizar el checklist con ID $id');
       }
     } catch (e) {
-      print('Error actualizando checklist local: $e');
+      print('Error actualizando checklist: $e');
       rethrow;
     }
   }

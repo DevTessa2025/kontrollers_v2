@@ -95,7 +95,7 @@ class ImageService {
     }
   }
 
-  // Diálogo simplificado con una sola opción por fuente
+  // CORRECCIÓN: Diálogo que devuelve ImageSource directamente
   static Future<ImageSource?> showImageSourceDialog(context) async {
     return await showDialog<ImageSource?>(
       context: context,
