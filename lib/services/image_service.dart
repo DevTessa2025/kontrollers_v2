@@ -8,41 +8,6 @@ import 'package:image/image.dart' as img;
 class ImageService {
   static final ImagePicker _picker = ImagePicker();
 
-  // Seleccionar imagen desde galería o cámara con compresión balanceada
-  static Future<String?> pickAndCompressImage({
-    required ImageSource source,
-    int maxWidth = 1200,        // Resolución balanceada
-    int maxHeight = 900,        // Resolución balanceada
-    int quality = 85,           // Calidad balanceada
-  }) async {
-    try {
-      final XFile? pickedFile = await _picker.pickImage(
-        source: source,
-        maxWidth: maxWidth.toDouble(),
-        maxHeight: maxHeight.toDouble(),
-        imageQuality: quality,
-      );
-
-      if (pickedFile == null) return null;
-
-      // Leer el archivo
-      Uint8List imageBytes = await pickedFile.readAsBytes();
-      
-      // Comprimir la imagen con parámetros balanceados
-      String compressedBase64 = await compressImageToBase64(
-        imageBytes,
-        maxWidth: maxWidth,
-        maxHeight: maxHeight,
-        quality: quality,
-      );
-
-      return compressedBase64;
-    } catch (e) {
-      print('Error seleccionando imagen: $e');
-      return null;
-    }
-  }
-
   // Comprimir imagen y convertir a base64 con calidad balanceada
   static Future<String> compressImageToBase64(
     Uint8List imageBytes, {
@@ -85,65 +50,8 @@ class ImageService {
     }
   }
 
-  // Convertir base64 a Uint8List para mostrar
-  static Uint8List base64ToBytes(String base64String) {
-    try {
-      return base64Decode(base64String);
-    } catch (e) {
-      print('Error decodificando base64: $e');
-      rethrow;
-    }
-  }
 
-  // CORRECCIÓN: Diálogo que devuelve ImageSource directamente
-  static Future<ImageSource?> showImageSourceDialog(context) async {
-    return await showDialog<ImageSource?>(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text(
-            'Seleccionar Imagen',
-            style: TextStyle(
-              color: Colors.red[800],
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: Icon(Icons.camera_alt, color: Colors.red[700]),
-                title: Text('Tomar Foto'),
-                subtitle: Text('Usar cámara del dispositivo'),
-                onTap: () {
-                  Navigator.pop(context, ImageSource.camera);
-                },
-              ),
-              Divider(),
-              ListTile(
-                leading: Icon(Icons.photo_library, color: Colors.red[700]),
-                title: Text('Desde Galería'),
-                subtitle: Text('Seleccionar imagen guardada'),
-                onTap: () {
-                  Navigator.pop(context, ImageSource.gallery);
-                },
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(
-                'Cancelar',
-                style: TextStyle(color: Colors.grey[600]),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
+  
   // Obtener tamaño estimado de la imagen en KB
   static double getImageSizeKB(String base64String) {
     try {
@@ -218,36 +126,139 @@ class ImageService {
     }
   }
 
-  // Obtener información detallada de la imagen
+  static Future<String> convertImageToBase64(Uint8List imageBytes) async {
+    try {
+      String base64String = base64Encode(imageBytes);
+      return base64String;
+    } catch (e) {
+      throw Exception('Error convertiendo imagen a base64: $e');
+    }
+  }
+
+  // Mostrar imagen desde base64
+  static Widget displayBase64Image(String base64String) {
+    try {
+      Uint8List bytes = base64Decode(base64String);
+      return Image.memory(
+        bytes,
+        fit: BoxFit.contain,
+        errorBuilder: (context, error, stackTrace) {
+          return Container(
+            color: Colors.grey[200],
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.error,
+                  color: Colors.grey[500],
+                  size: 50,
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'Error cargando imagen',
+                  style: TextStyle(color: Colors.grey[600]),
+                ),
+              ],
+            ),
+          );
+        },
+      );
+    } catch (e) {
+      return Container(
+        color: Colors.grey[200],
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.error,
+              color: Colors.red[500],
+              size: 50,
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Imagen inválida',
+              style: TextStyle(color: Colors.red[600]),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  // Convertir base64 a bytes
+  static Uint8List base64ToBytes(String base64String) {
+    try {
+      return base64Decode(base64String);
+    } catch (e) {
+      throw Exception('Error decodificando base64: $e');
+    }
+  }
+
+  // Obtener información de la imagen
   static Map<String, dynamic> getImageInfo(String base64String) {
     try {
       Uint8List bytes = base64Decode(base64String);
-      img.Image? image = img.decodeImage(bytes);
-      
-      if (image == null) {
-        return {
-          'valid': false,
-          'error': 'No se pudo decodificar la imagen'
-        };
-      }
-
-      double sizeKB = getImageSizeKB(base64String);
+      double sizeKB = bytes.length / 1024;
       
       return {
-        'valid': true,
-        'width': image.width,
-        'height': image.height,
         'sizeKB': sizeKB,
-        'sizeMB': sizeKB / 1024,
-        'aspectRatio': image.width / image.height,
-        'resolution': '${image.width}x${image.height}',
-        'estimatedQuality': sizeKB > 400 ? 'Buena' : sizeKB > 150 ? 'Media' : 'Básica',
+        'sizeBytes': bytes.length,
+        'resolution': '${bytes.length} bytes',
       };
     } catch (e) {
       return {
-        'valid': false,
-        'error': 'Error procesando imagen: $e'
+        'sizeKB': 0.0,
+        'sizeBytes': 0,
+        'resolution': 'Desconocida',
       };
+    }
+  }
+
+  // Diálogo para seleccionar fuente de imagen
+  static Future<ImageSource?> showImageSourceDialog(BuildContext context) async {
+    return await showDialog<ImageSource>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Seleccionar imagen'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: Icon(Icons.camera_alt),
+                title: Text('Cámara'),
+                onTap: () => Navigator.pop(context, ImageSource.camera),
+              ),
+              ListTile(
+                leading: Icon(Icons.photo_library),
+                title: Text('Galería'),
+                onTap: () => Navigator.pop(context, ImageSource.gallery),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // Seleccionar y comprimir imagen
+  static Future<String?> pickAndCompressImage({required ImageSource source}) async {
+    try {
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(
+        source: source,
+        imageQuality: 80,
+        maxWidth: 1024,
+        maxHeight: 1024,
+      );
+
+      if (image != null) {
+        Uint8List imageBytes = await image.readAsBytes();
+        return await convertImageToBase64(imageBytes);
+      }
+      return null;
+    } catch (e) {
+      throw Exception('Error seleccionando imagen: $e');
     }
   }
 }

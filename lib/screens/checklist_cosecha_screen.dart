@@ -4,43 +4,45 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import '../data/checklist_data.dart';
+import '../data/checklist_data_cosecha.dart';
 import '../models/dropdown_models.dart';
-import '../services/dropdown_service.dart';
+import '../services/cosecha_dropdown_service.dart';
 import '../services/image_service.dart';
-import '../services/checklist_storage_service.dart';
-import 'checklist_records_screen.dart';
+import '../services/checklist_cosecha_storage_service.dart';
+import 'checklist_cosecha_records_screen.dart';
 import 'image_editor_screen.dart';
 
-class ChecklistBodegaScreen extends StatefulWidget {
-  final ChecklistBodega? checklistToEdit;
+class ChecklistCosechaScreen extends StatefulWidget {
+  final ChecklistCosecha? checklistToEdit;
   final int? recordId;
 
-  ChecklistBodegaScreen({
+  ChecklistCosechaScreen({
     this.checklistToEdit,
     this.recordId,
   });
 
   @override
-  _ChecklistBodegaScreenState createState() => _ChecklistBodegaScreenState();
+  _ChecklistCosechaScreenState createState() => _ChecklistCosechaScreenState();
 }
 
-class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
-  late ChecklistBodega checklist;
+class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
+  late ChecklistCosecha checklist;
   int _currentSectionIndex = 0;
   
   // Datos para los dropdowns
   List<Finca> fincas = [];
-  List<Supervisor> supervisores = [];
-  List<Pesador> pesadores = [];
+  List<Bloque> bloques = [];
+  List<Variedad> variedades = [];
   
   // Valores seleccionados
   Finca? selectedFinca;
-  Supervisor? selectedSupervisor;
-  Pesador? selectedPesador;
-  DateTime selectedDate = DateTime.now(); // Fecha seleccionada
+  Bloque? selectedBloque;
+  Variedad? selectedVariedad;
+  DateTime selectedDate = DateTime.now();
   
   bool _isLoadingDropdownData = true;
+  bool _isLoadingBloques = false;
+  bool _isLoadingVariedades = false;
   bool _isEditMode = false;
 
   @override
@@ -65,37 +67,42 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
   void _loadExistingChecklist() {
     checklist = widget.checklistToEdit!;
     selectedFinca = checklist.finca;
-    selectedSupervisor = checklist.supervisor;
-    selectedPesador = checklist.pesador;
-    selectedDate = checklist.fecha ?? DateTime.now(); // Cargar fecha existente o actual
+    selectedBloque = checklist.bloque;
+    selectedVariedad = checklist.variedad;
+    selectedDate = checklist.fecha ?? DateTime.now();
     _currentSectionIndex = 0;
   }
   
   void _resetChecklist() {
-    checklist = ChecklistDataBodega.getChecklistBodega();
-    selectedDate = DateTime.now(); // Inicializar con fecha actual
+    checklist = ChecklistDataCosecha.getChecklistCosecha();
+    selectedDate = DateTime.now();
     _currentSectionIndex = 0;
   }
 
-  // Se corrige para aceptar el parámetro opcional forceSync
   Future<void> _loadDropdownData({bool forceSync = false}) async {
     setState(() {
       _isLoadingDropdownData = true;
     });
 
     try {
-      Map<String, dynamic> dropdownData = await DropdownService.getChecklistDropdownData(forceSync: forceSync);
+      Map<String, dynamic> dropdownData = await CosechaDropdownService.getCosechaDropdownData(forceSync: forceSync);
       
       setState(() {
         fincas = dropdownData['fincas'] ?? [];
-        supervisores = dropdownData['supervisores'] ?? [];
-        pesadores = dropdownData['pesadores'] ?? [];
         _isLoadingDropdownData = false;
       });
 
-      if (fincas.isEmpty || supervisores.isEmpty || pesadores.isEmpty) {
+      // Si estamos editando, cargar bloques y variedades
+      if (_isEditMode && selectedFinca != null) {
+        await _loadBloquesForFinca(selectedFinca!.nombre);
+        if (selectedBloque != null) {
+          await _loadVariedadesForFincaAndBloque(selectedFinca!.nombre, selectedBloque!.nombre);
+        }
+      }
+
+      if (fincas.isEmpty) {
         Fluttertoast.showToast(
-          msg: 'Algunos datos no se pudieron cargar. Verifique la conexión.',
+          msg: 'No se pudieron cargar las fincas. Verifique la conexión.',
           backgroundColor: Colors.orange[600],
           textColor: Colors.white,
           toastLength: Toast.LENGTH_LONG,
@@ -115,6 +122,78 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
     }
   }
 
+  Future<void> _loadBloquesForFinca(String finca) async {
+    setState(() {
+      _isLoadingBloques = true;
+      selectedBloque = null;
+      selectedVariedad = null;
+      bloques = [];
+      variedades = [];
+    });
+
+    try {
+      List<Bloque> loadedBloques = await CosechaDropdownService.getBloquesByFinca(finca);
+      
+      setState(() {
+        bloques = loadedBloques;
+        _isLoadingBloques = false;
+      });
+
+      if (bloques.isEmpty) {
+        Fluttertoast.showToast(
+          msg: 'No se encontraron bloques para la finca $finca',
+          backgroundColor: Colors.orange[600],
+          textColor: Colors.white,
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _isLoadingBloques = false;
+      });
+      
+      Fluttertoast.showToast(
+        msg: 'Error cargando bloques: $e',
+        backgroundColor: Colors.red[600],
+        textColor: Colors.white,
+      );
+    }
+  }
+
+  Future<void> _loadVariedadesForFincaAndBloque(String finca, String bloque) async {
+    setState(() {
+      _isLoadingVariedades = true;
+      selectedVariedad = null;
+      variedades = [];
+    });
+
+    try {
+      List<Variedad> loadedVariedades = await CosechaDropdownService.getVariedadesByFincaAndBloque(finca, bloque);
+      
+      setState(() {
+        variedades = loadedVariedades;
+        _isLoadingVariedades = false;
+      });
+
+      if (variedades.isEmpty) {
+        Fluttertoast.showToast(
+          msg: 'No se encontraron variedades para finca $finca, bloque $bloque',
+          backgroundColor: Colors.orange[600],
+          textColor: Colors.white,
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _isLoadingVariedades = false;
+      });
+      
+      Fluttertoast.showToast(
+        msg: 'Error cargando variedades: $e',
+        backgroundColor: Colors.red[600],
+        textColor: Colors.white,
+      );
+    }
+  }
+
   void _updateItemResponse(int itemId, String respuesta, {double? valorNumerico}) {
     setState(() {
       for (var seccion in checklist.secciones) {
@@ -129,7 +208,7 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
     });
   }
 
-  void _showValueSelector(ChecklistItem item) {
+  void _showValueSelector(ChecklistCosechaItem item) {
     if (!item.valores.tieneOpcionesMultiples()) {
       _updateItemResponse(item.id, 'si', valorNumerico: item.valores.max);
       return;
@@ -143,18 +222,17 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
         return AlertDialog(
           title: Text(
             'Seleccionar Valor',
-            style: TextStyle(color: Colors.red[800], fontWeight: FontWeight.bold),
+            style: TextStyle(color: Colors.green[800], fontWeight: FontWeight.bold),
           ),
           content: Container(
-            width: double.maxFinite, // CORRECCIÓN: Ancho específico
+            width: double.maxFinite,
             constraints: BoxConstraints(
-              maxHeight: 400, // CORRECCIÓN: Altura máxima
-              maxWidth: 350,  // CORRECCIÓN: Ancho máximo
+              maxHeight: 400,
+              maxWidth: 350,
             ),
             child: Column(
-              mainAxisSize: MainAxisSize.min, // CORRECCIÓN: Tamaño mínimo
+              mainAxisSize: MainAxisSize.min,
               children: [
-                // Título del proceso con altura limitada
                 Container(
                   constraints: BoxConstraints(maxHeight: 80),
                   margin: EdgeInsets.only(bottom: 16),
@@ -170,7 +248,6 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
                     textAlign: TextAlign.center,
                   ),
                 ),
-                // Lista de opciones con scroll si es necesario
                 Flexible(
                   child: SingleChildScrollView(
                     child: Column(
@@ -183,7 +260,7 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
                             Navigator.of(context).pop();
                           },
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.red[700],
+                            backgroundColor: Colors.green[700],
                             foregroundColor: Colors.white,
                             padding: EdgeInsets.symmetric(vertical: 14),
                             shape: RoundedRectangleBorder(
@@ -218,7 +295,7 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
     );
   }
 
-  void _showObservationsDialog(ChecklistItem item) {
+  void _showObservationsDialog(ChecklistCosechaItem item) {
     TextEditingController observationsController = TextEditingController();
     observationsController.text = item.observaciones ?? '';
 
@@ -228,19 +305,18 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
         return AlertDialog(
           title: Text(
             'Observaciones',
-            style: TextStyle(color: Colors.red[800], fontWeight: FontWeight.bold),
+            style: TextStyle(color: Colors.green[800], fontWeight: FontWeight.bold),
           ),
           content: Container(
-            width: double.maxFinite, // CORRECCIÓN: Ancho específico
+            width: double.maxFinite,
             constraints: BoxConstraints(
-              maxHeight: 300, // CORRECCIÓN: Altura máxima
-              maxWidth: 400,  // CORRECCIÓN: Ancho máximo
+              maxHeight: 300,
+              maxWidth: 400,
             ),
             child: Column(
-              mainAxisSize: MainAxisSize.min, // CORRECCIÓN: Tamaño mínimo
+              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Título del proceso con altura limitada
                 Container(
                   constraints: BoxConstraints(maxHeight: 60),
                   child: Text(
@@ -255,13 +331,12 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
                   ),
                 ),
                 SizedBox(height: 16),
-                // Campo de texto con altura fija
                 Container(
-                  height: 120, // CORRECCIÓN: Altura fija para el TextField
+                  height: 120,
                   child: TextField(
                     controller: observationsController,
-                    maxLines: null, // Permitir múltiples líneas
-                    expands: true,  // CORRECCIÓN: Expandir dentro del contenedor
+                    maxLines: null,
+                    expands: true,
                     textAlignVertical: TextAlignVertical.top,
                     decoration: InputDecoration(
                       hintText: 'Agregar observaciones...',
@@ -270,7 +345,7 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide(color: Colors.red[700]!),
+                        borderSide: BorderSide(color: Colors.green[700]!),
                       ),
                       contentPadding: EdgeInsets.all(12),
                     ),
@@ -294,7 +369,7 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
                 Navigator.of(context).pop();
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red[700],
+                backgroundColor: Colors.green[700],
                 foregroundColor: Colors.white,
               ),
               child: Text('Guardar'),
@@ -305,22 +380,18 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
     );
   }
 
-  
-
-  
-
-  void _deletePhoto(ChecklistItem item) {
+  void _deletePhoto(ChecklistCosechaItem item) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: Text(
           'Eliminar Foto',
-          style: TextStyle(color: Colors.red[800], fontWeight: FontWeight.bold),
+          style: TextStyle(color: Colors.green[800], fontWeight: FontWeight.bold),
         ),
         content: Container(
-          width: double.maxFinite, // CORRECCIÓN: Ancho específico
+          width: double.maxFinite,
           constraints: BoxConstraints(
-            maxWidth: 300,  // CORRECCIÓN: Ancho máximo
+            maxWidth: 300,
           ),
           child: Text(
             '¿Está seguro que desea eliminar esta foto?',
@@ -355,8 +426,7 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
     );
   }
 
-  // Método para editar foto existente
-  Future<void> _editPhoto(ChecklistItem item) async {
+  Future<void> _editPhoto(ChecklistCosechaItem item) async {
     if (item.fotoBase64 == null) return;
 
     try {
@@ -393,16 +463,13 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
     }
   }
 
-  void _showPhotoDialog(ChecklistItem item) async {
-    // Seleccionar fuente de imagen primero
+  void _showPhotoDialog(ChecklistCosechaItem item) async {
     ImageSource? source = await ImageService.showImageSourceDialog(context);
     
     if (source != null) {
-      // Seleccionar la imagen
       String? base64Image = await ImageService.pickAndCompressImage(source: source);
 
       if (base64Image != null) {
-        // Preguntar si quiere editar - DIÁLOGO CORREGIDO
         bool? shouldEdit = await showDialog<bool>(
           context: context,
           builder: (BuildContext context) {
@@ -410,22 +477,21 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
               title: Text(
                 'Editar Imagen',
                 style: TextStyle(
-                  color: Colors.red[800],
+                  color: Colors.green[800],
                   fontWeight: FontWeight.bold,
                 ),
               ),
               content: Container(
-                width: double.maxFinite, // CORRECCIÓN: Ancho específico
+                width: double.maxFinite,
                 constraints: BoxConstraints(
-                  maxHeight: 300, // CORRECCIÓN: Altura máxima
-                  maxWidth: 400,  // CORRECCIÓN: Ancho máximo
+                  maxHeight: 300,
+                  maxWidth: 400,
                 ),
                 child: Column(
-                  mainAxisSize: MainAxisSize.min, // CORRECCIÓN: Tamaño mínimo
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Contenedor de imagen con tamaño fijo
                     Container(
-                      height: 180, // CORRECCIÓN: Altura fija
+                      height: 180,
                       width: double.infinity,
                       decoration: BoxDecoration(
                         border: Border.all(color: Colors.grey[300]!),
@@ -450,8 +516,7 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
                       ),
                     ),
                     SizedBox(height: 16),
-                    // Texto con restricción de altura
-                    Flexible( // CORRECCIÓN: Usar Flexible en lugar de texto sin restricción
+                    Flexible(
                       child: Text(
                         '¿Desea editar esta imagen?\nPodrá dibujar y agregar anotaciones.',
                         textAlign: TextAlign.center,
@@ -477,7 +542,7 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
                 ElevatedButton(
                   onPressed: () => Navigator.pop(context, true),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red[700],
+                    backgroundColor: Colors.green[700],
                     foregroundColor: Colors.white,
                   ),
                   child: Text('Editar'),
@@ -490,7 +555,6 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
         String finalImage = base64Image;
         
         if (shouldEdit == true) {
-          // Navegar al editor
           try {
             final editedImage = await Navigator.push<String>(
               context,
@@ -506,7 +570,6 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
               finalImage = editedImage;
             }
           } catch (e) {
-            // Si no está disponible el editor, usar la imagen original
             print('Editor no disponible: $e');
             Fluttertoast.showToast(
               msg: 'Editor no disponible, usando imagen original',
@@ -516,12 +579,10 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
           }
         }
 
-        // Guardar la imagen final
         setState(() {
           item.fotoBase64 = finalImage;
         });
         
-        // Mostrar información de la imagen
         Map<String, dynamic> imageInfo = ImageService.getImageInfo(finalImage);
         
         Fluttertoast.showToast(
@@ -534,23 +595,22 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
     }
   }
 
-  // NUEVO MÉTODO: Diálogo de opciones de foto también corregido
-  void _showPhotoOptionsDialog(ChecklistItem item) async {
+  void _showPhotoOptionsDialog(ChecklistCosechaItem item) async {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: Text(
           'Opciones de Foto',
-          style: TextStyle(color: Colors.red[800], fontWeight: FontWeight.bold),
+          style: TextStyle(color: Colors.green[800], fontWeight: FontWeight.bold),
         ),
         content: Container(
-          width: double.maxFinite, // CORRECCIÓN: Ancho específico
+          width: double.maxFinite,
           constraints: BoxConstraints(
-            maxHeight: 300, // CORRECCIÓN: Altura máxima
-            maxWidth: 350,  // CORRECCIÓN: Ancho máximo
+            maxHeight: 300,
+            maxWidth: 350,
           ),
           child: Column(
-            mainAxisSize: MainAxisSize.min, // CORRECCIÓN: Tamaño mínimo
+            mainAxisSize: MainAxisSize.min,
             children: [
               _buildOptionTile(
                 icon: Icons.visibility,
@@ -605,7 +665,6 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
     );
   }
 
-  // Widget helper para las opciones
   Widget _buildOptionTile({
     required IconData icon,
     required Color color,
@@ -649,7 +708,7 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
     );
   }
 
-  void _viewPhoto(ChecklistItem item) {
+  void _viewPhoto(ChecklistCosechaItem item) {
     if (item.fotoBase64 == null) return;
 
     showDialog(
@@ -660,7 +719,7 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
           children: [
             AppBar(
               title: Text('Foto - Item ${item.id}'),
-              backgroundColor: Colors.red[700],
+              backgroundColor: Colors.green[700],
               foregroundColor: Colors.white,
               leading: IconButton(
                 icon: Icon(Icons.close),
@@ -689,10 +748,7 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
               constraints: BoxConstraints(
                 maxHeight: MediaQuery.of(context).size.height * 0.7,
               ),
-              child: Image.memory(
-                ImageService.base64ToBytes(item.fotoBase64!),
-                fit: BoxFit.contain,
-              ),
+              child: ImageService.displayBase64Image(item.fotoBase64!),
             ),
             Padding(
               padding: EdgeInsets.all(16),
@@ -716,15 +772,15 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
       context: context,
       initialDate: selectedDate,
       firstDate: DateTime(2020),
-      lastDate: DateTime.now().add(Duration(days: 30)), // Permitir fechas hasta 30 días en el futuro
+      lastDate: DateTime.now().add(Duration(days: 30)),
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
             colorScheme: ColorScheme.light(
-              primary: _isEditMode ? Colors.blue[700]! : Colors.red[700]!, // Color del header
-              onPrimary: Colors.white, // Color del texto del header
-              surface: Colors.white, // Color de fondo
-              onSurface: Colors.black, // Color del texto
+              primary: _isEditMode ? Colors.blue[700]! : Colors.green[700]!,
+              onPrimary: Colors.white,
+              surface: Colors.white,
+              onSurface: Colors.black,
             ),
           ),
           child: child!,
@@ -741,16 +797,16 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
 
   void _saveLocalChecklist() async {
     // Validar que los datos básicos estén completos
-    if (selectedFinca == null || selectedSupervisor == null || selectedPesador == null) {
+    if (selectedFinca == null || selectedBloque == null || selectedVariedad == null) {
       Fluttertoast.showToast(
-        msg: 'Por favor complete todos los datos: Finca, Supervisor, Pesador y Fecha',
+        msg: 'Por favor complete todos los datos: Finca, Bloque, Variedad y Fecha',
         backgroundColor: Colors.orange[600],
         textColor: Colors.white,
       );
       return;
     }
 
-    // Validar que la fecha no sea futura (más de hoy)
+    // Validar que la fecha no sea futura
     DateTime today = DateTime.now();
     DateTime todayOnly = DateTime(today.year, today.month, today.day);
     DateTime selectedDateOnly = DateTime(selectedDate.year, selectedDate.month, selectedDate.day);
@@ -790,65 +846,51 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
 
     try {
       checklist.finca = selectedFinca;
-      checklist.supervisor = selectedSupervisor;
-      checklist.pesador = selectedPesador;
-      checklist.fecha = selectedDate; // Usar la fecha seleccionada
+      checklist.bloque = selectedBloque;
+      checklist.variedad = selectedVariedad;
+      checklist.fecha = selectedDate;
 
       int recordId;
       
       if (_isEditMode && widget.recordId != null) {
-        // Actualizar registro existente
-        await ChecklistStorageService.updateChecklistLocal(widget.recordId!, checklist);
+        await ChecklistCosechaStorageService.updateChecklistLocal(widget.recordId!, checklist);
         recordId = widget.recordId!;
         
         Fluttertoast.showToast(
-          msg: 'Checklist actualizado localmente (ID: $recordId)',
+          msg: 'Checklist cosecha actualizado localmente (ID: $recordId)',
           backgroundColor: Colors.blue[600],
           textColor: Colors.white,
           toastLength: Toast.LENGTH_LONG,
         );
       } else {
-        // Guardar nuevo registro
-        recordId = await ChecklistStorageService.saveChecklistLocal(checklist);
+        recordId = await ChecklistCosechaStorageService.saveChecklistLocal(checklist);
         
         Fluttertoast.showToast(
-          msg: 'Checklist guardado localmente (ID: $recordId)',
+          msg: 'Checklist cosecha guardado localmente (ID: $recordId)',
           backgroundColor: Colors.green[600],
           textColor: Colors.white,
           toastLength: Toast.LENGTH_LONG,
         );
       }
 
-      // Navegar a la pantalla de records
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => ChecklistRecordsScreen()),
+        MaterialPageRoute(builder: (context) => ChecklistCosechaRecordsScreen()),
       );
 
     } catch (e) {
       Fluttertoast.showToast(
-        msg: 'Error guardando checklist: $e',
+        msg: 'Error guardando checklist cosecha: $e',
         backgroundColor: Colors.red[600],
         textColor: Colors.white,
       );
     }
   }
 
-  bool _isChecklistComplete() {
-    for (var seccion in checklist.secciones) {
-      for (var item in seccion.items) {
-        if (item.respuesta == null) {
-          return false;
-        }
-      }
-    }
-    return true;
-  }
-
   void _navigateToRecords() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => ChecklistRecordsScreen()),
+      MaterialPageRoute(builder: (context) => ChecklistCosechaRecordsScreen()),
     );
   }
 
@@ -872,13 +914,13 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
       backgroundColor: Colors.grey[50],
       body: CustomScrollView(
         slivers: [
-          // AppBar moderno con gradiente y progreso
+          // AppBar moderno con gradiente verde para cosecha
           SliverAppBar(
-            expandedHeight: 160, // Aumentado de 140 a 160
+            expandedHeight: 160,
             floating: false,
             pinned: true,
             elevation: 0,
-            backgroundColor: _isEditMode ? Colors.blue[700] : Colors.red[700],
+            backgroundColor: _isEditMode ? Colors.blue[700] : Colors.green[700],
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
                 decoration: BoxDecoration(
@@ -887,56 +929,56 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
                     end: Alignment.bottomRight,
                     colors: _isEditMode 
                         ? [Colors.blue[800]!, Colors.blue[600]!, Colors.blue[700]!]
-                        : [Colors.red[800]!, Colors.red[600]!, Colors.red[700]!],
+                        : [Colors.green[800]!, Colors.green[600]!, Colors.green[700]!],
                   ),
                 ),
                 child: SafeArea(
                   child: Padding(
-                    padding: EdgeInsets.fromLTRB(16, 70, 16, 16), // Ajustado top padding
+                    padding: EdgeInsets.fromLTRB(16, 70, 16, 16),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min, // Agregado para evitar overflow
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Flexible( // Agregado Flexible
+                        Flexible(
                           child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.center, // Agregado para centrar verticalmente
+                            crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
                               Container(
-                                padding: EdgeInsets.all(6), // Reducido de 8 a 6
+                                padding: EdgeInsets.all(6),
                                 decoration: BoxDecoration(
                                   color: Colors.white.withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(10), // Reducido de 12 a 10
+                                  borderRadius: BorderRadius.circular(10),
                                 ),
                                 child: Icon(
-                                  _isEditMode ? Icons.edit_note : Icons.assignment,
+                                  _isEditMode ? Icons.edit_note : Icons.grass,
                                   color: Colors.white,
-                                  size: 20, // Reducido de 24 a 20
+                                  size: 20,
                                 ),
                               ),
-                              SizedBox(width: 10), // Reducido de 12 a 10
+                              SizedBox(width: 10),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Text(
-                                      _isEditMode ? 'Editando Checklist' : 'Nuevo Checklist',
+                                      _isEditMode ? 'Editando Cosecha' : 'Nueva Cosecha',
                                       style: TextStyle(
                                         color: Colors.white,
-                                        fontSize: 16, // Reducido de 18 a 16
+                                        fontSize: 16,
                                         fontWeight: FontWeight.bold,
-                                        height: 1.1, // Agregado para reducir altura de línea
+                                        height: 1.1,
                                       ),
-                                      maxLines: 1, // Agregado para limitar a 1 línea
+                                      maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                     if (_isEditMode) ...[
-                                      SizedBox(height: 2), // Reducido spacing
+                                      SizedBox(height: 2),
                                       Text(
                                         'ID: ${widget.recordId}',
                                         style: TextStyle(
                                           color: Colors.white70,
-                                          fontSize: 12, // Reducido de 13 a 12
+                                          fontSize: 12,
                                           height: 1.0,
                                         ),
                                         maxLines: 1,
@@ -949,10 +991,10 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
                             ],
                           ),
                         ),
-                        SizedBox(height: 8), // Reducido de 12 a 8
+                        SizedBox(height: 8),
                         // Barra de progreso
                         Container(
-                          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6), // Reducido vertical padding
+                          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(
                             color: Colors.white.withOpacity(0.15),
                             borderRadius: BorderRadius.circular(20),
@@ -962,7 +1004,7 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min, // Agregado
+                                  mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Row(
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -971,7 +1013,7 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
                                           'Progreso General',
                                           style: TextStyle(
                                             color: Colors.white,
-                                            fontSize: 11, // Reducido de 12 a 11
+                                            fontSize: 11,
                                             fontWeight: FontWeight.w500,
                                           ),
                                         ),
@@ -979,20 +1021,20 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
                                           '$itemsRespondidosGeneral/$totalItemsGeneral',
                                           style: TextStyle(
                                             color: Colors.white,
-                                            fontSize: 11, // Reducido de 12 a 11
+                                            fontSize: 11,
                                             fontWeight: FontWeight.bold,
                                           ),
                                         ),
                                       ],
                                     ),
-                                    SizedBox(height: 4), // Reducido de 6 a 4
+                                    SizedBox(height: 4),
                                     ClipRRect(
                                       borderRadius: BorderRadius.circular(4),
                                       child: LinearProgressIndicator(
                                         value: progressPercentage,
                                         backgroundColor: Colors.white.withOpacity(0.3),
                                         valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                        minHeight: 3, // Reducido de 4 a 3
+                                        minHeight: 3,
                                       ),
                                     ),
                                   ],
@@ -1003,7 +1045,7 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
                                 '${(progressPercentage * 100).toInt()}%',
                                 style: TextStyle(
                                   color: Colors.white,
-                                  fontSize: 14, // Reducido de 16 a 14
+                                  fontSize: 14,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
@@ -1063,7 +1105,7 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
           SliverToBoxAdapter(
             child: Column(
               children: [
-                // Formulario principal con diseño mejorado
+                // Formulario principal con diseño para cosecha
                 Container(
                   margin: EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -1084,7 +1126,7 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
                       Container(
                         padding: EdgeInsets.all(20),
                         decoration: BoxDecoration(
-                          color: (_isEditMode ? Colors.blue[50] : Colors.red[50]),
+                          color: (_isEditMode ? Colors.blue[50] : Colors.green[50]),
                           borderRadius: BorderRadius.only(
                             topLeft: Radius.circular(16),
                             topRight: Radius.circular(16),
@@ -1095,12 +1137,12 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
                             Container(
                               padding: EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: _isEditMode ? Colors.blue[100] : Colors.red[100],
+                                color: _isEditMode ? Colors.blue[100] : Colors.green[100],
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Icon(
-                                Icons.assignment_outlined,
-                                color: _isEditMode ? Colors.blue[700] : Colors.red[700],
+                                Icons.grass_outlined,
+                                color: _isEditMode ? Colors.blue[700] : Colors.green[700],
                                 size: 24,
                               ),
                             ),
@@ -1110,7 +1152,7 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'Información del Checklist',
+                                    'Información del Checklist Cosecha',
                                     style: TextStyle(
                                       fontSize: 18,
                                       fontWeight: FontWeight.bold,
@@ -1139,13 +1181,13 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
                                 child: Column(
                                   children: [
                                     CircularProgressIndicator(
-                                      color: _isEditMode ? Colors.blue[700] : Colors.red[700],
+                                      color: _isEditMode ? Colors.blue[700] : Colors.green[700],
                                     ),
                                     SizedBox(height: 16),
                                     Text(
                                       'Cargando datos...',
                                       style: TextStyle(
-                                        color: _isEditMode ? Colors.blue[700] : Colors.red[700],
+                                        color: _isEditMode ? Colors.blue[700] : Colors.green[700],
                                         fontWeight: FontWeight.w500,
                                       ),
                                     ),
@@ -1154,7 +1196,7 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
                               )
                             : Column(
                                 children: [
-                                  // Dropdown de Finca con nuevo diseño
+                                  // Dropdown de Finca
                                   _buildModernDropdown<Finca>(
                                     label: 'Finca',
                                     icon: Icons.location_on,
@@ -1164,48 +1206,59 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
                                     onChanged: (Finca? newValue) {
                                       setState(() {
                                         selectedFinca = newValue;
+                                        selectedBloque = null;
+                                        selectedVariedad = null;
+                                        bloques = [];
+                                        variedades = [];
                                       });
+                                      if (newValue != null) {
+                                        _loadBloquesForFinca(newValue.nombre);
+                                      }
                                     },
                                     hint: 'Seleccione una finca',
                                   ),
 
                                   SizedBox(height: 16),
 
-                                  // Row con Supervisor y Pesador
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: _buildModernDropdown<Supervisor>(
-                                          label: 'Supervisor',
-                                          icon: Icons.supervisor_account,
-                                          value: selectedSupervisor,
-                                          items: supervisores,
-                                          itemBuilder: (supervisor) => supervisor.nombre,
-                                          onChanged: (Supervisor? newValue) {
-                                            setState(() {
-                                              selectedSupervisor = newValue;
-                                            });
-                                          },
-                                          hint: 'Supervisor',
-                                        ),
-                                      ),
-                                      SizedBox(width: 16),
-                                      Expanded(
-                                        child: _buildModernDropdown<Pesador>(
-                                          label: 'Pesador',
-                                          icon: Icons.scale,
-                                          value: selectedPesador,
-                                          items: pesadores,
-                                          itemBuilder: (pesador) => pesador.nombre,
-                                          onChanged: (Pesador? newValue) {
-                                            setState(() {
-                                              selectedPesador = newValue;
-                                            });
-                                          },
-                                          hint: 'Pesador',
-                                        ),
-                                      ),
-                                    ],
+                                  // Dropdown de Bloque
+                                  _buildModernDropdown<Bloque>(
+                                    label: 'Bloque',
+                                    icon: Icons.view_module,
+                                    value: selectedBloque,
+                                    items: bloques,
+                                    itemBuilder: (bloque) => bloque.nombre,
+                                    onChanged: (Bloque? newValue) {
+                                      setState(() {
+                                        selectedBloque = newValue;
+                                        selectedVariedad = null;
+                                        variedades = [];
+                                      });
+                                      if (newValue != null && selectedFinca != null) {
+                                        _loadVariedadesForFincaAndBloque(selectedFinca!.nombre, newValue.nombre);
+                                      }
+                                    },
+                                    hint: 'Seleccione un bloque',
+                                    isLoading: _isLoadingBloques,
+                                    isEnabled: selectedFinca != null,
+                                  ),
+
+                                  SizedBox(height: 16),
+
+                                  // Dropdown de Variedad
+                                  _buildModernDropdown<Variedad>(
+                                    label: 'Variedad',
+                                    icon: Icons.eco,
+                                    value: selectedVariedad,
+                                    items: variedades,
+                                    itemBuilder: (variedad) => variedad.nombre,
+                                    onChanged: (Variedad? newValue) {
+                                      setState(() {
+                                        selectedVariedad = newValue;
+                                      });
+                                    },
+                                    hint: 'Seleccione una variedad',
+                                    isLoading: _isLoadingVariedades,
+                                    isEnabled: selectedBloque != null,
                                   ),
 
                                   SizedBox(height: 16),
@@ -1219,9 +1272,9 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
                   ),
                 ),
 
-                // Navegación de secciones mejorada
+                // Navegación de secciones mejorada con tema verde
                 Container(
-                  height: 90, // Aumentado de 80 a 90
+                  height: 90,
                   margin: EdgeInsets.symmetric(horizontal: 16),
                   child: ListView.builder(
                     scrollDirection: Axis.horizontal,
@@ -1235,7 +1288,7 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
                       int totalItems = seccion.items.length;
                       double sectionProgress = totalItems > 0 ? itemsRespondidos / totalItems : 0;
                       
-                      Color sectionColor = _isEditMode ? Colors.blue[700]! : Colors.red[700]!;
+                      Color sectionColor = _isEditMode ? Colors.blue[700]! : Colors.green[700]!;
                       
                       return GestureDetector(
                         onTap: () {
@@ -1245,7 +1298,7 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
                         },
                         child: Container(
                           width: 180,
-                          margin: EdgeInsets.symmetric(horizontal: 6, vertical: 6), // Reducido vertical margin
+                          margin: EdgeInsets.symmetric(horizontal: 6, vertical: 6),
                           decoration: BoxDecoration(
                             color: isSelected ? sectionColor : Colors.white,
                             borderRadius: BorderRadius.circular(16),
@@ -1262,28 +1315,28 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
                             ] : [],
                           ),
                           child: Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 10, vertical: 8), // Ajustado padding
+                            padding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
-                              mainAxisSize: MainAxisSize.min, // Agregado para evitar overflow
+                              mainAxisSize: MainAxisSize.min,
                               children: [
-                                Flexible( // Agregado Flexible
+                                Flexible(
                                   child: Text(
                                     seccion.nombre,
                                     style: TextStyle(
                                       color: isSelected ? Colors.white : sectionColor,
                                       fontWeight: FontWeight.w700,
-                                      fontSize: 9, // Reducido de 10 a 9
-                                      height: 1.1, // Reducido height
+                                      fontSize: 9,
+                                      height: 1.1,
                                     ),
                                     textAlign: TextAlign.center,
                                     maxLines: 3,
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
-                                SizedBox(height: 4), // Reducido
+                                SizedBox(height: 4),
                                 Container(
-                                  padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2), // Más compacto
+                                  padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                   decoration: BoxDecoration(
                                     color: isSelected 
                                         ? Colors.white.withOpacity(0.2)
@@ -1294,7 +1347,7 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
                                     '$itemsRespondidos/$totalItems',
                                     style: TextStyle(
                                       color: isSelected ? Colors.white : sectionColor,
-                                      fontSize: 10, // Reducido
+                                      fontSize: 10,
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
@@ -1310,7 +1363,7 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
                                     valueColor: AlwaysStoppedAnimation<Color>(
                                       isSelected ? Colors.white : sectionColor,
                                     ),
-                                    minHeight: 2, // Reducido de 3 a 2
+                                    minHeight: 2,
                                   ),
                                 ),
                               ],
@@ -1350,11 +1403,6 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
     );
   }
 
-  @override
-  void dispose() {
-    super.dispose();
-  }
-
   // Widget para dropdowns modernos
   Widget _buildModernDropdown<T>({
     required String label,
@@ -1364,10 +1412,12 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
     required String Function(T) itemBuilder,
     required void Function(T?) onChanged,
     required String hint,
+    bool isLoading = false,
+    bool isEnabled = true,
   }) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.grey[50],
+        color: isEnabled ? Colors.grey[50] : Colors.grey[100],
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.grey[200]!),
       ),
@@ -1376,7 +1426,7 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
         decoration: InputDecoration(
           labelText: label,
           labelStyle: TextStyle(
-            color: _isEditMode ? Colors.blue[700] : Colors.red[700],
+            color: (_isEditMode ? Colors.blue[700] : Colors.green[700])?.withOpacity(isEnabled ? 1.0 : 0.5),
             fontWeight: FontWeight.w500,
           ),
           border: InputBorder.none,
@@ -1385,17 +1435,26 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
             margin: EdgeInsets.all(8),
             padding: EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: (_isEditMode ? Colors.blue[700] : Colors.red[700])?.withOpacity(0.1),
+              color: (_isEditMode ? Colors.blue[700] : Colors.green[700])?.withOpacity(isEnabled ? 0.1 : 0.05),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(
-              icon,
-              color: _isEditMode ? Colors.blue[700] : Colors.red[700],
-              size: 20,
-            ),
+            child: isLoading 
+                ? SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: (_isEditMode ? Colors.blue[700] : Colors.green[700])?.withOpacity(isEnabled ? 1.0 : 0.5),
+                    ),
+                  )
+                : Icon(
+                    icon,
+                    color: (_isEditMode ? Colors.blue[700] : Colors.green[700])?.withOpacity(isEnabled ? 1.0 : 0.5),
+                    size: 20,
+                  ),
           ),
         ),
-        items: items.map((T item) {
+        items: isEnabled ? items.map((T item) {
           return DropdownMenuItem<T>(
             value: item,
             child: Text(
@@ -1407,10 +1466,10 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
               overflow: TextOverflow.ellipsis,
             ),
           );
-        }).toList(),
-        onChanged: onChanged,
+        }).toList() : [],
+        onChanged: isEnabled && !isLoading ? onChanged : null,
         hint: Text(
-          hint,
+          isLoading ? 'Cargando...' : hint,
           style: TextStyle(color: Colors.grey[500]),
         ),
         isExpanded: true,
@@ -1419,7 +1478,7 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
           margin: EdgeInsets.only(right: 8),
           child: Icon(
             Icons.keyboard_arrow_down,
-            color: _isEditMode ? Colors.blue[700] : Colors.red[700],
+            color: (_isEditMode ? Colors.blue[700] : Colors.green[700])?.withOpacity(isEnabled ? 1.0 : 0.5),
           ),
         ),
       ),
@@ -1443,12 +1502,12 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
             Container(
               padding: EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: (_isEditMode ? Colors.blue[700] : Colors.red[700])?.withOpacity(0.1),
+                color: (_isEditMode ? Colors.blue[700] : Colors.green[700])?.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
                 Icons.calendar_today,
-                color: _isEditMode ? Colors.blue[700] : Colors.red[700],
+                color: _isEditMode ? Colors.blue[700] : Colors.green[700],
                 size: 20,
               ),
             ),
@@ -1461,7 +1520,7 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
                     'Fecha del Checklist',
                     style: TextStyle(
                       fontSize: 12,
-                      color: _isEditMode ? Colors.blue[700] : Colors.red[700],
+                      color: _isEditMode ? Colors.blue[700] : Colors.green[700],
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -1496,8 +1555,8 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
   }
 
   // Widget para las tarjetas de items modernos
-  Widget _buildModernItemCard(ChecklistItem item) {
-    Color primaryColor = _isEditMode ? Colors.blue[700]! : Colors.red[700]!;
+  Widget _buildModernItemCard(ChecklistCosechaItem item) {
+    Color primaryColor = _isEditMode ? Colors.blue[700]! : Colors.green[700]!;
     
     return Container(
       margin: EdgeInsets.only(bottom: 16),
@@ -1641,7 +1700,7 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
                         color: Colors.red[600]!,
                         onPressed: item.valores.min != null 
                             ? () => _updateItemResponse(item.id, 'no', valorNumerico: item.valores.min)
-                            : null,
+                            : () => _updateItemResponse(item.id, 'no', valorNumerico: 0),
                       ),
                     ),
                     SizedBox(width: 12),

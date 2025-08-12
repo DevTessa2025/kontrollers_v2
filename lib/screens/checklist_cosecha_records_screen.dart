@@ -2,17 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
-import '../services/checklist_storage_service.dart';
+import '../services/checklist_cosecha_storage_service.dart';
 import '../services/sql_server_service.dart';
-import '../data/checklist_data.dart';
-import 'checklist_bodega_screen.dart';
+import '../data/checklist_data_cosecha.dart';
+import 'checklist_cosecha_screen.dart';
 
-class ChecklistRecordsScreen extends StatefulWidget {
+class ChecklistCosechaRecordsScreen extends StatefulWidget {
   @override
-  _ChecklistRecordsScreenState createState() => _ChecklistRecordsScreenState();
+  _ChecklistCosechaRecordsScreenState createState() => _ChecklistCosechaRecordsScreenState();
 }
 
-class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
+class _ChecklistCosechaRecordsScreenState extends State<ChecklistCosechaRecordsScreen> {
   List<Map<String, dynamic>> records = [];
   Map<String, int> stats = {};
   bool _isLoading = true;
@@ -30,8 +30,8 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
     });
 
     try {
-      List<Map<String, dynamic>> loadedRecords = await ChecklistStorageService.getLocalChecklists();
-      Map<String, int> loadedStats = await ChecklistStorageService.getLocalStats();
+      List<Map<String, dynamic>> loadedRecords = await ChecklistCosechaStorageService.getLocalChecklists();
+      Map<String, int> loadedStats = await ChecklistCosechaStorageService.getLocalStats();
 
       setState(() {
         records = loadedRecords;
@@ -44,7 +44,7 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
       });
 
       Fluttertoast.showToast(
-        msg: 'Error cargando registros: $e',
+        msg: 'Error cargando registros cosecha: $e',
         backgroundColor: Colors.red[600],
         textColor: Colors.white,
       );
@@ -53,18 +53,18 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
 
   Future<void> _sendToServer(int recordId) async {
     // Verificar que el checklist esté completo antes de enviar
-    bool isComplete = await ChecklistStorageService.isChecklistComplete(recordId);
+    bool isComplete = await ChecklistCosechaStorageService.isChecklistComplete(recordId);
     
     if (!isComplete) {
       bool? continueEdit = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
           title: Text(
-            'Checklist Incompleto',
+            'Checklist Cosecha Incompleto',
             style: TextStyle(color: Colors.orange[800], fontWeight: FontWeight.bold),
           ),
           content: Text(
-            'Este checklist no está completo. No se puede enviar al servidor hasta que todos los ítems tengan una respuesta.\n\n¿Desea continuar llenándolo?'
+            'Este checklist cosecha no está completo. No se puede enviar al servidor hasta que todos los ítems tengan una respuesta.\n\n¿Desea continuar llenándolo?'
           ),
           actions: [
             TextButton(
@@ -100,10 +100,10 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
 
       await SqlServerService.executeQuery(insertQuery);
 
-      await ChecklistStorageService.markAsEnviado(recordId);
+      await ChecklistCosechaStorageService.markAsEnviado(recordId);
 
       Fluttertoast.showToast(
-        msg: 'Registro enviado exitosamente al servidor',
+        msg: 'Registro cosecha enviado exitosamente al servidor',
         backgroundColor: Colors.green[600],
         textColor: Colors.white,
         toastLength: Toast.LENGTH_LONG,
@@ -113,7 +113,7 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
 
     } catch (e) {
       Fluttertoast.showToast(
-        msg: 'Error enviando registro: $e',
+        msg: 'Error enviando registro cosecha: $e',
         backgroundColor: Colors.red[600],
         textColor: Colors.white,
         toastLength: Toast.LENGTH_LONG,
@@ -127,11 +127,11 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
 
   Future<void> _editChecklist(int recordId) async {
     try {
-      ChecklistBodega? checklist = await ChecklistStorageService.getChecklistById(recordId);
+      ChecklistCosecha? checklist = await ChecklistCosechaStorageService.getChecklistById(recordId);
       
       if (checklist == null) {
         Fluttertoast.showToast(
-          msg: 'No se pudo cargar el checklist para editar',
+          msg: 'No se pudo cargar el checklist cosecha para editar',
           backgroundColor: Colors.red[600],
           textColor: Colors.white,
         );
@@ -142,7 +142,7 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
       var record = records.firstWhere((r) => r['id'] == recordId);
       if (record['enviado'] == 1) {
         Fluttertoast.showToast(
-          msg: 'No se puede editar un checklist que ya fue enviado al servidor',
+          msg: 'No se puede editar un checklist cosecha que ya fue enviado al servidor',
           backgroundColor: Colors.orange[600],
           textColor: Colors.white,
         );
@@ -153,7 +153,7 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
       bool? updated = await Navigator.push<bool>(
         context,
         MaterialPageRoute(
-          builder: (context) => ChecklistBodegaScreen(
+          builder: (context) => ChecklistCosechaScreen(
             checklistToEdit: checklist,
             recordId: recordId,
           ),
@@ -167,7 +167,7 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
 
     } catch (e) {
       Fluttertoast.showToast(
-        msg: 'Error cargando checklist para editar: $e',
+        msg: 'Error cargando checklist cosecha para editar: $e',
         backgroundColor: Colors.red[600],
         textColor: Colors.white,
       );
@@ -175,7 +175,7 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
   }
 
   bool _isRecordComplete(Map<String, dynamic> record) {
-    for (int i = 1; i <= 20; i++) {
+    for (int i = 1; i <= 25; i++) { // 25 items en cosecha
       if (record['item_${i}_respuesta'] == null) {
         return false;
       }
@@ -205,16 +205,14 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
 
     List<String> columnNames = [
       'checklist_uuid',
-      'finca_nombre', 'supervisor_id', 'supervisor_nombre', 'pesador_id', 'pesador_nombre',
+      'finca_nombre', 'bloque_nombre', 'variedad_nombre',
       'usuario_id', 'usuario_nombre', 'fecha_creacion', 'porcentaje_cumplimiento', 'fecha_envio'
     ];
     List<String> values = [
       escapeValue(checklistUuid),
       escapeValue(record['finca_nombre']),
-      escapeValue(record['supervisor_id']),
-      escapeValue(record['supervisor_nombre']),
-      escapeValue(record['pesador_id']),
-      escapeValue(record['pesador_nombre']),
+      escapeValue(record['bloque_nombre']),
+      escapeValue(record['variedad_nombre']),
       escapeValue(record['usuario_id']),
       escapeValue(record['usuario_nombre']),
       escapeValue(formatDate(record['fecha_creacion'])),
@@ -222,7 +220,7 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
       'GETDATE()'
     ];
 
-    for (int i = 1; i <= 20; i++) {
+    for (int i = 1; i <= 25; i++) { // 25 items para cosecha
       columnNames.add('item_${i}_respuesta');
       values.add(escapeValue(record['item_${i}_respuesta']));
       columnNames.add('item_${i}_valor_numerico');
@@ -233,7 +231,7 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
       values.add(escapeValue(record['item_${i}_foto_base64']));
     }
 
-    return 'INSERT INTO check_bodega (${columnNames.join(', ')}) VALUES (${values.join(', ')})';
+    return 'INSERT INTO check_cosecha (${columnNames.join(', ')}) VALUES (${values.join(', ')})';
   }
 
   Future<void> _deleteRecord(int recordId) async {
@@ -242,8 +240,8 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
     bool enviado = record['enviado'] == 1;
 
     String confirmMessage = enviado 
-        ? '¿Está seguro que desea eliminar este registro enviado? Esta acción no se puede deshacer.'
-        : '¿Está seguro que desea eliminar este registro? Esta acción no se puede deshacer.';
+        ? '¿Está seguro que desea eliminar este registro cosecha enviado? Esta acción no se puede deshacer.'
+        : '¿Está seguro que desea eliminar este registro cosecha? Esta acción no se puede deshacer.';
 
     bool? confirm = await showDialog<bool>(
       context: context,
@@ -272,17 +270,17 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
 
     if (confirm == true) {
       try {
-        await ChecklistStorageService.deleteLocalChecklist(recordId);
+        await ChecklistCosechaStorageService.deleteLocalChecklist(recordId);
         await _loadRecords();
 
         Fluttertoast.showToast(
-          msg: 'Registro eliminado correctamente',
+          msg: 'Registro cosecha eliminado correctamente',
           backgroundColor: Colors.orange[600],
           textColor: Colors.white,
         );
       } catch (e) {
         Fluttertoast.showToast(
-          msg: 'Error eliminando registro: $e',
+          msg: 'Error eliminando registro cosecha: $e',
           backgroundColor: Colors.red[600],
           textColor: Colors.white,
         );
@@ -292,10 +290,10 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
 
   Future<void> _viewChecklistDetails(int recordId) async {
     try {
-      ChecklistBodega? checklist = await ChecklistStorageService.getChecklistById(recordId);
+      ChecklistCosecha? checklist = await ChecklistCosechaStorageService.getChecklistById(recordId);
       if (checklist == null) {
         Fluttertoast.showToast(
-          msg: 'No se pudo cargar el checklist',
+          msg: 'No se pudo cargar el checklist cosecha',
           backgroundColor: Colors.red[600],
           textColor: Colors.white,
         );
@@ -306,8 +304,8 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
         context: context,
         builder: (context) => AlertDialog(
           title: Text(
-            'Detalles del Checklist',
-            style: TextStyle(color: Colors.red[800], fontWeight: FontWeight.bold),
+            'Detalles del Checklist Cosecha',
+            style: TextStyle(color: Colors.green[800], fontWeight: FontWeight.bold),
           ),
           content: SingleChildScrollView(
             child: Column(
@@ -315,8 +313,8 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 _buildDetailRow('Finca:', checklist.finca?.nombre ?? "No seleccionada"),
-                _buildDetailRow('Supervisor:', checklist.supervisor?.nombre ?? "No seleccionado"),
-                _buildDetailRow('Pesador:', checklist.pesador?.nombre ?? "No seleccionado"),
+                _buildDetailRow('Bloque:', checklist.bloque?.nombre ?? "No seleccionado"),
+                _buildDetailRow('Variedad:', checklist.variedad?.nombre ?? "No seleccionada"),
                 _buildDetailRow('Fecha:', checklist.fecha != null 
                     ? '${checklist.fecha!.day.toString().padLeft(2, '0')}/${checklist.fecha!.month.toString().padLeft(2, '0')}/${checklist.fecha!.year}'
                     : 'No definida'),
@@ -326,16 +324,16 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
                 Container(
                   padding: EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.red[50],
+                    color: Colors.green[50],
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.red[200]!),
+                    border: Border.all(color: Colors.green[200]!),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         'Cumplimiento General',
-                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red[800]),
+                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green[800]),
                       ),
                       SizedBox(height: 8),
                       Text(
@@ -343,7 +341,7 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
                         style: TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
-                          color: Colors.red[700],
+                          color: Colors.green[700],
                         ),
                       ),
                     ],
@@ -404,7 +402,7 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
       );
     } catch (e) {
       Fluttertoast.showToast(
-        msg: 'Error cargando detalles: $e',
+        msg: 'Error cargando detalles cosecha: $e',
         backgroundColor: Colors.red[600],
         textColor: Colors.white,
       );
@@ -441,10 +439,10 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
       backgroundColor: Colors.white,
       appBar: AppBar(
         title: Text(
-          'Registros Locales',
+          'Registros Cosecha',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
-        backgroundColor: Colors.red[700],
+        backgroundColor: Colors.green[700],
         iconTheme: IconThemeData(color: Colors.white),
         actions: [
           IconButton(
@@ -459,24 +457,24 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  CircularProgressIndicator(color: Colors.red[700]),
+                  CircularProgressIndicator(color: Colors.green[700]),
                   SizedBox(height: 16),
                   Text(
-                    'Cargando registros...',
-                    style: TextStyle(color: Colors.red[700], fontSize: 16),
+                    'Cargando registros cosecha...',
+                    style: TextStyle(color: Colors.green[700], fontSize: 16),
                   ),
                 ],
               ),
             )
           : Column(
               children: [
-                // Estadísticas mejoradas
+                // Estadísticas mejoradas con tema verde
                 Container(
                   width: double.infinity,
                   padding: EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.red[50],
-                    border: Border(bottom: BorderSide(color: Colors.red[200]!)),
+                    color: Colors.green[50],
+                    border: Border(bottom: BorderSide(color: Colors.green[200]!)),
                   ),
                   child: Column(
                     children: [
@@ -501,13 +499,13 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Icon(
-                                Icons.inbox_outlined,
+                                Icons.grass_outlined,
                                 size: 64,
                                 color: Colors.grey[400],
                               ),
                               SizedBox(height: 16),
                               Text(
-                                'No hay registros guardados',
+                                'No hay registros cosecha guardados',
                                 style: TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.w600,
@@ -516,7 +514,7 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
                               ),
                               SizedBox(height: 8),
                               Text(
-                                'Los checklist guardados aparecerán aquí',
+                                'Los checklist cosecha guardados aparecerán aquí',
                                 style: TextStyle(
                                   fontSize: 14,
                                   color: Colors.grey[500],
@@ -640,14 +638,14 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
                                               ),
                                               SizedBox(height: 6),
                                               Text(
-                                                'Supervisor: ${record['supervisor_nombre'] ?? "N/A"}',
+                                                'Bloque: ${record['bloque_nombre'] ?? "N/A"}',
                                                 style: TextStyle(
                                                   fontSize: 13,
                                                   color: Colors.grey[600],
                                                 ),
                                               ),
                                               Text(
-                                                'Pesador: ${record['pesador_nombre'] ?? "N/A"}',
+                                                'Variedad: ${record['variedad_nombre'] ?? "N/A"}',
                                                 style: TextStyle(
                                                   fontSize: 13,
                                                   color: Colors.grey[600],
@@ -671,9 +669,9 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
                                               width: 50,
                                               height: 50,
                                               decoration: BoxDecoration(
-                                                color: Colors.red[50],
+                                                color: Colors.green[50],
                                                 shape: BoxShape.circle,
-                                                border: Border.all(color: Colors.red[200]!),
+                                                border: Border.all(color: Colors.green[200]!),
                                               ),
                                               child: Center(
                                                 child: Text(
@@ -681,7 +679,7 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
                                                   style: TextStyle(
                                                     fontSize: 12,
                                                     fontWeight: FontWeight.bold,
-                                                    color: Colors.red[700],
+                                                    color: Colors.green[700],
                                                   ),
                                                 ),
                                               ),

@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../database/database_helper.dart';
-import 'sql_server_service.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import '../database/database_helper.dart';
+import '../services/sql_server_service.dart';
+import '../services/cosecha_dropdown_service.dart';
 
 class AuthService {
   static const String _isLoggedInKey = 'isLoggedIn';
@@ -9,196 +11,139 @@ class AuthService {
   static const String _usernameKey = 'username';
   static const String _nameKey = 'name';
   static const String _lastValidationKey = 'lastValidation';
-  static const int _validationIntervalHours = 4; // Validar cada 4 horas
 
-  // Login offline/online
+  // Login del usuario (offline first)
   static Future<Map<String, dynamic>?> login(String username, String password) async {
     try {
       // Primero intentar login offline
       DatabaseHelper dbHelper = DatabaseHelper();
-      Map<String, dynamic>? user = await dbHelper.getUser(username, password);
+      Map<String, dynamic>? localUser = await dbHelper.getUser(username, password);
       
-      if (user != null) {
-        // Verificar si el usuario está activo localmente
-        if (user['activo'] != 1) {
-          return {
-            'success': false,
-            'message': 'Usuario desactivado',
-            'mode': 'offline'
-          };
-        }
-
-        // Login exitoso offline
-        await _saveUserSession(user);
-        return {
-          'success': true,
-          'user': user,
-          'mode': 'offline'
-        };
-      }
-
-      // Si no hay usuario offline, verificar conectividad
-      var connectivityResult = await (Connectivity().checkConnectivity());
-      if (connectivityResult == ConnectivityResult.none) {
-        return {
-          'success': false,
-          'message': 'No hay conexión y no se encontraron credenciales offline',
-          'mode': 'offline'
-        };
-      }
-
-      // Intentar login online directo al servidor
-      Map<String, dynamic>? serverUser = await SqlServerService.authenticateUser(username, password);
-      
-      if (serverUser != null) {
-        // Verificar si el usuario está activo en el servidor
-        if (serverUser['activo'] != 1) {
-          return {
-            'success': false,
-            'message': 'Usuario desactivado en el servidor',
-            'mode': 'online'
-          };
-        }
-
-        // Login exitoso online - guardar usuario localmente con el estado activo
-        await dbHelper.insertOrUpdateUser(serverUser);
-        await _saveUserSession(serverUser);
+      if (localUser != null) {
+        print('Login offline exitoso para usuario: $username');
+        await _saveUserSession(localUser);
         
-        // Marcar como validado recientemente
-        SharedPreferences prefs = await SharedPreferences.getInstance();
-        await prefs.setInt(_lastValidationKey, DateTime.now().millisecondsSinceEpoch);
+        // Si hay conexión, validar con servidor
+        if (await hasInternetConnection()) {
+          try {
+            Map<String, dynamic>? serverUser = await SqlServerService.authenticateUser(username, password);
+            if (serverUser != null && serverUser['activo'] == 1) {
+              // Actualizar datos locales con datos del servidor
+              await dbHelper.insertOrUpdateUser(serverUser);
+              await _saveUserSession(serverUser);
+              print('Login validado con servidor para usuario: $username');
+              return {
+                'success': true,
+                'mode': 'online',
+                'user': serverUser
+              };
+            } else if (serverUser != null && serverUser['activo'] != 1) {
+              await logout();
+              return {
+                'success': false,
+                'message': 'Usuario desactivado en el servidor'
+              };
+            }
+          } catch (e) {
+            print('Error validando con servidor, usando datos locales: $e');
+          }
+        }
         
         return {
           'success': true,
-          'user': serverUser,
-          'mode': 'online'
+          'mode': 'offline',
+          'user': localUser
         };
+      }
+
+      // Si no hay usuario local y hay conexión, intentar login con servidor
+      if (await hasInternetConnection()) {
+        try {
+          Map<String, dynamic>? serverUser = await SqlServerService.authenticateUser(username, password);
+          if (serverUser != null && serverUser['activo'] == 1) {
+            // Guardar usuario en base local
+            await dbHelper.insertOrUpdateUser(serverUser);
+            await _saveUserSession(serverUser);
+            print('Login online exitoso para usuario: $username');
+            return {
+              'success': true,
+              'mode': 'online',
+              'user': serverUser
+            };
+          }
+        } catch (e) {
+          print('Error en login online: $e');
+        }
       }
 
       return {
         'success': false,
-        'message': 'Credenciales incorrectas',
-        'mode': 'online'
+        'message': 'Credenciales inválidas o sin conexión'
       };
 
     } catch (e) {
       return {
         'success': false,
-        'message': 'Error durante el login: $e',
+        'message': 'Error durante el login: $e'
       };
     }
   }
 
-  // Validar usuario activo periódicamente
-  static Future<bool> validateActiveUser() async {
+  // Validar usuario de forma silenciosa (para mantener sesión)
+  static Future<bool> validateUserQuietly() async {
     try {
       Map<String, dynamic>? currentUser = await getCurrentUser();
-      if (currentUser == null) {
-        print('No hay usuario en sesión');
-        return false;
+      if (currentUser == null) return false;
+
+      // Verificar si necesita validación con servidor
+      if (!await needsServerValidation()) {
+        return true;
       }
 
-      print('Validando usuario activo: ${currentUser['username']} (ID: ${currentUser['id']})');
-
-      // SIEMPRE verificar primero datos locales
-      DatabaseHelper dbHelper = DatabaseHelper();
-      Map<String, dynamic>? localUser = await dbHelper.getUserById(currentUser['id']);
-      
-      if (localUser == null) {
-        print('Usuario no encontrado localmente');
-        await logout();
-        return false;
-      }
-
-      print('Estado del usuario local - activo: ${localUser['activo']}');
-      
-      // Si el usuario está desactivado localmente, cerrar sesión
-      if (localUser['activo'] != 1) {
-        print('Usuario desactivado localmente, cerrando sesión');
-        await logout();
-        return false;
-      }
-
-      // Si hay conexión, verificar estado en el servidor y actualizar local
+      // Si hay conexión, validar con servidor
       if (await hasInternetConnection()) {
-        print('Hay conexión, verificando en servidor para actualizar...');
-        
         try {
           Map<String, dynamic>? serverUser = await SqlServerService.getUserById(currentUser['id']);
           
           if (serverUser != null) {
-            print('Estado del usuario en servidor - activo: ${serverUser['activo']}');
-            
-            // Actualizar usuario local con datos del servidor
+            DatabaseHelper dbHelper = DatabaseHelper();
             await dbHelper.insertOrUpdateUser(serverUser);
             
-            // Si el servidor dice que está desactivado, cerrar sesión
             if (serverUser['activo'] != 1) {
-              print('Usuario desactivado en servidor, cerrando sesión');
+              print('Usuario desactivado en servidor durante validación silenciosa');
               await logout();
               return false;
             }
             
-            // Actualizar timestamp de validación
+            // Actualizar timestamp
             SharedPreferences prefs = await SharedPreferences.getInstance();
             await prefs.setInt(_lastValidationKey, DateTime.now().millisecondsSinceEpoch);
             
-            print('Usuario validado y actualizado desde servidor');
-          } else {
-            print('Usuario no encontrado en servidor, pero mantener sesión con datos locales');
-            // No cerrar sesión si no se encuentra en servidor, mantener estado local
+            print('Validación silenciosa exitosa con servidor');
           }
         } catch (e) {
-          print('Error consultando servidor, mantener validación local: $e');
-          // En caso de error del servidor, confiar en datos locales
+          print('Error en validación silenciosa con servidor: $e');
         }
-      } else {
-        print('Sin conexión, validación basada en datos locales exitosa');
       }
       
       return true;
+      
     } catch (e) {
-      print('Error validating user: $e');
-      // En caso de error, mantener sesión
-      return true;
+      print('Error en validación silenciosa: $e');
+      return true; // En caso de error, mantener sesión
     }
   }
 
-  // Forzar validación inmediata (sin cache de tiempo)
-  static Future<bool> forceValidateActiveUser() async {
+  // Validar usuario de forma forzada
+  static Future<bool> validateUserForced() async {
     try {
       Map<String, dynamic>? currentUser = await getCurrentUser();
-      if (currentUser == null) {
-        print('No hay usuario en sesión para validación forzada');
-        return false;
-      }
+      if (currentUser == null) return false;
 
-      print('Validación forzada para usuario: ${currentUser['username']} (ID: ${currentUser['id']})');
-
-      // SIEMPRE verificar primero datos locales
-      DatabaseHelper dbHelper = DatabaseHelper();
-      Map<String, dynamic>? localUser = await dbHelper.getUserById(currentUser['id']);
-      
-      if (localUser == null) {
-        print('Usuario no encontrado localmente durante validación forzada');
-        await logout();
-        return false;
-      }
-
-      print('Validación forzada - Estado local, activo: ${localUser['activo']}');
-      
-      // Si está desactivado localmente, cerrar sesión inmediatamente
-      if (localUser['activo'] != 1) {
-        print('Usuario desactivado localmente durante validación forzada');
-        await logout();
-        return false;
-      }
-
-      // Si hay conexión, intentar validar con servidor
+      // Si hay conexión, validar con servidor obligatoriamente
       if (await hasInternetConnection()) {
-        print('Conexión disponible para validación forzada en servidor');
-        
         try {
+          DatabaseHelper dbHelper = DatabaseHelper();
           Map<String, dynamic>? serverUser = await SqlServerService.getUserById(currentUser['id']);
           
           if (serverUser != null) {
@@ -262,23 +207,43 @@ class AuthService {
         usersSynced++;
       }
 
-      // Sincronizar datos de dropdown directamente
-      int dropdownSynced = 0;
-      String dropdownMessage = '';
+      // Sincronizar datos de dropdown de BODEGA
+      int bodegaDropdownSynced = 0;
+      String bodegaDropdownMessage = '';
       try {
-        dropdownSynced = await _syncDropdownData();
-        dropdownMessage = 'Dropdown sincronizado correctamente.';
+        bodegaDropdownSynced = await _syncBodegaDropdownData();
+        bodegaDropdownMessage = 'Datos de bodega sincronizados correctamente.';
       } catch (e) {
-        dropdownMessage = 'Error sincronizando dropdown: $e';
-        print('Error sincronizando datos de dropdown: $e');
+        bodegaDropdownMessage = 'Error sincronizando datos de bodega: $e';
+        print('Error sincronizando datos de bodega: $e');
       }
+
+      // Sincronizar datos de dropdown de COSECHA
+      int cosechaDropdownSynced = 0;
+      String cosechaDropdownMessage = '';
+      try {
+        Map<String, dynamic> cosechaResult = await CosechaDropdownService.syncCosechaData();
+        if (cosechaResult['success']) {
+          cosechaDropdownSynced = cosechaResult['count'] ?? 0;
+          cosechaDropdownMessage = 'Datos de cosecha sincronizados correctamente.';
+        } else {
+          cosechaDropdownMessage = 'Error sincronizando datos de cosecha: ${cosechaResult['message']}';
+        }
+      } catch (e) {
+        cosechaDropdownMessage = 'Error sincronizando datos de cosecha: $e';
+        print('Error sincronizando datos de cosecha: $e');
+      }
+
+      int totalDropdown = bodegaDropdownSynced + cosechaDropdownSynced;
 
       return {
         'success': true,
-        'message': 'Sincronización exitosa. $usersSynced usuarios y $dropdownSynced datos adicionales sincronizados. $dropdownMessage',
-        'count': usersSynced + dropdownSynced,
+        'message': 'Sincronización exitosa. $usersSynced usuarios, $bodegaDropdownSynced datos de bodega y $cosechaDropdownSynced datos de cosecha sincronizados. $bodegaDropdownMessage $cosechaDropdownMessage',
+        'count': usersSynced + totalDropdown,
         'usersSynced': usersSynced,
-        'dropdownSynced': dropdownSynced
+        'dropdownSynced': totalDropdown,
+        'bodegaDropdownSynced': bodegaDropdownSynced,
+        'cosechaDropdownSynced': cosechaDropdownSynced
       };
 
     } catch (e) {
@@ -289,8 +254,8 @@ class AuthService {
     }
   }
 
-  // Método privado para sincronizar datos de dropdown
-  static Future<int> _syncDropdownData() async {
+  // Método privado para sincronizar datos de dropdown de bodega
+  static Future<int> _syncBodegaDropdownData() async {
     try {
       DatabaseHelper dbHelper = DatabaseHelper();
       int totalSynced = 0;
@@ -365,7 +330,7 @@ class AuthService {
 
       return totalSynced;
     } catch (e) {
-      print('Error en _syncDropdownData: $e');
+      print('Error en _syncBodegaDropdownData: $e');
       return 0;
     }
   }
@@ -417,23 +382,20 @@ class AuthService {
       SharedPreferences prefs = await SharedPreferences.getInstance();
       int? lastValidation = prefs.getInt(_lastValidationKey);
       
-      if (lastValidation == null) {
-        return true; // Nunca se ha validado con servidor
-      }
+      if (lastValidation == null) return true;
       
       DateTime lastValidationDate = DateTime.fromMillisecondsSinceEpoch(lastValidation);
       DateTime now = DateTime.now();
       Duration difference = now.difference(lastValidationDate);
       
-      // Necesita validación si han pasado más de 4 horas
-      return difference.inHours >= _validationIntervalHours;
+      // Validar cada 2 horas
+      return difference.inHours >= 2;
     } catch (e) {
-      print('Error checking validation time: $e');
-      return true; // En caso de error, asumir que necesita validación
+      return true;
     }
   }
 
-  // Obtener información de la última validación
+  // Obtener información de validación para mostrar en UI
   static Future<Map<String, dynamic>> getValidationInfo() async {
     try {
       SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -442,9 +404,8 @@ class AuthService {
       if (lastValidation == null) {
         return {
           'hasBeenValidated': false,
-          'lastValidation': null,
-          'hoursAgo': null,
           'needsValidation': true,
+          'hoursAgo': null,
         };
       }
       
@@ -454,18 +415,18 @@ class AuthService {
       
       return {
         'hasBeenValidated': true,
-        'lastValidation': lastValidationDate,
+        'needsValidation': difference.inHours >= 2,
         'hoursAgo': difference.inHours,
-        'needsValidation': difference.inHours >= _validationIntervalHours,
       };
     } catch (e) {
-      print('Error getting validation info: $e');
       return {
         'hasBeenValidated': false,
-        'lastValidation': null,
-        'hoursAgo': null,
         'needsValidation': true,
+        'hoursAgo': null,
       };
     }
   }
+  static Future<bool> forceValidateActiveUser() async {
+  return await validateUserForced();
+}
 }

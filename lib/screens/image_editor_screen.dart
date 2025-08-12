@@ -5,9 +5,15 @@ import 'package:flutter/rendering.dart';
 import '../services/image_service.dart';
 
 class ImageEditorScreen extends StatefulWidget {
-  final String base64Image;
+  final String? imagePath;
+  final String? base64Image;
 
-  ImageEditorScreen({required this.base64Image});
+  // Constructor que acepta ambos tipos
+  ImageEditorScreen({
+    this.imagePath,
+    this.base64Image,
+  }) : assert(imagePath != null || base64Image != null, 
+             'Debe proporcionar imagePath o base64Image');
 
   @override
   _ImageEditorScreenState createState() => _ImageEditorScreenState();
@@ -31,7 +37,7 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
   @override
   void initState() {
     super.initState();
-    originalImageBytes = ImageService.base64ToBytes(widget.base64Image);
+    originalImageBytes = ImageService.base64ToBytes(widget.base64Image!);
     _loadBackgroundImage();
   }
 

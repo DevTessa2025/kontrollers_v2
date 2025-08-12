@@ -23,14 +23,14 @@ class DatabaseHelper {
     
     return await openDatabase(
       path,
-      version: 2, // Incrementar versión para agregar nuevas tablas
+      version: 3,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
   }
 
   Future<void> _onCreate(Database db, int version) async {
-    // Tabla de usuarios (existente)
+    // Tablas existentes
     await db.execute('''
       CREATE TABLE usuarios_local (
         id INTEGER PRIMARY KEY,
@@ -43,8 +43,6 @@ class DatabaseHelper {
         fecha_actualizacion TEXT
       )
     ''');
-
-    // Tabla de supervisores
     await db.execute('''
       CREATE TABLE supervisores_local (
         id INTEGER PRIMARY KEY,
@@ -54,8 +52,6 @@ class DatabaseHelper {
         fecha_actualizacion TEXT
       )
     ''');
-
-    // Tabla de pesadores
     await db.execute('''
       CREATE TABLE pesadores_local (
         id INTEGER PRIMARY KEY,
@@ -65,8 +61,6 @@ class DatabaseHelper {
         fecha_actualizacion TEXT
       )
     ''');
-
-    // Tabla de fincas
     await db.execute('''
       CREATE TABLE fincas_local (
         nombre TEXT PRIMARY KEY,
@@ -74,11 +68,32 @@ class DatabaseHelper {
         fecha_actualizacion TEXT
       )
     ''');
+    
+    // Tablas para Cosecha (añadidas)
+    await db.execute('''
+      CREATE TABLE bloques_local (
+        nombre TEXT NOT NULL,
+        finca TEXT NOT NULL,
+        activo INTEGER DEFAULT 1,
+        fecha_actualizacion TEXT,
+        PRIMARY KEY (nombre, finca)
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE variedades_local (
+        nombre TEXT NOT NULL,
+        finca TEXT NOT NULL,
+        bloque TEXT NOT NULL,
+        activo INTEGER DEFAULT 1,
+        fecha_actualizacion TEXT,
+        PRIMARY KEY (nombre, finca, bloque)
+      )
+    ''');
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
-      // Agregar las nuevas tablas en la actualización
+      // Código de la versión 2 (tablas de supervisores, pesadores y fincas)
       await db.execute('''
         CREATE TABLE supervisores_local (
           id INTEGER PRIMARY KEY,
@@ -88,7 +103,6 @@ class DatabaseHelper {
           fecha_actualizacion TEXT
         )
       ''');
-
       await db.execute('''
         CREATE TABLE pesadores_local (
           id INTEGER PRIMARY KEY,
@@ -98,7 +112,6 @@ class DatabaseHelper {
           fecha_actualizacion TEXT
         )
       ''');
-
       await db.execute('''
         CREATE TABLE fincas_local (
           nombre TEXT PRIMARY KEY,
@@ -107,15 +120,38 @@ class DatabaseHelper {
         )
       ''');
     }
+    
+    if (oldVersion < 3) {
+      // Código de la versión 3 (tablas de bloques y variedades)
+      await db.execute('''
+        CREATE TABLE bloques_local (
+          nombre TEXT NOT NULL,
+          finca TEXT NOT NULL,
+          activo INTEGER DEFAULT 1,
+          fecha_actualizacion TEXT,
+          PRIMARY KEY (nombre, finca)
+        )
+      ''');
+      await db.execute('''
+        CREATE TABLE variedades_local (
+          nombre TEXT NOT NULL,
+          finca TEXT NOT NULL,
+          bloque TEXT NOT NULL,
+          activo INTEGER DEFAULT 1,
+          fecha_actualizacion TEXT,
+          PRIMARY KEY (nombre, finca, bloque)
+        )
+      ''');
+    }
   }
 
-  // ==================== MÉTODOS USUARIOS (existentes) ====================
-  
+  // ==================== MÉTODOS EXISTENTES ====================
+
+  // Métodos Usuarios
   Future<int> insertUser(Map<String, dynamic> user) async {
     Database db = await database;
     return await db.insert('usuarios_local', user);
   }
-
   Future<Map<String, dynamic>?> getUser(String username, String password) async {
     Database db = await database;
     List<Map<String, dynamic>> maps = await db.query(
@@ -123,13 +159,11 @@ class DatabaseHelper {
       where: 'username = ? AND password = ? AND activo = 1',
       whereArgs: [username, password],
     );
-    
     if (maps.isNotEmpty) {
       return maps.first;
     }
     return null;
   }
-
   Future<Map<String, dynamic>?> getUserById(int id) async {
     Database db = await database;
     List<Map<String, dynamic>> maps = await db.query(
@@ -137,13 +171,11 @@ class DatabaseHelper {
       where: 'id = ?',
       whereArgs: [id],
     );
-    
     if (maps.isNotEmpty) {
       return maps.first;
     }
     return null;
   }
-
   Future<int> updateUser(Map<String, dynamic> user) async {
     Database db = await database;
     return await db.update(
@@ -153,217 +185,189 @@ class DatabaseHelper {
       whereArgs: [user['id']],
     );
   }
-
   Future<void> insertOrUpdateUser(Map<String, dynamic> user) async {
     Database db = await database;
-    
     List<Map<String, dynamic>> existing = await db.query(
       'usuarios_local',
       where: 'id = ?',
       whereArgs: [user['id']],
     );
-    
     if (existing.isNotEmpty) {
-      await db.update(
-        'usuarios_local',
-        user,
-        where: 'id = ?',
-        whereArgs: [user['id']],
-      );
+      await db.update('usuarios_local', user, where: 'id = ?', whereArgs: [user['id']]);
     } else {
       await db.insert('usuarios_local', user);
     }
   }
-
   Future<void> clearUsers() async {
     Database db = await database;
     await db.delete('usuarios_local');
   }
-
   Future<List<Map<String, dynamic>>> getAllUsers() async {
     Database db = await database;
     return await db.query('usuarios_local');
   }
 
-  // ==================== MÉTODOS SUPERVISORES ====================
-  
+  // Métodos Supervisores
   Future<int> insertSupervisor(Map<String, dynamic> supervisor) async {
     Database db = await database;
     return await db.insert('supervisores_local', supervisor);
   }
-
   Future<void> insertOrUpdateSupervisor(Map<String, dynamic> supervisor) async {
     Database db = await database;
-    
     List<Map<String, dynamic>> existing = await db.query(
       'supervisores_local',
       where: 'id = ?',
       whereArgs: [supervisor['id']],
     );
-    
     if (existing.isNotEmpty) {
-      await db.update(
-        'supervisores_local',
-        supervisor,
-        where: 'id = ?',
-        whereArgs: [supervisor['id']],
-      );
+      await db.update('supervisores_local', supervisor, where: 'id = ?', whereArgs: [supervisor['id']]);
     } else {
       await db.insert('supervisores_local', supervisor);
     }
   }
-
   Future<List<Map<String, dynamic>>> getAllSupervisores() async {
     Database db = await database;
-    return await db.query(
-      'supervisores_local',
-      where: 'activo = 1',
-      orderBy: 'nombre',
-    );
+    return await db.query('supervisores_local', where: 'activo = 1', orderBy: 'nombre');
   }
-
   Future<Map<String, dynamic>?> getSupervisorById(int id) async {
     Database db = await database;
-    List<Map<String, dynamic>> maps = await db.query(
-      'supervisores_local',
-      where: 'id = ? AND activo = 1',
-      whereArgs: [id],
-    );
-    
+    List<Map<String, dynamic>> maps = await db.query('supervisores_local', where: 'id = ? AND activo = 1', whereArgs: [id]);
     if (maps.isNotEmpty) {
       return maps.first;
     }
     return null;
   }
-
   Future<void> clearSupervisores() async {
     Database db = await database;
     await db.delete('supervisores_local');
   }
 
-  // ==================== MÉTODOS PESADORES ====================
-  
+  // Métodos Pesadores
   Future<int> insertPesador(Map<String, dynamic> pesador) async {
     Database db = await database;
     return await db.insert('pesadores_local', pesador);
   }
-
   Future<void> insertOrUpdatePesador(Map<String, dynamic> pesador) async {
     Database db = await database;
-    
-    List<Map<String, dynamic>> existing = await db.query(
-      'pesadores_local',
-      where: 'id = ?',
-      whereArgs: [pesador['id']],
-    );
-    
+    List<Map<String, dynamic>> existing = await db.query('pesadores_local', where: 'id = ?', whereArgs: [pesador['id']]);
     if (existing.isNotEmpty) {
-      await db.update(
-        'pesadores_local',
-        pesador,
-        where: 'id = ?',
-        whereArgs: [pesador['id']],
-      );
+      await db.update('pesadores_local', pesador, where: 'id = ?', whereArgs: [pesador['id']]);
     } else {
       await db.insert('pesadores_local', pesador);
     }
   }
-
   Future<List<Map<String, dynamic>>> getAllPesadores() async {
     Database db = await database;
-    return await db.query(
-      'pesadores_local',
-      where: 'activo = 1',
-      orderBy: 'nombre',
-    );
+    return await db.query('pesadores_local', where: 'activo = 1', orderBy: 'nombre');
   }
-
   Future<Map<String, dynamic>?> getPesadorById(int id) async {
     Database db = await database;
-    List<Map<String, dynamic>> maps = await db.query(
-      'pesadores_local',
-      where: 'id = ? AND activo = 1',
-      whereArgs: [id],
-    );
-    
+    List<Map<String, dynamic>> maps = await db.query('pesadores_local', where: 'id = ? AND activo = 1', whereArgs: [id]);
     if (maps.isNotEmpty) {
       return maps.first;
     }
     return null;
   }
-
   Future<void> clearPesadores() async {
     Database db = await database;
     await db.delete('pesadores_local');
   }
 
-  // ==================== MÉTODOS FINCAS ====================
-  
+  // Métodos Fincas
   Future<int> insertFinca(Map<String, dynamic> finca) async {
     Database db = await database;
     return await db.insert('fincas_local', finca);
   }
-
   Future<void> insertOrUpdateFinca(Map<String, dynamic> finca) async {
     Database db = await database;
-    
-    List<Map<String, dynamic>> existing = await db.query(
-      'fincas_local',
-      where: 'nombre = ?',
-      whereArgs: [finca['nombre']],
-    );
-    
+    List<Map<String, dynamic>> existing = await db.query('fincas_local', where: 'nombre = ?', whereArgs: [finca['nombre']]);
     if (existing.isNotEmpty) {
-      await db.update(
-        'fincas_local',
-        finca,
-        where: 'nombre = ?',
-        whereArgs: [finca['nombre']],
-      );
+      await db.update('fincas_local', finca, where: 'nombre = ?', whereArgs: [finca['nombre']]);
     } else {
       await db.insert('fincas_local', finca);
     }
   }
-
   Future<List<Map<String, dynamic>>> getAllFincas() async {
     Database db = await database;
-    return await db.query(
-      'fincas_local',
-      where: 'activo = 1',
-      orderBy: 'nombre',
-    );
+    return await db.query('fincas_local', where: 'activo = 1', orderBy: 'nombre');
   }
-
   Future<Map<String, dynamic>?> getFincaByNombre(String nombre) async {
     Database db = await database;
-    List<Map<String, dynamic>> maps = await db.query(
-      'fincas_local',
-      where: 'nombre = ? AND activo = 1',
-      whereArgs: [nombre],
-    );
-    
+    List<Map<String, dynamic>> maps = await db.query('fincas_local', where: 'nombre = ? AND activo = 1', whereArgs: [nombre]);
     if (maps.isNotEmpty) {
       return maps.first;
     }
     return null;
   }
-
   Future<void> clearFincas() async {
     Database db = await database;
     await db.delete('fincas_local');
   }
 
-  // ==================== MÉTODOS GENERALES ====================
+  // ==================== MÉTODOS NUEVOS (Cosecha) ====================
+
+  // Métodos Bloques
+  Future<void> insertOrUpdateBloque(Map<String, dynamic> bloque) async {
+    Database db = await database;
+    List<Map<String, dynamic>> existing = await db.query('bloques_local', where: 'nombre = ? AND finca = ?', whereArgs: [bloque['nombre'], bloque['finca']]);
+    if (existing.isNotEmpty) {
+      await db.update('bloques_local', bloque, where: 'nombre = ? AND finca = ?', whereArgs: [bloque['nombre'], bloque['finca']]);
+    } else {
+      await db.insert('bloques_local', bloque);
+    }
+  }
+  Future<List<Map<String, dynamic>>> getBloquesByFinca(String finca) async {
+    Database db = await database;
+    return await db.query('bloques_local', where: 'finca = ? AND activo = 1', whereArgs: [finca], orderBy: 'nombre');
+  }
+  Future<Map<String, dynamic>?> getBloqueByNombre(String nombre, String finca) async {
+    Database db = await database;
+    List<Map<String, dynamic>> maps = await db.query('bloques_local', where: 'nombre = ? AND finca = ? AND activo = 1', whereArgs: [nombre, finca]);
+    if (maps.isNotEmpty) {
+      return maps.first;
+    }
+    return null;
+  }
+  Future<void> clearBloques() async {
+    Database db = await database;
+    await db.delete('bloques_local');
+  }
+
+  // Métodos Variedades
+  Future<void> insertOrUpdateVariedad(Map<String, dynamic> variedad) async {
+    Database db = await database;
+    List<Map<String, dynamic>> existing = await db.query('variedades_local', where: 'nombre = ? AND finca = ? AND bloque = ?', whereArgs: [variedad['nombre'], variedad['finca'], variedad['bloque']]);
+    if (existing.isNotEmpty) {
+      await db.update('variedades_local', variedad, where: 'nombre = ? AND finca = ? AND bloque = ?', whereArgs: [variedad['nombre'], variedad['finca'], variedad['bloque']]);
+    } else {
+      await db.insert('variedades_local', variedad);
+    }
+  }
+  Future<List<Map<String, dynamic>>> getVariedadesByFincaAndBloque(String finca, String bloque) async {
+    Database db = await database;
+    return await db.query('variedades_local', where: 'finca = ? AND bloque = ? AND activo = 1', whereArgs: [finca, bloque], orderBy: 'nombre');
+  }
+  Future<Map<String, dynamic>?> getVariedadByNombre(String nombre, String finca, String bloque) async {
+    Database db = await database;
+    List<Map<String, dynamic>> maps = await db.query('variedades_local', where: 'nombre = ? AND finca = ? AND bloque = ? AND activo = 1', whereArgs: [nombre, finca, bloque]);
+    if (maps.isNotEmpty) {
+      return maps.first;
+    }
+    return null;
+  }
+  Future<void> clearVariedades() async {
+    Database db = await database;
+    await db.delete('variedades_local');
+  }
+
+  // ==================== MÉTODOS GENERALES (Actualizados) ====================
   
-  // Obtener estadísticas de la base de datos
   Future<Map<String, int>> getDatabaseStats() async {
     Database db = await database;
-    
     List<Map<String, dynamic>> usuarios = await db.rawQuery('SELECT COUNT(*) as count FROM usuarios_local WHERE activo = 1');
     List<Map<String, dynamic>> supervisores = await db.rawQuery('SELECT COUNT(*) as count FROM supervisores_local WHERE activo = 1');
     List<Map<String, dynamic>> pesadores = await db.rawQuery('SELECT COUNT(*) as count FROM pesadores_local WHERE activo = 1');
     List<Map<String, dynamic>> fincas = await db.rawQuery('SELECT COUNT(*) as count FROM fincas_local WHERE activo = 1');
-    
     return {
       'usuarios': usuarios.first['count'] ?? 0,
       'supervisores': supervisores.first['count'] ?? 0,
@@ -371,17 +375,29 @@ class DatabaseHelper {
       'fincas': fincas.first['count'] ?? 0,
     };
   }
+  
+  Future<Map<String, int>> getCosechaDatabaseStats() async {
+    Database db = await database;
+    List<Map<String, dynamic>> fincas = await db.rawQuery('SELECT COUNT(*) as count FROM fincas_local WHERE activo = 1');
+    List<Map<String, dynamic>> bloques = await db.rawQuery('SELECT COUNT(*) as count FROM bloques_local WHERE activo = 1');
+    List<Map<String, dynamic>> variedades = await db.rawQuery('SELECT COUNT(*) as count FROM variedades_local WHERE activo = 1');
+    return {
+      'fincas': fincas.first['count'] ?? 0,
+      'bloques': bloques.first['count'] ?? 0,
+      'variedades': variedades.first['count'] ?? 0,
+    };
+  }
 
-  // Limpiar todos los datos (para resync completo)
   Future<void> clearAllData() async {
     Database db = await database;
     await db.delete('usuarios_local');
     await db.delete('supervisores_local');
     await db.delete('pesadores_local');
     await db.delete('fincas_local');
+    await db.delete('bloques_local');
+    await db.delete('variedades_local');
   }
 
-  // Cerrar base de datos
   Future<void> close() async {
     Database db = await database;
     db.close();

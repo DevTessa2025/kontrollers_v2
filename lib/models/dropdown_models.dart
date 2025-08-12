@@ -114,3 +114,95 @@ class Finca {
   @override
   int get hashCode => nombre.hashCode;
 }
+
+class Bloque {
+  final String nombre;
+  final String? finca;
+
+  Bloque({
+    required this.nombre,
+    this.finca,
+  });
+
+  factory Bloque.fromJson(Map<String, dynamic> json) {
+    return Bloque(
+      nombre: _convertToString(json['nombre'] ?? json['BLOCK']) ?? '',
+      finca: json['finca'] ?? json['LOCALIDAD'],
+    );
+  }
+
+  // Método helper para convertir cualquier tipo a String
+  static String? _convertToString(dynamic value) {
+    if (value == null) return null;
+    if (value is String) return value;
+    if (value is int) return value.toString();
+    if (value is double) return value.toInt().toString();
+    return value.toString();
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'nombre': nombre,
+      'finca': finca,
+    };
+  }
+
+  @override
+  String toString() => nombre;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Bloque && runtimeType == other.runtimeType && nombre == other.nombre;
+
+  @override
+  int get hashCode => nombre.hashCode;
+}
+
+class Variedad {
+  final String nombre;
+  final String? finca;
+  final String? bloque;
+
+  Variedad({
+    required this.nombre,
+    this.finca,
+    this.bloque,
+  });
+
+  factory Variedad.fromJson(Map<String, dynamic> json) {
+    return Variedad(
+      nombre: json['nombre'] ?? json['PRODUCTO'],
+      finca: json['finca'] ?? json['LOCALIDAD'],
+      bloque: _convertToString(json['bloque'] ?? json['BLOCK']),
+    );
+  }
+
+  // Método helper para convertir cualquier tipo a String
+  static String? _convertToString(dynamic value) {
+    if (value == null) return null;
+    if (value is String) return value;
+    if (value is int) return value.toString();
+    if (value is double) return value.toInt().toString();
+    return value.toString();
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'nombre': nombre,
+      'finca': finca,
+      'bloque': bloque,
+    };
+  }
+
+  @override
+  String toString() => nombre;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Variedad && runtimeType == other.runtimeType && nombre == other.nombre;
+
+  @override
+  int get hashCode => nombre.hashCode;
+}
