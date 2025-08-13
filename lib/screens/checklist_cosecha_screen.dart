@@ -92,12 +92,9 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
         _isLoadingDropdownData = false;
       });
 
-      // Si estamos editando, cargar bloques y variedades
-      if (_isEditMode && selectedFinca != null) {
-        await _loadBloquesForFinca(selectedFinca!.nombre);
-        if (selectedBloque != null) {
-          await _loadVariedadesForFincaAndBloque(selectedFinca!.nombre, selectedBloque!.nombre);
-        }
+      // SIEMPRE verificar si estamos en modo edición después de cargar las fincas
+      if (_isEditMode) {
+        await _loadDataForEditMode();
       }
 
       if (fincas.isEmpty) {
@@ -122,13 +119,45 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
     }
   }
 
+  // NUEVO MÉTODO: Cargar datos específicos para modo edición
+  Future<void> _loadDataForEditMode() async {
+    try {
+      print('Cargando datos para modo edición...');
+      
+      // Si tenemos una finca seleccionada, cargar los bloques
+      if (selectedFinca != null) {
+        print('Cargando bloques para finca: ${selectedFinca!.nombre}');
+        await _loadBloquesForFinca(selectedFinca!.nombre);
+        
+        // Si también tenemos un bloque seleccionado, cargar las variedades
+        if (selectedBloque != null) {
+          print('Cargando variedades para finca: ${selectedFinca!.nombre}, bloque: ${selectedBloque!.nombre}');
+          await _loadVariedadesForFincaAndBloque(selectedFinca!.nombre, selectedBloque!.nombre);
+        }
+      }
+    } catch (e) {
+      print('Error cargando datos para modo edición: $e');
+      Fluttertoast.showToast(
+        msg: 'Error cargando datos del checklist: $e',
+        backgroundColor: Colors.orange[600],
+        textColor: Colors.white,
+        toastLength: Toast.LENGTH_LONG,
+      );
+    }
+  }
+
+
   Future<void> _loadBloquesForFinca(String finca) async {
     setState(() {
       _isLoadingBloques = true;
-      selectedBloque = null;
-      selectedVariedad = null;
+      // Solo resetear selecciones si NO estamos en modo edición
+      if (!_isEditMode) {
+        selectedBloque = null;
+        selectedVariedad = null;
+        variedades = [];
+      }
+      // Siempre limpiar la lista de bloques para recargarla
       bloques = [];
-      variedades = [];
     });
 
     try {
@@ -145,6 +174,21 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
           backgroundColor: Colors.orange[600],
           textColor: Colors.white,
         );
+      } else {
+        print('Bloques cargados: ${bloques.length} para finca $finca');
+        
+        // En modo edición, verificar que el bloque seleccionado esté en la lista
+        if (_isEditMode && selectedBloque != null) {
+          bool bloqueExists = bloques.any((b) => b.nombre == selectedBloque!.nombre);
+          if (!bloqueExists) {
+            print('Bloque seleccionado ${selectedBloque!.nombre} no encontrado en la lista');
+            setState(() {
+              selectedBloque = null;
+              selectedVariedad = null;
+              variedades = [];
+            });
+          }
+        }
       }
     } catch (e) {
       setState(() {
@@ -159,10 +203,15 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
     }
   }
 
+
   Future<void> _loadVariedadesForFincaAndBloque(String finca, String bloque) async {
     setState(() {
       _isLoadingVariedades = true;
-      selectedVariedad = null;
+      // Solo resetear selección si NO estamos en modo edición
+      if (!_isEditMode) {
+        selectedVariedad = null;
+      }
+      // Siempre limpiar la lista de variedades para recargarla
       variedades = [];
     });
 
@@ -180,6 +229,19 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
           backgroundColor: Colors.orange[600],
           textColor: Colors.white,
         );
+      } else {
+        print('Variedades cargadas: ${variedades.length} para finca $finca, bloque $bloque');
+        
+        // En modo edición, verificar que la variedad seleccionada esté en la lista
+        if (_isEditMode && selectedVariedad != null) {
+          bool variedadExists = variedades.any((v) => v.nombre == selectedVariedad!.nombre);
+          if (!variedadExists) {
+            print('Variedad seleccionada ${selectedVariedad!.nombre} no encontrada en la lista');
+            setState(() {
+              selectedVariedad = null;
+            });
+          }
+        }
       }
     } catch (e) {
       setState(() {

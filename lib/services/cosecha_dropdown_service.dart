@@ -128,8 +128,6 @@ class CosechaDropdownService {
     }
   }
 
-  
-
   // Sincronizar TODOS los bloques del servidor de una vez (versión simplificada)
   static Future<void> _syncAllBloquesFromServer() async {
     try {
@@ -222,9 +220,9 @@ class CosechaDropdownService {
     }
   }
 
-  // ==================== VARIEDADES ====================
+  // ==================== VARIEDADES (MEJORADO) ====================
   
-  // Obtener variedades por finca y bloque (offline first)
+  // Obtener variedades por finca y bloque (offline first MEJORADO)
   static Future<List<Variedad>> getVariedadesByFincaAndBloque(String finca, String bloque) async {
     try {
       // Primero intentar obtener datos locales
@@ -237,10 +235,15 @@ class CosechaDropdownService {
         return localData.map((item) => Variedad.fromJson(item)).toList();
       }
 
-      // Si no hay datos locales y hay conexión, intentar obtener del servidor
+      // Si no hay datos locales y hay conexión, intentar sincronizar TODAS las variedades primero
       if (await AuthService.hasInternetConnection()) {
-        print('No hay variedades locales, obteniendo del servidor para finca $finca, bloque $bloque...');
-        return await _getVariedadesByFincaAndBloqueFromServer(finca, bloque);
+        print('No hay variedades locales, sincronizando todas las variedades del servidor...');
+        await _syncAllVariedadesFromServer();
+        
+        // Ahora obtener las variedades de la finca y bloque específicos
+        List<Map<String, dynamic>> reloadedData = await dbHelper.getVariedadesByFincaAndBloque(finca, bloque);
+        print('Variedades cargadas después de sincronización: ${reloadedData.length} para finca $finca, bloque $bloque');
+        return reloadedData.map((item) => Variedad.fromJson(item)).toList();
       }
 
       // Sin datos locales ni conexión
@@ -253,7 +256,65 @@ class CosechaDropdownService {
     }
   }
 
-  // Obtener variedades de una finca y bloque del servidor y guardar localmente
+  // NUEVO: Sincronizar TODAS las variedades del servidor de una vez
+  static Future<void> _syncAllVariedadesFromServer() async {
+    try {
+      print('Sincronizando TODAS las variedades desde el servidor...');
+      
+      // Query para obtener TODAS las variedades
+      String query = '''
+        SELECT DISTINCT 
+          PRODUCTO as nombre, 
+          LOCALIDAD as finca, 
+          CAST(BLOCK as NVARCHAR(50)) as bloque
+        FROM Bi_TESSACORP.dbo.PLANO_CULTIVO_SCRAPING 
+        WHERE LOCALIDAD IS NOT NULL 
+          AND LOCALIDAD != ''
+          AND BLOCK IS NOT NULL 
+          AND BLOCK != ''
+          AND PRODUCTO IS NOT NULL 
+          AND PRODUCTO != ''
+      ''';
+
+      String result = await SqlServerService.executeQuery(query);
+      List<Map<String, dynamic>> data = SqlServerService.processQueryResult(result);
+      
+      // Ordenar en memoria por finca, bloque y variedad
+      data.sort((a, b) {
+        // Primero ordenar por finca
+        int fincaComparison = a['finca'].toString().compareTo(b['finca'].toString());
+        if (fincaComparison != 0) return fincaComparison;
+        
+        // Luego ordenar por bloque
+        int bloqueComparison = _compareBlockNames(a['bloque'].toString(), b['bloque'].toString());
+        if (bloqueComparison != 0) return bloqueComparison;
+        
+        // Finalmente ordenar por variedad
+        return a['nombre'].toString().compareTo(b['nombre'].toString());
+      });
+      
+      // Guardar TODAS las variedades en SQLite
+      if (data.isNotEmpty) {
+        DatabaseHelper dbHelper = DatabaseHelper();
+        for (Map<String, dynamic> variedadData in data) {
+          Map<String, dynamic> variedad = {
+            'nombre': variedadData['nombre'],
+            'finca': variedadData['finca'],
+            'bloque': variedadData['bloque'].toString(),
+            'activo': 1,
+            'fecha_actualizacion': DateTime.now().toIso8601String(),
+          };
+          await dbHelper.insertOrUpdateVariedad(variedad);
+        }
+        print('${data.length} variedades sincronizadas desde servidor (TODAS)');
+      }
+    } catch (e) {
+      print('Error sincronizando todas las variedades del servidor: $e');
+      rethrow;
+    }
+  }
+
+  // Obtener variedades de una finca y bloque del servidor y guardar localmente (método legacy)
   static Future<List<Variedad>> _getVariedadesByFincaAndBloqueFromServer(String finca, String bloque) async {
     try {
       String query = '''
@@ -316,11 +377,12 @@ class CosechaDropdownService {
         print('No hay fincas locales para cosecha, obteniendo del servidor...');
         fincas = await _getFincasFromServer();
         
-        // También sincronizar todos los bloques de una vez
+        // También sincronizar todos los bloques y variedades de una vez
         try {
           await _syncAllBloquesFromServer();
+          await _syncAllVariedadesFromServer(); // NUEVO: Sincronizar todas las variedades
         } catch (e) {
-          print('Error sincronizando bloques durante carga inicial: $e');
+          print('Error sincronizando bloques/variedades durante carga inicial: $e');
         }
       }
       
@@ -352,6 +414,9 @@ class CosechaDropdownService {
       
       // Sincronizar TODOS los bloques
       await _syncAllBloquesFromServer();
+      
+      // Sincronizar TODAS las variedades
+      await _syncAllVariedadesFromServer();
       
       return {
         'success': true,
@@ -406,6 +471,19 @@ class CosechaDropdownService {
         print('Bloques sincronizados para cosecha: ${stats['bloques']}');
       } catch (e) {
         errors.add('Bloques: $e');
+      }
+
+      // Sincronizar TODAS las variedades
+      try {
+        await _syncAllVariedadesFromServer();
+        
+        // Contar cuántas variedades tenemos ahora
+        DatabaseHelper dbHelper = DatabaseHelper();
+        Map<String, int> stats = await dbHelper.getCosechaDatabaseStats();
+        totalSynced += stats['variedades'] ?? 0;
+        print('Variedades sincronizadas para cosecha: ${stats['variedades']}');
+      } catch (e) {
+        errors.add('Variedades: $e');
       }
 
       if (errors.isEmpty) {
