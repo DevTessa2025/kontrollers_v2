@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:kontrollers_v2/services/RobustConnectionManager.dart';
 import '../services/auth_service.dart';
 import '../services/sql_server_service.dart';
 import 'home_screen.dart';
@@ -39,29 +40,12 @@ class _LoginScreenState extends State<LoginScreen> {
       });
 
       try {
-        Map<String, dynamic> result = await AuthService.syncData();
-        
-        if (result['success']) {
-          int users = result['usersSynced'] ?? 0;
-          int dropdown = result['dropdownSynced'] ?? 0;
-          Fluttertoast.showToast(
-            msg: "Auto-sync exitoso: $users usuarios, $dropdown datos adicionales",
-            toastLength: Toast.LENGTH_SHORT,
-            gravity: ToastGravity.BOTTOM,
-            backgroundColor: Colors.green,
-            textColor: Colors.white,
-          );
+        Map<String, dynamic> syncResult = await IntelligentSyncService.performIntelligentSync();
+
+        if (syncResult['sync_status'] == 'success') {
+          print('Sincronización exitosa: ${syncResult['synced_items']} elementos');
         } else {
-          // Solo mostrar error si es crítico, no por falta de datos nuevos
-          if (!result['message'].toString().toLowerCase().contains('sin cambios')) {
-            Fluttertoast.showToast(
-              msg: "Auto-sync: ${result['message']}",
-              toastLength: Toast.LENGTH_SHORT,
-              gravity: ToastGravity.BOTTOM,
-              backgroundColor: Colors.orange,
-              textColor: Colors.white,
-            );
-          }
+          print('Sincronización con problemas: ${syncResult['message']}');
         }
       } catch (e) {
         // Error silencioso en auto-sync, el usuario puede hacer sync manual si quiere
@@ -130,18 +114,12 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      Map<String, dynamic> result = await AuthService.syncData();
-      
-      Fluttertoast.showToast(
-        msg: result['message'],
-        toastLength: Toast.LENGTH_LONG,
-        gravity: ToastGravity.BOTTOM,
-        backgroundColor: result['success'] ? Colors.green : Colors.red,
-        textColor: Colors.white,
-      );
+      Map<String, dynamic> syncResult = await IntelligentSyncService.performIntelligentSync();
 
-      if (result['success']) {
-        await _checkConnection();
+      if (syncResult['sync_status'] == 'success') {
+        print('Sincronización exitosa: ${syncResult['synced_items']} elementos');
+      } else {
+        print('Sincronización con problemas: ${syncResult['message']}');
       }
     } catch (e) {
       Fluttertoast.showToast(

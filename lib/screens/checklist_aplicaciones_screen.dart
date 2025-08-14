@@ -5,45 +5,45 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:kontrollers_v2/services/OptimizedConnectionService.dart';
-import '../data/checklist_data_cosecha.dart';
+import '../data/checklist_data_aplicaciones.dart';
 import '../models/dropdown_models.dart';
-import '../services/cosecha_dropdown_service.dart';
+import '../services/aplicaciones_dropdown_service.dart';
 import '../services/image_service.dart';
-import '../services/checklist_cosecha_storage_service.dart';
-import 'checklist_cosecha_records_screen.dart';
+import '../services/checklist_aplicaciones_storage_service.dart';
+import 'checklist_aplicaciones_records_screen.dart';
 import 'image_editor_screen.dart';
 
-class ChecklistCosechaScreen extends StatefulWidget {
-  final ChecklistCosecha? checklistToEdit;
+class ChecklistAplicacionesScreen extends StatefulWidget {
+  final ChecklistAplicaciones? checklistToEdit;
   final int? recordId;
 
-  ChecklistCosechaScreen({
+  ChecklistAplicacionesScreen({
     this.checklistToEdit,
     this.recordId,
   });
 
   @override
-  _ChecklistCosechaScreenState createState() => _ChecklistCosechaScreenState();
+  _ChecklistAplicacionesScreenState createState() => _ChecklistAplicacionesScreenState();
 }
 
-class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
-  late ChecklistCosecha checklist;
+class _ChecklistAplicacionesScreenState extends State<ChecklistAplicacionesScreen> {
+  late ChecklistAplicaciones checklist;
   int _currentSectionIndex = 0;
   
   // Datos para los dropdowns
   List<Finca> fincas = [];
   List<Bloque> bloques = [];
-  List<Variedad> variedades = [];
+  List<Bomba> bombas = [];
   
   // Valores seleccionados
   Finca? selectedFinca;
   Bloque? selectedBloque;
-  Variedad? selectedVariedad;
+  Bomba? selectedBomba;
   DateTime selectedDate = DateTime.now();
   
   bool _isLoadingDropdownData = true;
   bool _isLoadingBloques = false;
-  bool _isLoadingVariedades = false;
+  bool _isLoadingBombas = false;
   bool _isEditMode = false;
 
   @override
@@ -69,13 +69,13 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
     checklist = widget.checklistToEdit!;
     selectedFinca = checklist.finca;
     selectedBloque = checklist.bloque;
-    selectedVariedad = checklist.variedad;
+    selectedBomba = checklist.bomba;
     selectedDate = checklist.fecha ?? DateTime.now();
     _currentSectionIndex = 0;
   }
   
   void _resetChecklist() {
-    checklist = ChecklistDataCosecha.getChecklistCosecha();
+    checklist = ChecklistDataAplicaciones.getChecklistAplicaciones();
     selectedDate = DateTime.now();
     _currentSectionIndex = 0;
   }
@@ -86,7 +86,7 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
     });
 
     try {
-      Map<String, dynamic> dropdownData = await CosechaDropdownService.getCosechaDropdownData(forceSync: forceSync);
+      Map<String, dynamic> dropdownData = await AplicacionesDropdownService.getAplicacionesDropdownData(forceSync: forceSync);
       
       setState(() {
         fincas = dropdownData['fincas'] ?? [];
@@ -120,24 +120,24 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
     }
   }
 
-  // NUEVO MÉTODO: Cargar datos específicos para modo edición
+  // Cargar datos específicos para modo edición
   Future<void> _loadDataForEditMode() async {
     try {
-      print('Cargando datos para modo edición...');
+      print('Cargando datos para modo edición aplicaciones...');
       
       // Si tenemos una finca seleccionada, cargar los bloques
       if (selectedFinca != null) {
         print('Cargando bloques para finca: ${selectedFinca!.nombre}');
         await _loadBloquesForFinca(selectedFinca!.nombre);
         
-        // Si también tenemos un bloque seleccionado, cargar las variedades
+        // Si también tenemos un bloque seleccionado, cargar las bombas
         if (selectedBloque != null) {
-          print('Cargando variedades para finca: ${selectedFinca!.nombre}, bloque: ${selectedBloque!.nombre}');
-          await _loadVariedadesForFincaAndBloque(selectedFinca!.nombre, selectedBloque!.nombre);
+          print('Cargando bombas para finca: ${selectedFinca!.nombre}, bloque: ${selectedBloque!.nombre}');
+          await _loadBombasForFincaAndBloque(selectedFinca!.nombre, selectedBloque!.nombre);
         }
       }
     } catch (e) {
-      print('Error cargando datos para modo edición: $e');
+      print('Error cargando datos para modo edición aplicaciones: $e');
       Fluttertoast.showToast(
         msg: 'Error cargando datos del checklist: $e',
         backgroundColor: Colors.orange[600],
@@ -147,25 +147,26 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
     }
   }
 
-
   Future<void> _loadBloquesForFinca(String finca) async {
     setState(() {
       _isLoadingBloques = true;
-      // Solo resetear selecciones si NO estamos en modo edición
       if (!_isEditMode) {
         selectedBloque = null;
-        selectedVariedad = null;
-        variedades = [];
+        selectedBomba = null;
+        bombas = [];
       }
-      // Siempre limpiar la lista de bloques para recargarla
-      bloques = [];
+      bloques = []; // Limpiar la lista de bloques
     });
 
     try {
-      List<Bloque> loadedBloques = await CosechaDropdownService.getBloquesByFinca(finca);
+      // ❌ PROBLEMA: Esta línea crea una variable local que oculta la variable de instancia
+      // List<Bloque> bloques = await AplicacionesDropdownServiceUltra.getBloquesByFinca(finca);
+      
+      // ✅ SOLUCIÓN: Usar una variable temporal con nombre diferente
+      List<Bloque> loadedBloques = await AplicacionesDropdownServiceUltra.getBloquesByFinca(finca);
       
       setState(() {
-        bloques = loadedBloques;
+        bloques = loadedBloques; // Asignar a la variable de instancia
         _isLoadingBloques = false;
       });
 
@@ -176,17 +177,17 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
           textColor: Colors.white,
         );
       } else {
-        print('Bloques cargados: ${bloques.length} para finca $finca');
+        print('Bloques cargados aplicaciones: ${bloques.length} para finca $finca');
         
         // En modo edición, verificar que el bloque seleccionado esté en la lista
         if (_isEditMode && selectedBloque != null) {
           bool bloqueExists = bloques.any((b) => b.nombre == selectedBloque!.nombre);
           if (!bloqueExists) {
-            print('Bloque seleccionado ${selectedBloque!.nombre} no encontrado en la lista');
+            print('Bloque seleccionado ${selectedBloque!.nombre} no encontrado en la lista aplicaciones');
             setState(() {
               selectedBloque = null;
-              selectedVariedad = null;
-              variedades = [];
+              selectedBomba = null;
+              bombas = [];
             });
           }
         }
@@ -204,53 +205,306 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
     }
   }
 
-
-  Future<void> _loadVariedadesForFincaAndBloque(String finca, String bloque) async {
+  // ==================== VERSIÓN COMPLETA CORREGIDA ====================
+  
+  Future<void> _loadBloquesForFincaFixed(String finca) async {
+    print('🔄 Iniciando carga de bloques para finca: $finca');
+    
     setState(() {
-      _isLoadingVariedades = true;
-      // Solo resetear selección si NO estamos en modo edición
+      _isLoadingBloques = true;
       if (!_isEditMode) {
-        selectedVariedad = null;
+        selectedBloque = null;
+        selectedBomba = null;
+        bombas = [];
       }
-      // Siempre limpiar la lista de variedades para recargarla
-      variedades = [];
+      bloques = []; // Limpiar bloques existentes
     });
 
     try {
-      List<Variedad> variedades = await CosechaDropdownServiceUltra.getVariedadesByFincaAndBloque(finca, bloque);
+      // Usar servicio optimizado con nombre de variable diferente
+      List<Bloque> loadedBloques = await AplicacionesDropdownServiceUltra.getBloquesByFinca(finca);
+      
+      print('📦 Bloques recibidos del servicio: ${loadedBloques.length}');
+      loadedBloques.forEach((bloque) => print('  - ${bloque.nombre}'));
       
       setState(() {
-        variedades = variedades;
-        _isLoadingVariedades = false;
+        bloques = loadedBloques; // ✅ Asignar correctamente a la variable de instancia
+        _isLoadingBloques = false;
       });
 
-      if (variedades.isEmpty) {
+      print('✅ Estado actualizado - Bloques disponibles: ${bloques.length}');
+
+      if (bloques.isEmpty) {
         Fluttertoast.showToast(
-          msg: 'No se encontraron variedades para finca $finca, bloque $bloque',
+          msg: 'No se encontraron bloques para la finca $finca',
           backgroundColor: Colors.orange[600],
           textColor: Colors.white,
         );
       } else {
-        print('Variedades cargadas: ${variedades.length} para finca $finca, bloque $bloque');
+        print('Bloques cargados aplicaciones: ${bloques.length} para finca $finca');
         
-        // En modo edición, verificar que la variedad seleccionada esté en la lista
-        if (_isEditMode && selectedVariedad != null) {
-          bool variedadExists = variedades.any((v) => v.nombre == selectedVariedad!.nombre);
-          if (!variedadExists) {
-            print('Variedad seleccionada ${selectedVariedad!.nombre} no encontrada en la lista');
+        // En modo edición, verificar que el bloque seleccionado esté en la lista
+        if (_isEditMode && selectedBloque != null) {
+          bool bloqueExists = bloques.any((b) => b.nombre == selectedBloque!.nombre);
+          if (!bloqueExists) {
+            print('⚠️ Bloque seleccionado ${selectedBloque!.nombre} no encontrado en la lista');
             setState(() {
-              selectedVariedad = null;
+              selectedBloque = null;
+              selectedBomba = null;
+              bombas = [];
+            });
+          } else {
+            print('✅ Bloque seleccionado ${selectedBloque!.nombre} encontrado en la lista');
+          }
+        }
+      }
+    } catch (e) {
+      print('❌ Error cargando bloques: $e');
+      setState(() {
+        _isLoadingBloques = false;
+        bloques = []; // Asegurar que la lista esté vacía en caso de error
+      });
+      
+      Fluttertoast.showToast(
+        msg: 'Error cargando bloques: $e',
+        backgroundColor: Colors.red[600],
+        textColor: Colors.white,
+      );
+    }
+  }
+
+  // ==================== TAMBIÉN CORREGIR EL MÉTODO DE BOMBAS ====================
+  
+  Future<void> _loadBombasForFincaAndBloqueFixed(String finca, String bloque) async {
+    print('🔄 Iniciando carga de bombas para finca: $finca, bloque: $bloque');
+    
+    setState(() {
+      _isLoadingBombas = true;
+      if (!_isEditMode) {
+        selectedBomba = null;
+      }
+      bombas = []; // Limpiar bombas existentes
+    });
+
+    try {
+      // ✅ Usar variable temporal con nombre diferente
+      List<Bomba> loadedBombas = await AplicacionesDropdownService.getBombasByFincaAndBloque(finca, bloque);
+      
+      print('📦 Bombas recibidas del servicio: ${loadedBombas.length}');
+      loadedBombas.forEach((bomba) => print('  - ${bomba.nombre}'));
+      
+      setState(() {
+        bombas = loadedBombas; // ✅ Asignar correctamente a la variable de instancia
+        _isLoadingBombas = false;
+      });
+
+      print('✅ Estado actualizado - Bombas disponibles: ${bombas.length}');
+
+      if (bombas.isEmpty) {
+        Fluttertoast.showToast(
+          msg: 'No se encontraron bombas para finca $finca, bloque $bloque',
+          backgroundColor: Colors.orange[600],
+          textColor: Colors.white,
+        );
+      } else {
+        print('Bombas cargadas: ${bombas.length} para finca $finca, bloque $bloque');
+        
+        // En modo edición, verificar que la bomba seleccionada esté en la lista
+        if (_isEditMode && selectedBomba != null) {
+          bool bombaExists = bombas.any((b) => b.nombre == selectedBomba!.nombre);
+          if (!bombaExists) {
+            print('⚠️ Bomba seleccionada ${selectedBomba!.nombre} no encontrada en la lista');
+            setState(() {
+              selectedBomba = null;
+            });
+          } else {
+            print('✅ Bomba seleccionada ${selectedBomba!.nombre} encontrada en la lista');
+          }
+        }
+      }
+    } catch (e) {
+      print('❌ Error cargando bombas: $e');
+      setState(() {
+        _isLoadingBombas = false;
+        bombas = []; // Asegurar que la lista esté vacía en caso de error
+      });
+      
+      Fluttertoast.showToast(
+        msg: 'Error cargando bombas: $e',
+        backgroundColor: Colors.red[600],
+        textColor: Colors.white,
+      );
+    }
+  }
+
+  // ==================== MÉTODO DE DEPURACIÓN ====================
+  
+  void _debugDropdownState() {
+    print('🔍 === ESTADO ACTUAL DE DROPDOWNS ===');
+    print('Fincas disponibles: ${fincas.length}');
+    fincas.forEach((f) => print('  - ${f.nombre}'));
+    print('Finca seleccionada: ${selectedFinca?.nombre ?? 'null'}');
+    
+    print('Bloques disponibles: ${bloques.length}');
+    bloques.forEach((b) => print('  - ${b.nombre}'));
+    print('Bloque seleccionado: ${selectedBloque?.nombre ?? 'null'}');
+    print('¿Cargando bloques?: $_isLoadingBloques');
+    
+    print('Bombas disponibles: ${bombas.length}');
+    bombas.forEach((b) => print('  - ${b.nombre}'));
+    print('Bomba seleccionada: ${selectedBomba?.nombre ?? 'null'}');
+    print('¿Cargando bombas?: $_isLoadingBombas');
+    print('================================');
+  }
+
+  // ==================== DROPDOWN MEJORADO CON DEPURACIÓN ====================
+  
+  Widget _buildModernDropdownWithDebug<T>({
+    required String label,
+    required IconData icon,
+    required T? value,
+    required List<T> items,
+    required String Function(T) itemBuilder,
+    required void Function(T?) onChanged,
+    required String hint,
+    bool isLoading = false,
+    bool isEnabled = true,
+  }) {
+    // Agregar depuración
+    print('🎯 Construyendo dropdown $label:');
+    print('  - Items disponibles: ${items.length}');
+    print('  - Valor seleccionado: $value');
+    print('  - Está habilitado: $isEnabled');
+    print('  - Está cargando: $isLoading');
+    
+    return Container(
+      decoration: BoxDecoration(
+        color: isEnabled ? Colors.grey[50] : Colors.grey[100],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: DropdownButtonFormField<T>(
+        value: value,
+        decoration: InputDecoration(
+          labelText: '$label (${items.length} disponibles)', // Mostrar cantidad
+          labelStyle: TextStyle(
+            color: (_isEditMode ? Colors.blue[700] : Colors.orange[700])?.withOpacity(isEnabled ? 1.0 : 0.5),
+            fontWeight: FontWeight.w500,
+          ),
+          border: InputBorder.none,
+          contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          prefixIcon: Container(
+            margin: EdgeInsets.all(8),
+            padding: EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: (_isEditMode ? Colors.blue[700] : Colors.orange[700])?.withOpacity(isEnabled ? 0.1 : 0.05),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: isLoading 
+                ? SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: (_isEditMode ? Colors.blue[700] : Colors.orange[700])?.withOpacity(isEnabled ? 1.0 : 0.5),
+                    ),
+                  )
+                : Icon(
+                    icon,
+                    color: (_isEditMode ? Colors.blue[700] : Colors.orange[700])?.withOpacity(isEnabled ? 1.0 : 0.5),
+                    size: 20,
+                  ),
+          ),
+          suffixIcon: items.isNotEmpty && !isLoading
+              ? IconButton(
+                  icon: Icon(Icons.bug_report, size: 16),
+                  onPressed: _debugDropdownState,
+                  tooltip: 'Debug estado',
+                )
+              : null,
+        ),
+        items: isEnabled && items.isNotEmpty ? items.map((T item) {
+          return DropdownMenuItem<T>(
+            value: item,
+            child: Text(
+              itemBuilder(item),
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          );
+        }).toList() : [],
+        onChanged: isEnabled && !isLoading && items.isNotEmpty ? (T? newValue) {
+          print('🔄 Cambio en dropdown $label: $newValue');
+          onChanged(newValue);
+        } : null,
+        hint: Text(
+          isLoading 
+              ? 'Cargando...' 
+              : items.isEmpty && isEnabled
+                  ? 'No hay opciones disponibles'
+                  : hint,
+          style: TextStyle(color: Colors.grey[500]),
+        ),
+        isExpanded: true,
+        dropdownColor: Colors.white,
+        icon: Container(
+          margin: EdgeInsets.only(right: 8),
+          child: Icon(
+            Icons.keyboard_arrow_down,
+            color: (_isEditMode ? Colors.blue[700] : Colors.orange[700])?.withOpacity(isEnabled ? 1.0 : 0.5),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _loadBombasForFincaAndBloque(String finca, String bloque) async {
+    setState(() {
+      _isLoadingBombas = true;
+      if (!_isEditMode) {
+        selectedBomba = null;
+      }
+      bombas = [];
+    });
+
+    try {
+      List<Bomba> loadedBombas = await AplicacionesDropdownService.getBombasByFincaAndBloque(finca, bloque);
+      
+      setState(() {
+        bombas = loadedBombas;
+        _isLoadingBombas = false;
+      });
+
+      if (bombas.isEmpty) {
+        Fluttertoast.showToast(
+          msg: 'No se encontraron bombas para finca $finca, bloque $bloque',
+          backgroundColor: Colors.orange[600],
+          textColor: Colors.white,
+        );
+      } else {
+        print('Bombas cargadas: ${bombas.length} para finca $finca, bloque $bloque');
+        
+        // En modo edición, verificar que la bomba seleccionada esté en la lista
+        if (_isEditMode && selectedBomba != null) {
+          bool bombaExists = bombas.any((b) => b.nombre == selectedBomba!.nombre);
+          if (!bombaExists) {
+            print('Bomba seleccionada ${selectedBomba!.nombre} no encontrada en la lista');
+            setState(() {
+              selectedBomba = null;
             });
           }
         }
       }
     } catch (e) {
       setState(() {
-        _isLoadingVariedades = false;
+        _isLoadingBombas = false;
       });
       
       Fluttertoast.showToast(
-        msg: 'Error cargando variedades: $e',
+        msg: 'Error cargando bombas: $e',
         backgroundColor: Colors.red[600],
         textColor: Colors.white,
       );
@@ -271,7 +525,7 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
     });
   }
 
-  void _showValueSelector(ChecklistCosechaItem item) {
+  void _showValueSelector(ChecklistAplicacionesItem item) {
     if (!item.valores.tieneOpcionesMultiples()) {
       _updateItemResponse(item.id, 'si', valorNumerico: item.valores.max);
       return;
@@ -285,7 +539,7 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
         return AlertDialog(
           title: Text(
             'Seleccionar Valor',
-            style: TextStyle(color: Colors.green[800], fontWeight: FontWeight.bold),
+            style: TextStyle(color: Colors.orange[800], fontWeight: FontWeight.bold),
           ),
           content: Container(
             width: double.maxFinite,
@@ -323,7 +577,7 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
                             Navigator.of(context).pop();
                           },
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green[700],
+                            backgroundColor: Colors.orange[700],
                             foregroundColor: Colors.white,
                             padding: EdgeInsets.symmetric(vertical: 14),
                             shape: RoundedRectangleBorder(
@@ -358,7 +612,7 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
     );
   }
 
-  void _showObservationsDialog(ChecklistCosechaItem item) {
+  void _showObservationsDialog(ChecklistAplicacionesItem item) {
     TextEditingController observationsController = TextEditingController();
     observationsController.text = item.observaciones ?? '';
 
@@ -368,7 +622,7 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
         return AlertDialog(
           title: Text(
             'Observaciones',
-            style: TextStyle(color: Colors.green[800], fontWeight: FontWeight.bold),
+            style: TextStyle(color: Colors.orange[800], fontWeight: FontWeight.bold),
           ),
           content: Container(
             width: double.maxFinite,
@@ -408,7 +662,7 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide(color: Colors.green[700]!),
+                        borderSide: BorderSide(color: Colors.orange[700]!),
                       ),
                       contentPadding: EdgeInsets.all(12),
                     ),
@@ -432,7 +686,7 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
                 Navigator.of(context).pop();
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green[700],
+                backgroundColor: Colors.orange[700],
                 foregroundColor: Colors.white,
               ),
               child: Text('Guardar'),
@@ -443,13 +697,13 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
     );
   }
 
-  void _deletePhoto(ChecklistCosechaItem item) {
+  void _deletePhoto(ChecklistAplicacionesItem item) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: Text(
           'Eliminar Foto',
-          style: TextStyle(color: Colors.green[800], fontWeight: FontWeight.bold),
+          style: TextStyle(color: Colors.orange[800], fontWeight: FontWeight.bold),
         ),
         content: Container(
           width: double.maxFinite,
@@ -489,7 +743,7 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
     );
   }
 
-  Future<void> _editPhoto(ChecklistCosechaItem item) async {
+  Future<void> _editPhoto(ChecklistAplicacionesItem item) async {
     if (item.fotoBase64 == null) return;
 
     try {
@@ -512,7 +766,7 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
         
         Fluttertoast.showToast(
           msg: 'Foto editada (${imageInfo['sizeKB'].toStringAsFixed(1)} KB)',
-          backgroundColor: Colors.green[600],
+          backgroundColor: Colors.orange[600],
           textColor: Colors.white,
           toastLength: Toast.LENGTH_LONG,
         );
@@ -526,7 +780,7 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
     }
   }
 
-  void _showPhotoDialog(ChecklistCosechaItem item) async {
+  void _showPhotoDialog(ChecklistAplicacionesItem item) async {
     ImageSource? source = await ImageService.showImageSourceDialog(context);
     
     if (source != null) {
@@ -540,7 +794,7 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
               title: Text(
                 'Editar Imagen',
                 style: TextStyle(
-                  color: Colors.green[800],
+                  color: Colors.orange[800],
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -605,7 +859,7 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
                 ElevatedButton(
                   onPressed: () => Navigator.pop(context, true),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green[700],
+                    backgroundColor: Colors.orange[700],
                     foregroundColor: Colors.white,
                   ),
                   child: Text('Editar'),
@@ -650,7 +904,7 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
         
         Fluttertoast.showToast(
           msg: 'Foto agregada (${imageInfo['sizeKB'].toStringAsFixed(1)} KB, ${imageInfo['resolution']})',
-          backgroundColor: Colors.green[600],
+          backgroundColor: Colors.orange[600],
           textColor: Colors.white,
           toastLength: Toast.LENGTH_LONG,
         );
@@ -658,13 +912,13 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
     }
   }
 
-  void _showPhotoOptionsDialog(ChecklistCosechaItem item) async {
+  void _showPhotoOptionsDialog(ChecklistAplicacionesItem item) async {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: Text(
           'Opciones de Foto',
-          style: TextStyle(color: Colors.green[800], fontWeight: FontWeight.bold),
+          style: TextStyle(color: Colors.orange[800], fontWeight: FontWeight.bold),
         ),
         content: Container(
           width: double.maxFinite,
@@ -687,7 +941,7 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
               ),
               _buildOptionTile(
                 icon: Icons.edit,
-                color: Colors.green[700]!,
+                color: Colors.orange[700]!,
                 title: 'Editar Foto',
                 subtitle: 'Dibujar y agregar anotaciones',
                 onTap: () async {
@@ -697,7 +951,7 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
               ),
               _buildOptionTile(
                 icon: Icons.camera_alt,
-                color: Colors.orange[700]!,
+                color: Colors.orange[600]!,
                 title: 'Tomar Nueva Foto',
                 subtitle: 'Reemplazar con nueva imagen',
                 onTap: () {
@@ -771,7 +1025,7 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
     );
   }
 
-  void _viewPhoto(ChecklistCosechaItem item) {
+  void _viewPhoto(ChecklistAplicacionesItem item) {
     if (item.fotoBase64 == null) return;
 
     showDialog(
@@ -782,7 +1036,7 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
           children: [
             AppBar(
               title: Text('Foto - Item ${item.id}'),
-              backgroundColor: Colors.green[700],
+              backgroundColor: Colors.orange[700],
               foregroundColor: Colors.white,
               leading: IconButton(
                 icon: Icon(Icons.close),
@@ -840,7 +1094,7 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
         return Theme(
           data: Theme.of(context).copyWith(
             colorScheme: ColorScheme.light(
-              primary: _isEditMode ? Colors.blue[700]! : Colors.green[700]!,
+              primary: _isEditMode ? Colors.blue[700]! : Colors.orange[700]!,
               onPrimary: Colors.white,
               surface: Colors.white,
               onSurface: Colors.black,
@@ -860,9 +1114,9 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
 
   void _saveLocalChecklist() async {
     // Validar que los datos básicos estén completos
-    if (selectedFinca == null || selectedBloque == null || selectedVariedad == null) {
+    if (selectedFinca == null || selectedBloque == null || selectedBomba == null) {
       Fluttertoast.showToast(
-        msg: 'Por favor complete todos los datos: Finca, Bloque, Variedad y Fecha',
+        msg: 'Por favor complete todos los datos: Finca, Bloque, Bomba y Fecha',
         backgroundColor: Colors.orange[600],
         textColor: Colors.white,
       );
@@ -910,27 +1164,27 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
     try {
       checklist.finca = selectedFinca;
       checklist.bloque = selectedBloque;
-      checklist.variedad = selectedVariedad;
+      checklist.bomba = selectedBomba;
       checklist.fecha = selectedDate;
 
       int recordId;
       
       if (_isEditMode && widget.recordId != null) {
-        await ChecklistCosechaStorageService.updateChecklistLocal(widget.recordId!, checklist);
+        await ChecklistAplicacionesStorageService.updateChecklistLocal(widget.recordId!, checklist);
         recordId = widget.recordId!;
         
         Fluttertoast.showToast(
-          msg: 'Checklist cosecha actualizado localmente (ID: $recordId)',
+          msg: 'Checklist aplicaciones actualizado localmente (ID: $recordId)',
           backgroundColor: Colors.blue[600],
           textColor: Colors.white,
           toastLength: Toast.LENGTH_LONG,
         );
       } else {
-        recordId = await ChecklistCosechaStorageService.saveChecklistLocal(checklist);
+        recordId = await ChecklistAplicacionesStorageService.saveChecklistLocal(checklist);
         
         Fluttertoast.showToast(
-          msg: 'Checklist cosecha guardado localmente (ID: $recordId)',
-          backgroundColor: Colors.green[600],
+          msg: 'Checklist aplicaciones guardado localmente (ID: $recordId)',
+          backgroundColor: Colors.orange[600],
           textColor: Colors.white,
           toastLength: Toast.LENGTH_LONG,
         );
@@ -938,12 +1192,12 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
 
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => ChecklistCosechaRecordsScreen()),
+        MaterialPageRoute(builder: (context) => ChecklistAplicacionesRecordsScreen()),
       );
 
     } catch (e) {
       Fluttertoast.showToast(
-        msg: 'Error guardando checklist cosecha: $e',
+        msg: 'Error guardando checklist aplicaciones: $e',
         backgroundColor: Colors.red[600],
         textColor: Colors.white,
       );
@@ -953,7 +1207,7 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
   void _navigateToRecords() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => ChecklistCosechaRecordsScreen()),
+      MaterialPageRoute(builder: (context) => ChecklistAplicacionesRecordsScreen()),
     );
   }
 
@@ -977,13 +1231,13 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
       backgroundColor: Colors.grey[50],
       body: CustomScrollView(
         slivers: [
-          // AppBar moderno con gradiente verde para cosecha
+          // AppBar moderno con gradiente naranja para aplicaciones
           SliverAppBar(
             expandedHeight: 160,
             floating: false,
             pinned: true,
             elevation: 0,
-            backgroundColor: _isEditMode ? Colors.blue[700] : Colors.green[700],
+            backgroundColor: _isEditMode ? Colors.blue[700] : Colors.orange[700],
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
                 decoration: BoxDecoration(
@@ -992,7 +1246,7 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
                     end: Alignment.bottomRight,
                     colors: _isEditMode 
                         ? [Colors.blue[800]!, Colors.blue[600]!, Colors.blue[700]!]
-                        : [Colors.green[800]!, Colors.green[600]!, Colors.green[700]!],
+                        : [Colors.orange[800]!, Colors.orange[600]!, Colors.orange[700]!],
                   ),
                 ),
                 child: SafeArea(
@@ -1013,7 +1267,7 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
                                   borderRadius: BorderRadius.circular(10),
                                 ),
                                 child: Icon(
-                                  _isEditMode ? Icons.edit_note : Icons.grass,
+                                  _isEditMode ? Icons.edit_note : Icons.spa_outlined,
                                   color: Colors.white,
                                   size: 20,
                                 ),
@@ -1025,7 +1279,7 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Text(
-                                      _isEditMode ? 'Editando Cosecha' : 'Nueva Cosecha',
+                                      _isEditMode ? 'Editando Aplicaciones' : 'Nueva Aplicación',
                                       style: TextStyle(
                                         color: Colors.white,
                                         fontSize: 16,
@@ -1168,7 +1422,7 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
           SliverToBoxAdapter(
             child: Column(
               children: [
-                // Formulario principal con diseño para cosecha
+                // Formulario principal con diseño para aplicaciones
                 Container(
                   margin: EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -1189,7 +1443,7 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
                       Container(
                         padding: EdgeInsets.all(20),
                         decoration: BoxDecoration(
-                          color: (_isEditMode ? Colors.blue[50] : Colors.green[50]),
+                          color: (_isEditMode ? Colors.blue[50] : Colors.orange[50]),
                           borderRadius: BorderRadius.only(
                             topLeft: Radius.circular(16),
                             topRight: Radius.circular(16),
@@ -1200,12 +1454,12 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
                             Container(
                               padding: EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: _isEditMode ? Colors.blue[100] : Colors.green[100],
+                                color: _isEditMode ? Colors.blue[100] : Colors.orange[100],
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Icon(
-                                Icons.grass_outlined,
-                                color: _isEditMode ? Colors.blue[700] : Colors.green[700],
+                                Icons.spa_outlined,
+                                color: _isEditMode ? Colors.blue[700] : Colors.orange[700],
                                 size: 24,
                               ),
                             ),
@@ -1215,7 +1469,7 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'Información del Checklist Cosecha',
+                                    'Información del Checklist Aplicaciones',
                                     style: TextStyle(
                                       fontSize: 18,
                                       fontWeight: FontWeight.bold,
@@ -1244,13 +1498,13 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
                                 child: Column(
                                   children: [
                                     CircularProgressIndicator(
-                                      color: _isEditMode ? Colors.blue[700] : Colors.green[700],
+                                      color: _isEditMode ? Colors.blue[700] : Colors.orange[700],
                                     ),
                                     SizedBox(height: 16),
                                     Text(
                                       'Cargando datos...',
                                       style: TextStyle(
-                                        color: _isEditMode ? Colors.blue[700] : Colors.green[700],
+                                        color: _isEditMode ? Colors.blue[700] : Colors.orange[700],
                                         fontWeight: FontWeight.w500,
                                       ),
                                     ),
@@ -1270,9 +1524,9 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
                                       setState(() {
                                         selectedFinca = newValue;
                                         selectedBloque = null;
-                                        selectedVariedad = null;
+                                        selectedBomba = null;
                                         bloques = [];
-                                        variedades = [];
+                                        bombas = [];
                                       });
                                       if (newValue != null) {
                                         _loadBloquesForFinca(newValue.nombre);
@@ -1293,11 +1547,11 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
                                     onChanged: (Bloque? newValue) {
                                       setState(() {
                                         selectedBloque = newValue;
-                                        selectedVariedad = null;
-                                        variedades = [];
+                                        selectedBomba = null;
+                                        bombas = [];
                                       });
                                       if (newValue != null && selectedFinca != null) {
-                                        _loadVariedadesForFincaAndBloque(selectedFinca!.nombre, newValue.nombre);
+                                        _loadBombasForFincaAndBloque(selectedFinca!.nombre, newValue.nombre);
                                       }
                                     },
                                     hint: 'Seleccione un bloque',
@@ -1307,20 +1561,20 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
 
                                   SizedBox(height: 16),
 
-                                  // Dropdown de Variedad
-                                  _buildModernDropdown<Variedad>(
-                                    label: 'Variedad',
-                                    icon: Icons.eco,
-                                    value: selectedVariedad,
-                                    items: variedades,
-                                    itemBuilder: (variedad) => variedad.nombre,
-                                    onChanged: (Variedad? newValue) {
+                                  // Dropdown de Bomba
+                                  _buildModernDropdown<Bomba>(
+                                    label: 'Bomba',
+                                    icon: Icons.water_drop,
+                                    value: selectedBomba,
+                                    items: bombas,
+                                    itemBuilder: (bomba) => bomba.nombre,
+                                    onChanged: (Bomba? newValue) {
                                       setState(() {
-                                        selectedVariedad = newValue;
+                                        selectedBomba = newValue;
                                       });
                                     },
-                                    hint: 'Seleccione una variedad',
-                                    isLoading: _isLoadingVariedades,
+                                    hint: 'Seleccione una bomba',
+                                    isLoading: _isLoadingBombas,
                                     isEnabled: selectedBloque != null,
                                   ),
 
@@ -1335,7 +1589,7 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
                   ),
                 ),
 
-                // Navegación de secciones mejorada con tema verde
+                // Navegación de secciones mejorada con tema naranja
                 Container(
                   height: 90,
                   margin: EdgeInsets.symmetric(horizontal: 16),
@@ -1351,7 +1605,7 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
                       int totalItems = seccion.items.length;
                       double sectionProgress = totalItems > 0 ? itemsRespondidos / totalItems : 0;
                       
-                      Color sectionColor = _isEditMode ? Colors.blue[700]! : Colors.green[700]!;
+                      Color sectionColor = _isEditMode ? Colors.blue[700]! : Colors.orange[700]!;
                       
                       return GestureDetector(
                         onTap: () {
@@ -1489,7 +1743,7 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
         decoration: InputDecoration(
           labelText: label,
           labelStyle: TextStyle(
-            color: (_isEditMode ? Colors.blue[700] : Colors.green[700])?.withOpacity(isEnabled ? 1.0 : 0.5),
+            color: (_isEditMode ? Colors.blue[700] : Colors.orange[700])?.withOpacity(isEnabled ? 1.0 : 0.5),
             fontWeight: FontWeight.w500,
           ),
           border: InputBorder.none,
@@ -1498,7 +1752,7 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
             margin: EdgeInsets.all(8),
             padding: EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: (_isEditMode ? Colors.blue[700] : Colors.green[700])?.withOpacity(isEnabled ? 0.1 : 0.05),
+              color: (_isEditMode ? Colors.blue[700] : Colors.orange[700])?.withOpacity(isEnabled ? 0.1 : 0.05),
               borderRadius: BorderRadius.circular(8),
             ),
             child: isLoading 
@@ -1507,12 +1761,12 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
                     height: 20,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: (_isEditMode ? Colors.blue[700] : Colors.green[700])?.withOpacity(isEnabled ? 1.0 : 0.5),
+                      color: (_isEditMode ? Colors.blue[700] : Colors.orange[700])?.withOpacity(isEnabled ? 1.0 : 0.5),
                     ),
                   )
                 : Icon(
                     icon,
-                    color: (_isEditMode ? Colors.blue[700] : Colors.green[700])?.withOpacity(isEnabled ? 1.0 : 0.5),
+                    color: (_isEditMode ? Colors.blue[700] : Colors.orange[700])?.withOpacity(isEnabled ? 1.0 : 0.5),
                     size: 20,
                   ),
           ),
@@ -1541,7 +1795,7 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
           margin: EdgeInsets.only(right: 8),
           child: Icon(
             Icons.keyboard_arrow_down,
-            color: (_isEditMode ? Colors.blue[700] : Colors.green[700])?.withOpacity(isEnabled ? 1.0 : 0.5),
+            color: (_isEditMode ? Colors.blue[700] : Colors.orange[700])?.withOpacity(isEnabled ? 1.0 : 0.5),
           ),
         ),
       ),
@@ -1565,12 +1819,12 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
             Container(
               padding: EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: (_isEditMode ? Colors.blue[700] : Colors.green[700])?.withOpacity(0.1),
+                color: (_isEditMode ? Colors.blue[700] : Colors.orange[700])?.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
                 Icons.calendar_today,
-                color: _isEditMode ? Colors.blue[700] : Colors.green[700],
+                color: _isEditMode ? Colors.blue[700] : Colors.orange[700],
                 size: 20,
               ),
             ),
@@ -1583,7 +1837,7 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
                     'Fecha del Checklist',
                     style: TextStyle(
                       fontSize: 12,
-                      color: _isEditMode ? Colors.blue[700] : Colors.green[700],
+                      color: _isEditMode ? Colors.blue[700] : Colors.orange[700],
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -1618,8 +1872,8 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
   }
 
   // Widget para las tarjetas de items modernos
-  Widget _buildModernItemCard(ChecklistCosechaItem item) {
-    Color primaryColor = _isEditMode ? Colors.blue[700]! : Colors.green[700]!;
+  Widget _buildModernItemCard(ChecklistAplicacionesItem item) {
+    Color primaryColor = _isEditMode ? Colors.blue[700]! : Colors.orange[700]!;
     
     return Container(
       margin: EdgeInsets.only(bottom: 16),

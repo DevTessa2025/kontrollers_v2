@@ -1,4 +1,8 @@
+// ==================== COSECHA DROPDOWN SERVICE OPTIMIZADO ====================
 import 'dart:convert';
+import 'dart:async';
+import 'package:kontrollers_v2/services/RobustConnectionManager.dart';
+
 import '../models/dropdown_models.dart';
 import '../database/database_helper.dart';
 import 'sql_server_service.dart';
@@ -6,27 +10,28 @@ import 'auth_service.dart';
 
 class CosechaDropdownService {
   
-  // ==================== FINCAS ====================
+  // Configuración de timeouts y límites
+  static const Duration QUERY_TIMEOUT = Duration(seconds: 30);
+  static const int MAX_RETRIES = 3;
+  static const Duration RETRY_DELAY = Duration(seconds: 2);
+  static const int BATCH_SIZE = 50; // Procesar en lotes pequeños
   
-  // Obtener fincas (offline first)
+  // ==================== FINCAS OPTIMIZADO ====================
+  
   static Future<List<Finca>> getFincas() async {
     try {
-      // Primero intentar obtener datos locales
       List<Finca> fincas = await _getFincasFromLocal();
       
-      // Si hay datos locales, usarlos
       if (fincas.isNotEmpty) {
         print('Fincas cargadas desde SQLite para cosecha: ${fincas.length}');
         return fincas;
       }
 
-      // Si no hay datos locales y hay conexión, intentar obtener del servidor
       if (await AuthService.hasInternetConnection()) {
         print('No hay fincas locales para cosecha, obteniendo del servidor...');
-        return await _getFincasFromServer();
+        return await _getFincasFromServerWithTimeout();
       }
 
-      // Sin datos locales ni conexión
       print('Sin fincas locales ni conexión para cosecha');
       return [];
       
@@ -36,7 +41,6 @@ class CosechaDropdownService {
     }
   }
 
-  // Obtener fincas locales
   static Future<List<Finca>> _getFincasFromLocal() async {
     try {
       DatabaseHelper dbHelper = DatabaseHelper();
@@ -54,21 +58,23 @@ class CosechaDropdownService {
     }
   }
 
-  // Obtener fincas del servidor y guardar localmente
-  static Future<List<Finca>> _getFincasFromServer() async {
-    try {
+  static Future<List<Finca>> _getFincasFromServerWithTimeout() async {
+    return await _executeWithTimeout(() async {
       String query = '''
-        SELECT DISTINCT LOCALIDAD as nombre
+        SELECT DISTINCT TOP 100 LOCALIDAD as nombre
         FROM Bi_TESSACORP.dbo.PLANO_CULTIVO_SCRAPING 
         WHERE LOCALIDAD IS NOT NULL 
           AND LOCALIDAD != ''
+          AND LEN(LOCALIDAD) > 2
         ORDER BY LOCALIDAD
       ''';
 
-      String result = await SqlServerService.executeQuery(query);
+      String result = await RobustSqlServerService.executeQueryRobust(
+  query, 
+  operationName: 'Get Fincas Aplicaciones'
+);
       List<Map<String, dynamic>> data = SqlServerService.processQueryResult(result);
       
-      // Guardar en SQLite
       if (data.isNotEmpty) {
         DatabaseHelper dbHelper = DatabaseHelper();
         for (Map<String, dynamic> fincaData in data) {
@@ -83,22 +89,16 @@ class CosechaDropdownService {
       }
       
       return data.map((item) => Finca.fromJson(item)).toList();
-    } catch (e) {
-      print('Error obteniendo fincas del servidor para cosecha: $e');
-      return [];
-    }
+    });
   }
 
-  // ==================== BLOQUES ====================
+  // ==================== BLOQUES OPTIMIZADO ====================
   
-  // Obtener bloques por finca (offline first)
   static Future<List<Bloque>> getBloquesByFinca(String finca) async {
     try {
-      // Primero intentar obtener datos locales
       DatabaseHelper dbHelper = DatabaseHelper();
       List<Map<String, dynamic>> localData = await dbHelper.getBloquesByFinca(finca);
       
-      // Si hay datos locales, usarlos y ordenarlos
       if (localData.isNotEmpty) {
         print('Bloques cargados desde SQLite: ${localData.length} para finca $finca');
         List<Bloque> bloques = localData.map((item) => Bloque.fromJson(item)).toList();
@@ -106,19 +106,11 @@ class CosechaDropdownService {
         return bloques;
       }
 
-      // Si no hay datos locales y hay conexión, intentar sincronizar todos los bloques primero
       if (await AuthService.hasInternetConnection()) {
-        print('No hay bloques locales, sincronizando todos los bloques del servidor...');
-        await _syncAllBloquesFromServer();
-        
-        // Ahora obtener los bloques de la finca específica
-        List<Map<String, dynamic>> reloadedData = await dbHelper.getBloquesByFinca(finca);
-        List<Bloque> bloques = reloadedData.map((item) => Bloque.fromJson(item)).toList();
-        bloques.sort((a, b) => _compareBlockNames(a.nombre, b.nombre));
-        return bloques;
+        print('Obteniendo bloques de la finca $finca del servidor...');
+        return await _getBloquesByFincaFromServerOptimized(finca);
       }
 
-      // Sin datos locales ni conexión
       print('Sin bloques locales ni conexión para finca $finca');
       return [];
       
@@ -128,74 +120,27 @@ class CosechaDropdownService {
     }
   }
 
-  // Sincronizar TODOS los bloques del servidor de una vez (versión simplificada)
-  static Future<void> _syncAllBloquesFromServer() async {
-    try {
-      print('Sincronizando TODOS los bloques desde el servidor...');
-      
-      // Query simplificado - sin ORDER BY para evitar errores SQL
+  static Future<List<Bloque>> _getBloquesByFincaFromServerOptimized(String finca) async {
+    return await _executeWithTimeout(() async {
       String query = '''
-        SELECT DISTINCT 
-          CAST(BLOCK as NVARCHAR(50)) as nombre, 
-          LOCALIDAD as finca
-        FROM Bi_TESSACORP.dbo.PLANO_CULTIVO_SCRAPING 
-        WHERE LOCALIDAD IS NOT NULL 
-          AND LOCALIDAD != ''
-          AND BLOCK IS NOT NULL 
-          AND BLOCK != ''
-      ''';
-
-      String result = await SqlServerService.executeQuery(query);
-      List<Map<String, dynamic>> data = SqlServerService.processQueryResult(result);
-      
-      // Ordenar en memoria por finca y luego por bloque
-      data.sort((a, b) {
-        // Primero ordenar por finca
-        int fincaComparison = a['finca'].toString().compareTo(b['finca'].toString());
-        if (fincaComparison != 0) return fincaComparison;
-        
-        // Luego ordenar por bloque numéricamente
-        return _compareBlockNames(a['nombre'].toString(), b['nombre'].toString());
-      });
-      
-      // Guardar TODOS los bloques en SQLite
-      if (data.isNotEmpty) {
-        DatabaseHelper dbHelper = DatabaseHelper();
-        for (Map<String, dynamic> bloqueData in data) {
-          Map<String, dynamic> bloque = {
-            'nombre': bloqueData['nombre'].toString(),
-            'finca': bloqueData['finca'],
-            'activo': 1,
-            'fecha_actualizacion': DateTime.now().toIso8601String(),
-          };
-          await dbHelper.insertOrUpdateBloque(bloque);
-        }
-        print('${data.length} bloques sincronizados desde servidor (TODOS)');
-      }
-    } catch (e) {
-      print('Error sincronizando todos los bloques del servidor: $e');
-      rethrow;
-    }
-  }
-
-  // Obtener bloques de una finca específica del servidor (versión simplificada)
-  static Future<List<Bloque>> _getBloquesByFincaFromServer(String finca) async {
-    try {
-      // Query simplificado - sin ORDER BY problemático
-      String query = '''
-        SELECT DISTINCT 
+        SELECT DISTINCT TOP 200
           CAST(BLOCK as NVARCHAR(50)) as nombre, 
           LOCALIDAD as finca
         FROM Bi_TESSACORP.dbo.PLANO_CULTIVO_SCRAPING 
         WHERE LOCALIDAD = '$finca'
           AND BLOCK IS NOT NULL 
           AND BLOCK != ''
+          AND LEN(BLOCK) > 0
       ''';
 
-      String result = await SqlServerService.executeQuery(query);
+      String result = await RobustSqlServerService.executeQueryRobust(
+  query, 
+  operationName: 'Get Fincas Aplicaciones'
+);
       List<Map<String, dynamic>> data = SqlServerService.processQueryResult(result);
       
-      // Guardar en SQLite
+      data.sort((a, b) => _compareBlockNames(a['nombre'].toString(), b['nombre'].toString()));
+      
       if (data.isNotEmpty) {
         DatabaseHelper dbHelper = DatabaseHelper();
         for (Map<String, dynamic> bloqueData in data) {
@@ -210,43 +155,27 @@ class CosechaDropdownService {
         print('${data.length} bloques sincronizados desde servidor para finca $finca');
       }
       
-      // Convertir a objetos Bloque y ordenar
-      List<Bloque> bloques = data.map((item) => Bloque.fromJson(item)).toList();
-      bloques.sort((a, b) => _compareBlockNames(a.nombre, b.nombre));
-      return bloques;
-    } catch (e) {
-      print('Error obteniendo bloques del servidor para finca $finca: $e');
-      return [];
-    }
+      return data.map((item) => Bloque.fromJson(item)).toList();
+    });
   }
 
-  // ==================== VARIEDADES (MEJORADO) ====================
+  // ==================== VARIEDADES OPTIMIZADO ====================
   
-  // Obtener variedades por finca y bloque (offline first MEJORADO)
   static Future<List<Variedad>> getVariedadesByFincaAndBloque(String finca, String bloque) async {
     try {
-      // Primero intentar obtener datos locales
       DatabaseHelper dbHelper = DatabaseHelper();
       List<Map<String, dynamic>> localData = await dbHelper.getVariedadesByFincaAndBloque(finca, bloque);
       
-      // Si hay datos locales, usarlos
       if (localData.isNotEmpty) {
         print('Variedades cargadas desde SQLite: ${localData.length} para finca $finca, bloque $bloque');
         return localData.map((item) => Variedad.fromJson(item)).toList();
       }
 
-      // Si no hay datos locales y hay conexión, intentar sincronizar TODAS las variedades primero
       if (await AuthService.hasInternetConnection()) {
-        print('No hay variedades locales, sincronizando todas las variedades del servidor...');
-        await _syncAllVariedadesFromServer();
-        
-        // Ahora obtener las variedades de la finca y bloque específicos
-        List<Map<String, dynamic>> reloadedData = await dbHelper.getVariedadesByFincaAndBloque(finca, bloque);
-        print('Variedades cargadas después de sincronización: ${reloadedData.length} para finca $finca, bloque $bloque');
-        return reloadedData.map((item) => Variedad.fromJson(item)).toList();
+        print('Obteniendo variedades específicas del servidor...');
+        return await _getVariedadesByFincaAndBloqueOptimized(finca, bloque);
       }
 
-      // Sin datos locales ni conexión
       print('Sin variedades locales ni conexión para finca $finca, bloque $bloque');
       return [];
       
@@ -256,69 +185,10 @@ class CosechaDropdownService {
     }
   }
 
-  // NUEVO: Sincronizar TODAS las variedades del servidor de una vez
-  static Future<void> _syncAllVariedadesFromServer() async {
-    try {
-      print('Sincronizando TODAS las variedades desde el servidor...');
-      
-      // Query para obtener TODAS las variedades
+  static Future<List<Variedad>> _getVariedadesByFincaAndBloqueOptimized(String finca, String bloque) async {
+    return await _executeWithTimeout(() async {
       String query = '''
-        SELECT DISTINCT 
-          PRODUCTO as nombre, 
-          LOCALIDAD as finca, 
-          CAST(BLOCK as NVARCHAR(50)) as bloque
-        FROM Bi_TESSACORP.dbo.PLANO_CULTIVO_SCRAPING 
-        WHERE LOCALIDAD IS NOT NULL 
-          AND LOCALIDAD != ''
-          AND BLOCK IS NOT NULL 
-          AND BLOCK != ''
-          AND PRODUCTO IS NOT NULL 
-          AND PRODUCTO != ''
-      ''';
-
-      String result = await SqlServerService.executeQuery(query);
-      List<Map<String, dynamic>> data = SqlServerService.processQueryResult(result);
-      
-      // Ordenar en memoria por finca, bloque y variedad
-      data.sort((a, b) {
-        // Primero ordenar por finca
-        int fincaComparison = a['finca'].toString().compareTo(b['finca'].toString());
-        if (fincaComparison != 0) return fincaComparison;
-        
-        // Luego ordenar por bloque
-        int bloqueComparison = _compareBlockNames(a['bloque'].toString(), b['bloque'].toString());
-        if (bloqueComparison != 0) return bloqueComparison;
-        
-        // Finalmente ordenar por variedad
-        return a['nombre'].toString().compareTo(b['nombre'].toString());
-      });
-      
-      // Guardar TODAS las variedades en SQLite
-      if (data.isNotEmpty) {
-        DatabaseHelper dbHelper = DatabaseHelper();
-        for (Map<String, dynamic> variedadData in data) {
-          Map<String, dynamic> variedad = {
-            'nombre': variedadData['nombre'],
-            'finca': variedadData['finca'],
-            'bloque': variedadData['bloque'].toString(),
-            'activo': 1,
-            'fecha_actualizacion': DateTime.now().toIso8601String(),
-          };
-          await dbHelper.insertOrUpdateVariedad(variedad);
-        }
-        print('${data.length} variedades sincronizadas desde servidor (TODAS)');
-      }
-    } catch (e) {
-      print('Error sincronizando todas las variedades del servidor: $e');
-      rethrow;
-    }
-  }
-
-  // Obtener variedades de una finca y bloque del servidor y guardar localmente (método legacy)
-  static Future<List<Variedad>> _getVariedadesByFincaAndBloqueFromServer(String finca, String bloque) async {
-    try {
-      String query = '''
-        SELECT DISTINCT 
+        SELECT DISTINCT TOP 50
           PRODUCTO as nombre, 
           LOCALIDAD as finca, 
           CAST(BLOCK as NVARCHAR(50)) as bloque
@@ -327,13 +197,16 @@ class CosechaDropdownService {
           AND BLOCK = '$bloque'
           AND PRODUCTO IS NOT NULL 
           AND PRODUCTO != ''
+          AND LEN(PRODUCTO) > 1
         ORDER BY PRODUCTO
       ''';
 
-      String result = await SqlServerService.executeQuery(query);
+      String result = await RobustSqlServerService.executeQueryRobust(
+  query, 
+  operationName: 'Get Fincas Aplicaciones'
+);
       List<Map<String, dynamic>> data = SqlServerService.processQueryResult(result);
       
-      // Guardar en SQLite
       if (data.isNotEmpty) {
         DatabaseHelper dbHelper = DatabaseHelper();
         for (Map<String, dynamic> variedadData in data) {
@@ -350,40 +223,111 @@ class CosechaDropdownService {
       }
       
       return data.map((item) => Variedad.fromJson(item)).toList();
+    });
+  }
+
+  // ==================== SINCRONIZACIÓN INTELIGENTE ====================
+  
+  static Future<void> _syncVariedadesIntelligent() async {
+    try {
+      print('Sincronizando variedades con estrategia inteligente...');
+      
+      // Obtener lista de combinaciones finca-bloque existentes
+      DatabaseHelper dbHelper = DatabaseHelper();
+      List<Map<String, dynamic>> bloques = await dbHelper.getAllBloques();
+      
+      if (bloques.isEmpty) {
+        print('No hay bloques para sincronizar variedades');
+        return;
+      }
+
+      int totalVariedadesSynced = 0;
+      int processedCount = 0;
+      
+      // Procesar en lotes pequeños para evitar timeouts
+      for (int i = 0; i < bloques.length; i += BATCH_SIZE) {
+        try {
+          List<Map<String, dynamic>> batch = bloques.skip(i).take(BATCH_SIZE).toList();
+          
+          for (Map<String, dynamic> bloqueData in batch) {
+            try {
+              String finca = bloqueData['finca'];
+              String bloque = bloqueData['nombre'];
+              
+              print('Procesando variedades para finca: $finca, bloque: $bloque ($processedCount/${bloques.length})');
+              
+              List<Variedad> variedades = await _getVariedadesByFincaAndBloqueOptimized(finca, bloque);
+              totalVariedadesSynced += variedades.length;
+              processedCount++;
+              
+              // Pausa entre consultas para no sobrecargar el servidor
+              await Future.delayed(Duration(milliseconds: 200));
+              
+            } catch (e) {
+              print('Error procesando bloque ${bloqueData['finca']}-${bloqueData['nombre']}: $e');
+              continue;
+            }
+          }
+          
+          // Pausa más larga entre lotes
+          if (i + BATCH_SIZE < bloques.length) {
+            print('Procesando lote ${(i / BATCH_SIZE).floor() + 1}/${(bloques.length / BATCH_SIZE).ceil()}');
+            await Future.delayed(Duration(seconds: 1));
+          }
+          
+        } catch (e) {
+          print('Error procesando lote: $e');
+          continue;
+        }
+      }
+      
+      print('$totalVariedadesSynced variedades sincronizadas desde servidor (INTELIGENTE)');
     } catch (e) {
-      print('Error obteniendo variedades del servidor: $e');
-      return [];
+      print('Error en sincronización inteligente de variedades: $e');
+      rethrow;
     }
   }
 
-  // ==================== MÉTODOS PRINCIPALES ====================
+  // ==================== UTILIDADES DE TIMEOUT ====================
+  
+  static Future<T> _executeWithTimeout<T>(Future<T> Function() operation) async {
+    int retries = 0;
+    
+    while (retries < MAX_RETRIES) {
+      try {
+        return await operation().timeout(QUERY_TIMEOUT);
+      } catch (e) {
+        retries++;
+        print('Intento $retries/$MAX_RETRIES falló: $e');
+        
+        if (retries >= MAX_RETRIES) {
+          throw Exception('Operación falló después de $MAX_RETRIES intentos: $e');
+        }
+        
+        // Esperar antes del siguiente intento
+        await Future.delayed(RETRY_DELAY);
+      }
+    }
+    
+    throw Exception('No se pudo completar la operación');
+  }
 
-  // Obtener todos los datos necesarios para el checklist de cosecha
+  // ==================== MÉTODOS PRINCIPALES OPTIMIZADOS ====================
+  
   static Future<Map<String, dynamic>> getCosechaDropdownData({required bool forceSync}) async {
     try {
       print('Obteniendo datos de dropdown para cosecha (forceSync: $forceSync)');
       
-      // Si se requiere sincronización forzada y hay conexión
       if (forceSync && await AuthService.hasInternetConnection()) {
         print('Sincronización forzada solicitada para cosecha');
-        return await _forceSync();
+        return await _forceSyncOptimized();
       }
 
-      // Obtener fincas (usar método local primero)
       List<Finca> fincas = await _getFincasFromLocal();
       
-      // Si no hay fincas locales, intentar obtener del servidor
       if (fincas.isEmpty && await AuthService.hasInternetConnection()) {
         print('No hay fincas locales para cosecha, obteniendo del servidor...');
-        fincas = await _getFincasFromServer();
-        
-        // También sincronizar todos los bloques y variedades de una vez
-        try {
-          await _syncAllBloquesFromServer();
-          await _syncAllVariedadesFromServer(); // NUEVO: Sincronizar todas las variedades
-        } catch (e) {
-          print('Error sincronizando bloques/variedades durante carga inicial: $e');
-        }
+        fincas = await _getFincasFromServerWithTimeout();
       }
       
       print('Fincas cargadas para cosecha: ${fincas.length}');
@@ -404,124 +348,42 @@ class CosechaDropdownService {
     }
   }
 
-  // Sincronización forzada
-  static Future<Map<String, dynamic>> _forceSync() async {
+  static Future<Map<String, dynamic>> _forceSyncOptimized() async {
     try {
-      print('Iniciando sincronización forzada de cosecha...');
+      print('Iniciando sincronización forzada optimizada de cosecha...');
       
       // Sincronizar fincas
-      List<Finca> fincas = await _getFincasFromServer();
+      List<Finca> fincas = await _getFincasFromServerWithTimeout();
       
-      // Sincronizar TODOS los bloques
-      await _syncAllBloquesFromServer();
-      
-      // Sincronizar TODAS las variedades
-      await _syncAllVariedadesFromServer();
+      // Sincronizar variedades de forma inteligente (bajo demanda)
+      // NO sincronizar todo de una vez
       
       return {
         'success': true,
         'fincas': fincas,
-        'message': 'Sincronización forzada de cosecha exitosa'
+        'message': 'Sincronización forzada optimizada de cosecha exitosa'
       };
       
     } catch (e) {
-      print('Error en sincronización forzada de cosecha: $e');
+      print('Error en sincronización forzada optimizada de cosecha: $e');
       return {
         'success': false,
         'fincas': <Finca>[],
-        'message': 'Error en sincronización forzada de cosecha: $e'
+        'message': 'Error en sincronización forzada optimizada de cosecha: $e'
       };
     }
   }
 
-  // ==================== MÉTODOS DE SINCRONIZACIÓN ====================
-
-  // Sincronizar todos los datos de cosecha
-  static Future<Map<String, dynamic>> syncCosechaData() async {
-    try {
-      if (!await AuthService.hasInternetConnection()) {
-        return {
-          'success': false,
-          'message': 'No hay conexión a internet'
-        };
-      }
-
-      print('Iniciando sincronización completa de datos de cosecha...');
-
-      int totalSynced = 0;
-      List<String> errors = [];
-
-      // Sincronizar fincas
-      try {
-        List<Finca> fincas = await _getFincasFromServer();
-        totalSynced += fincas.length;
-        print('Fincas sincronizadas para cosecha: ${fincas.length}');
-      } catch (e) {
-        errors.add('Fincas: $e');
-      }
-
-      // Sincronizar TODOS los bloques
-      try {
-        await _syncAllBloquesFromServer();
-        
-        // Contar cuántos bloques tenemos ahora
-        DatabaseHelper dbHelper = DatabaseHelper();
-        Map<String, int> stats = await dbHelper.getCosechaDatabaseStats();
-        totalSynced += stats['bloques'] ?? 0;
-        print('Bloques sincronizados para cosecha: ${stats['bloques']}');
-      } catch (e) {
-        errors.add('Bloques: $e');
-      }
-
-      // Sincronizar TODAS las variedades
-      try {
-        await _syncAllVariedadesFromServer();
-        
-        // Contar cuántas variedades tenemos ahora
-        DatabaseHelper dbHelper = DatabaseHelper();
-        Map<String, int> stats = await dbHelper.getCosechaDatabaseStats();
-        totalSynced += stats['variedades'] ?? 0;
-        print('Variedades sincronizadas para cosecha: ${stats['variedades']}');
-      } catch (e) {
-        errors.add('Variedades: $e');
-      }
-
-      if (errors.isEmpty) {
-        return {
-          'success': true,
-          'message': 'Sincronización de cosecha exitosa. $totalSynced registros sincronizados.',
-          'count': totalSynced
-        };
-      } else {
-        return {
-          'success': false,
-          'message': 'Sincronización de cosecha parcial. Errores: ${errors.join(', ')}',
-          'count': totalSynced
-        };
-      }
-
-    } catch (e) {
-      return {
-        'success': false,
-        'message': 'Error durante la sincronización de cosecha: $e'
-      };
-    }
-  }
-
-  // ==================== MÉTODOS HELPER ====================
-
-  // Método helper para comparar nombres de bloques numéricamente
+  // ==================== HELPER METHODS ====================
+  
   static int _compareBlockNames(String a, String b) {
-    // Intentar convertir a números para comparación numérica
     int? numA = int.tryParse(a);
     int? numB = int.tryParse(b);
     
-    // Si ambos son números, comparar numéricamente
     if (numA != null && numB != null) {
       return numA.compareTo(numB);
     }
     
-    // Si solo uno es número, el número va primero
     if (numA != null && numB == null) {
       return -1;
     }
@@ -529,186 +391,349 @@ class CosechaDropdownService {
       return 1;
     }
     
-    // Si ninguno es número, comparar alfabéticamente
     return a.compareTo(b);
   }
 
-  // ==================== MÉTODOS DE BÚSQUEDA ====================
-
-  // Buscar finca por nombre (offline first)
-  static Future<Finca?> getFincaByNombre(String nombre) async {
-    try {
-      // Primero buscar localmente
-      DatabaseHelper dbHelper = DatabaseHelper();
-      Map<String, dynamic>? localData = await dbHelper.getFincaByNombre(nombre);
-      
-      if (localData != null) {
-        return Finca.fromJson(localData);
-      }
-
-      // Si no está local y hay conexión, buscar en servidor
-      if (await AuthService.hasInternetConnection()) {
-        List<Finca> fincas = await _getFincasFromServer();
-        return fincas.firstWhere(
-          (finca) => finca.nombre == nombre,
-          orElse: () => throw Exception('Finca no encontrada'),
-        );
-      }
-
-      return null;
-    } catch (e) {
-      print('Error buscando finca por nombre: $e');
-      return null;
-    }
-  }
-
-  // Buscar bloque por nombre y finca (offline first)
-  static Future<Bloque?> getBloqueByNombre(String nombre, String finca) async {
-    try {
-      // Primero buscar localmente
-      DatabaseHelper dbHelper = DatabaseHelper();
-      Map<String, dynamic>? localData = await dbHelper.getBloqueByNombre(nombre, finca);
-      
-      if (localData != null) {
-        return Bloque.fromJson(localData);
-      }
-
-      // Si no está local y hay conexión, buscar en servidor
-      if (await AuthService.hasInternetConnection()) {
-        List<Bloque> bloques = await _getBloquesByFincaFromServer(finca);
-        return bloques.firstWhere(
-          (bloque) => bloque.nombre == nombre,
-          orElse: () => throw Exception('Bloque no encontrado'),
-        );
-      }
-
-      return null;
-    } catch (e) {
-      print('Error buscando bloque por nombre: $e');
-      return null;
-    }
-  }
-
-  // Buscar variedad por nombre, finca y bloque (offline first)
-  static Future<Variedad?> getVariedadByNombre(String nombre, String finca, String bloque) async {
-    try {
-      // Primero buscar localmente
-      DatabaseHelper dbHelper = DatabaseHelper();
-      Map<String, dynamic>? localData = await dbHelper.getVariedadByNombre(nombre, finca, bloque);
-      
-      if (localData != null) {
-        return Variedad.fromJson(localData);
-      }
-
-      // Si no está local y hay conexión, buscar en servidor
-      if (await AuthService.hasInternetConnection()) {
-        List<Variedad> variedades = await _getVariedadesByFincaAndBloqueFromServer(finca, bloque);
-        return variedades.firstWhere(
-          (variedad) => variedad.nombre == nombre,
-          orElse: () => throw Exception('Variedad no encontrada'),
-        );
-      }
-
-      return null;
-    } catch (e) {
-      print('Error buscando variedad por nombre: $e');
-      return null;
-    }
-  }
-
-  // ==================== MÉTODOS DE VALIDACIÓN ====================
-
-  // Validar si existe una combinación finca-bloque-variedad
-  static Future<bool> validateCombination(String finca, String bloque, String variedad) async {
+  // Método para obtener estadísticas sin timeout
+  static Future<Map<String, dynamic>> getHealthStatus() async {
     try {
       DatabaseHelper dbHelper = DatabaseHelper();
+      Map<String, int> stats = await dbHelper.getCosechaDatabaseStats();
       
-      // Verificar si la combinación existe localmente
-      Map<String, dynamic>? result = await dbHelper.getVariedadByNombre(variedad, finca, bloque);
-      
-      if (result != null) {
-        return true;
-      }
-
-      // Si no existe localmente y hay conexión, verificar en servidor
-      if (await AuthService.hasInternetConnection()) {
-        String query = '''
-          SELECT COUNT(*) as count
-          FROM Bi_TESSACORP.dbo.PLANO_CULTIVO_SCRAPING 
-          WHERE LOCALIDAD = '$finca'
-            AND BLOCK = '$bloque'
-            AND PRODUCTO = '$variedad'
-        ''';
-
-        String result = await SqlServerService.executeQuery(query);
-        List<Map<String, dynamic>> data = SqlServerService.processQueryResult(result);
-        
-        if (data.isNotEmpty) {
-          int count = data.first['count'] ?? 0;
-          return count > 0;
-        }
-      }
-
-      return false;
-    } catch (e) {
-      print('Error validando combinación finca-bloque-variedad: $e');
-      return false;
-    }
-  }
-
-  // ==================== MÉTODOS DE ESTADÍSTICAS Y LIMPIEZA ====================
-
-  // Obtener estadísticas de datos locales de cosecha
-  static Future<Map<String, int>> getLocalCosechaStats() async {
-    try {
-      DatabaseHelper dbHelper = DatabaseHelper();
-      return await dbHelper.getCosechaDatabaseStats();
-    } catch (e) {
-      print('Error obteniendo estadísticas de cosecha: $e');
       return {
-        'fincas': 0,
-        'bloques': 0,
-        'variedades': 0,
+        'local_data': stats,
+        'connection_available': await AuthService.hasInternetConnection(),
+        'last_check': DateTime.now().toIso8601String(),
+        'status': 'healthy',
+      };
+    } catch (e) {
+      return {
+        'local_data': {'fincas': 0, 'bloques': 0, 'variedades': 0},
+        'connection_available': false,
+        'last_check': DateTime.now().toIso8601String(),
+        'status': 'error',
+        'error': e.toString(),
+      };
+    }
+  }
+}
+
+// ==================== APLICACIONES DROPDOWN SERVICE OPTIMIZADO ====================
+
+class AplicacionesDropdownServiceOptimized {
+  
+  // Configuración de timeouts y límites
+  static const Duration QUERY_TIMEOUT = Duration(seconds: 25);
+  static const int MAX_RETRIES = 2;
+  static const Duration RETRY_DELAY = Duration(seconds: 1);
+  static const int BATCH_SIZE = 30;
+  
+  // ==================== FINCAS OPTIMIZADO ====================
+  
+  static Future<List<Finca>> getFincas() async {
+    try {
+      List<Finca> fincas = await _getFincasFromLocal();
+      
+      if (fincas.isNotEmpty) {
+        print('Fincas cargadas desde SQLite para aplicaciones: ${fincas.length}');
+        return fincas;
+      }
+
+      if (await AuthService.hasInternetConnection()) {
+        print('No hay fincas locales para aplicaciones, obteniendo del servidor...');
+        return await _getFincasFromServerWithTimeout();
+      }
+
+      print('Sin fincas locales ni conexión para aplicaciones');
+      return [];
+      
+    } catch (e) {
+      print('Error obteniendo fincas para aplicaciones: $e');
+      return [];
+    }
+  }
+
+  static Future<List<Finca>> _getFincasFromLocal() async {
+    try {
+      DatabaseHelper dbHelper = DatabaseHelper();
+      List<Map<String, dynamic>> localData = await dbHelper.getAllFincasAplicaciones();
+      
+      if (localData.isNotEmpty) {
+        print('Fincas aplicaciones cargadas desde SQLite: ${localData.length}');
+        return localData.map((item) => Finca.fromJson(item)).toList();
+      }
+      
+      return [];
+    } catch (e) {
+      print('Error obteniendo fincas locales para aplicaciones: $e');
+      return [];
+    }
+  }
+
+  static Future<List<Finca>> _getFincasFromServerWithTimeout() async {
+    return await _executeWithTimeout(() async {
+      String query = '''
+        SELECT DISTINCT TOP 50 FINCA as nombre
+        FROM Kontrollers.dbo.base_MIPE 
+        WHERE FINCA IS NOT NULL 
+          AND FINCA != ''
+          AND LEN(FINCA) > 2
+        ORDER BY FINCA
+      ''';
+
+      String result = await RobustSqlServerService.executeQueryRobust(
+  query, 
+  operationName: 'Get Fincas Aplicaciones'
+);
+      List<Map<String, dynamic>> data = SqlServerService.processQueryResult(result);
+      
+      if (data.isNotEmpty) {
+        DatabaseHelper dbHelper = DatabaseHelper();
+        for (Map<String, dynamic> fincaData in data) {
+          Map<String, dynamic> finca = {
+            'nombre': fincaData['nombre'],
+            'activo': 1,
+            'fecha_actualizacion': DateTime.now().toIso8601String(),
+          };
+          await dbHelper.insertOrUpdateFincaAplicaciones(finca);
+        }
+        print('${data.length} fincas sincronizadas desde servidor para aplicaciones');
+      }
+      
+      return data.map((item) => Finca.fromJson(item)).toList();
+    });
+  }
+
+  // ==================== BLOQUES OPTIMIZADO ====================
+  
+  static Future<List<Bloque>> getBloquesByFinca(String finca) async {
+    try {
+      DatabaseHelper dbHelper = DatabaseHelper();
+      List<Map<String, dynamic>> localData = await dbHelper.getBloquesByFincaAplicaciones(finca);
+      
+      if (localData.isNotEmpty) {
+        print('Bloques aplicaciones cargados desde SQLite: ${localData.length} para finca $finca');
+        List<Bloque> bloques = localData.map((item) => Bloque.fromJson(item)).toList();
+        bloques.sort((a, b) => _compareBlockNames(a.nombre, b.nombre));
+        return bloques;
+      }
+
+      if (await AuthService.hasInternetConnection()) {
+        print('Obteniendo bloques de la finca $finca del servidor...');
+        return await _getBloquesByFincaFromServerOptimized(finca);
+      }
+
+      print('Sin bloques locales ni conexión para finca aplicaciones $finca');
+      return [];
+      
+    } catch (e) {
+      print('Error obteniendo bloques por finca aplicaciones: $e');
+      return [];
+    }
+  }
+
+  static Future<List<Bloque>> _getBloquesByFincaFromServerOptimized(String finca) async {
+    return await _executeWithTimeout(() async {
+      String query = '''
+        SELECT DISTINCT TOP 100
+          CAST(BLOQUE as NVARCHAR(50)) as nombre, 
+          FINCA as finca
+        FROM Kontrollers.dbo.base_MIPE 
+        WHERE FINCA = '$finca'
+          AND BLOQUE IS NOT NULL 
+          AND BLOQUE != ''
+          AND LEN(BLOQUE) > 0
+      ''';
+
+      String result = await RobustSqlServerService.executeQueryRobust(
+  query, 
+  operationName: 'Get Fincas Aplicaciones'
+);
+      List<Map<String, dynamic>> data = SqlServerService.processQueryResult(result);
+      
+      data.sort((a, b) => _compareBlockNames(a['nombre'].toString(), b['nombre'].toString()));
+      
+      if (data.isNotEmpty) {
+        DatabaseHelper dbHelper = DatabaseHelper();
+        for (Map<String, dynamic> bloqueData in data) {
+          Map<String, dynamic> bloque = {
+            'nombre': bloqueData['nombre'].toString(),
+            'finca': bloqueData['finca'],
+            'activo': 1,
+            'fecha_actualizacion': DateTime.now().toIso8601String(),
+          };
+          await dbHelper.insertOrUpdateBloqueAplicaciones(bloque);
+        }
+        print('${data.length} bloques aplicaciones sincronizados desde servidor para finca $finca');
+      }
+      
+      return data.map((item) => Bloque.fromJson(item)).toList();
+    });
+  }
+
+  // ==================== BOMBAS OPTIMIZADO ====================
+  
+  static Future<List<Bomba>> getBombasByFincaAndBloque(String finca, String bloque) async {
+    try {
+      DatabaseHelper dbHelper = DatabaseHelper();
+      List<Map<String, dynamic>> localData = await dbHelper.getBombasByFincaAndBloque(finca, bloque);
+      
+      if (localData.isNotEmpty) {
+        print('Bombas cargadas desde SQLite: ${localData.length} para finca $finca, bloque $bloque');
+        return localData.map((item) => Bomba.fromJson(item)).toList();
+      }
+
+      if (await AuthService.hasInternetConnection()) {
+        print('Obteniendo bombas específicas del servidor...');
+        return await _getBombasByFincaAndBloqueOptimized(finca, bloque);
+      }
+
+      print('Sin bombas locales ni conexión para finca $finca, bloque $bloque');
+      return [];
+      
+    } catch (e) {
+      print('Error obteniendo bombas por finca y bloque: $e');
+      return [];
+    }
+  }
+
+  static Future<List<Bomba>> _getBombasByFincaAndBloqueOptimized(String finca, String bloque) async {
+    return await _executeWithTimeout(() async {
+      String query = '''
+        SELECT DISTINCT TOP 50
+          NUMERO_O_CODIGO_DE_LA_BOMBA as nombre, 
+          FINCA as finca, 
+          CAST(BLOQUE as NVARCHAR(50)) as bloque
+        FROM Kontrollers.dbo.base_MIPE 
+        WHERE FINCA = '$finca'
+          AND BLOQUE = '$bloque'
+          AND NUMERO_O_CODIGO_DE_LA_BOMBA IS NOT NULL 
+          AND NUMERO_O_CODIGO_DE_LA_BOMBA != ''
+          AND LEN(NUMERO_O_CODIGO_DE_LA_BOMBA) > 0
+        ORDER BY NUMERO_O_CODIGO_DE_LA_BOMBA
+      ''';
+
+      String result = await RobustSqlServerService.executeQueryRobust(
+  query, 
+  operationName: 'Get Fincas Aplicaciones'
+);
+      List<Map<String, dynamic>> data = SqlServerService.processQueryResult(result);
+      
+      if (data.isNotEmpty) {
+        DatabaseHelper dbHelper = DatabaseHelper();
+        for (Map<String, dynamic> bombaData in data) {
+          Map<String, dynamic> bomba = {
+            'nombre': bombaData['nombre'],
+            'finca': bombaData['finca'],
+            'bloque': bombaData['bloque'].toString(),
+            'activo': 1,
+            'fecha_actualizacion': DateTime.now().toIso8601String(),
+          };
+          await dbHelper.insertOrUpdateBomba(bomba);
+        }
+        print('${data.length} bombas sincronizadas desde servidor para finca $finca, bloque $bloque');
+      }
+      
+      return data.map((item) => Bomba.fromJson(item)).toList();
+    });
+  }
+
+  // ==================== UTILIDADES COMPARTIDAS ====================
+  
+  static Future<T> _executeWithTimeout<T>(Future<T> Function() operation) async {
+    int retries = 0;
+    
+    while (retries < MAX_RETRIES) {
+      try {
+        return await operation().timeout(QUERY_TIMEOUT);
+      } catch (e) {
+        retries++;
+        print('Intento $retries/$MAX_RETRIES falló: $e');
+        
+        if (retries >= MAX_RETRIES) {
+          throw Exception('Operación falló después de $MAX_RETRIES intentos: $e');
+        }
+        
+        await Future.delayed(RETRY_DELAY);
+      }
+    }
+    
+    throw Exception('No se pudo completar la operación');
+  }
+
+  static int _compareBlockNames(String a, String b) {
+    int? numA = int.tryParse(a);
+    int? numB = int.tryParse(b);
+    
+    if (numA != null && numB != null) {
+      return numA.compareTo(numB);
+    }
+    
+    if (numA != null && numB == null) {
+      return -1;
+    }
+    if (numA == null && numB != null) {
+      return 1;
+    }
+    
+    return a.compareTo(b);
+  }
+
+  // ==================== MÉTODOS PRINCIPALES ====================
+  
+  static Future<Map<String, dynamic>> getAplicacionesDropdownData({required bool forceSync}) async {
+    try {
+      print('Obteniendo datos de dropdown para aplicaciones (forceSync: $forceSync)');
+      
+      if (forceSync && await AuthService.hasInternetConnection()) {
+        print('Sincronización forzada solicitada para aplicaciones');
+        return await _forceSyncOptimized();
+      }
+
+      List<Finca> fincas = await _getFincasFromLocal();
+      
+      if (fincas.isEmpty && await AuthService.hasInternetConnection()) {
+        print('No hay fincas locales para aplicaciones, obteniendo del servidor...');
+        fincas = await _getFincasFromServerWithTimeout();
+      }
+      
+      print('Fincas cargadas para aplicaciones: ${fincas.length}');
+
+      return {
+        'success': true,
+        'fincas': fincas,
+        'message': 'Datos de aplicaciones cargados correctamente'
+      };
+
+    } catch (e) {
+      print('Error obteniendo datos de aplicaciones: $e');
+      return {
+        'success': false,
+        'fincas': <Finca>[],
+        'message': 'Error cargando datos de aplicaciones: $e'
       };
     }
   }
 
-  // Limpiar todos los datos locales de cosecha
-  static Future<void> clearLocalCosechaData() async {
+  static Future<Map<String, dynamic>> _forceSyncOptimized() async {
     try {
-      DatabaseHelper dbHelper = DatabaseHelper();
-      await dbHelper.clearBloques();
-      await dbHelper.clearVariedades();
-      print('Datos locales de cosecha limpiados');
+      print('Iniciando sincronización forzada optimizada de aplicaciones...');
+      
+      List<Finca> fincas = await _getFincasFromServerWithTimeout();
+      
+      return {
+        'success': true,
+        'fincas': fincas,
+        'message': 'Sincronización forzada optimizada de aplicaciones exitosa'
+      };
+      
     } catch (e) {
-      print('Error limpiando datos locales de cosecha: $e');
-      rethrow;
-    }
-  }
-
-  // ==================== MÉTODOS LEGACY PARA COMPATIBILIDAD ====================
-
-  // Precargar bloques para una finca específica
-  static Future<void> preloadBloquesForFinca(String finca) async {
-    try {
-      if (await AuthService.hasInternetConnection()) {
-        await _getBloquesByFincaFromServer(finca);
-        print('Bloques precargados para finca: $finca');
-      }
-    } catch (e) {
-      print('Error precargando bloques para finca $finca: $e');
-    }
-  }
-
-  // Precargar variedades para una finca y bloque específicos
-  static Future<void> preloadVariedadesForFincaAndBloque(String finca, String bloque) async {
-    try {
-      if (await AuthService.hasInternetConnection()) {
-        await _getVariedadesByFincaAndBloqueFromServer(finca, bloque);
-        print('Variedades precargadas para finca: $finca, bloque: $bloque');
-      }
-    } catch (e) {
-      print('Error precargando variedades para finca $finca, bloque $bloque: $e');
+      print('Error en sincronización forzada optimizada de aplicaciones: $e');
+      return {
+        'success': false,
+        'fincas': <Finca>[],
+        'message': 'Error en sincronización forzada optimizada de aplicaciones: $e'
+      };
     }
   }
 }

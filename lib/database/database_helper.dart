@@ -23,7 +23,7 @@ class DatabaseHelper {
     
     return await openDatabase(
       path,
-      version: 3,
+      version: 4, // Incrementado para incluir las tablas de aplicaciones
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -69,7 +69,7 @@ class DatabaseHelper {
       )
     ''');
     
-    // Tablas para Cosecha (añadidas)
+    // Tablas para Cosecha
     await db.execute('''
       CREATE TABLE bloques_local (
         nombre TEXT NOT NULL,
@@ -89,6 +89,9 @@ class DatabaseHelper {
         PRIMARY KEY (nombre, finca, bloque)
       )
     ''');
+    
+    // Tablas para Aplicaciones
+    await _createAplicacionesTables(db);
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -142,6 +145,11 @@ class DatabaseHelper {
           PRIMARY KEY (nombre, finca, bloque)
         )
       ''');
+    }
+    
+    if (oldVersion < 4) {
+      // Código de la versión 4 (tablas de aplicaciones)
+      await _createAplicacionesTables(db);
     }
   }
 
@@ -304,7 +312,7 @@ class DatabaseHelper {
     await db.delete('fincas_local');
   }
 
-  // ==================== MÉTODOS NUEVOS (Cosecha) ====================
+  // ==================== MÉTODOS PARA COSECHA ====================
 
   // Métodos Bloques
   Future<void> insertOrUpdateBloque(Map<String, dynamic> bloque) async {
@@ -328,6 +336,18 @@ class DatabaseHelper {
     }
     return null;
   }
+  
+  // MÉTODO FALTANTE: Obtener TODOS los bloques de cosecha
+  Future<List<Map<String, dynamic>>> getAllBloques() async {
+    Database db = await database;
+    return await db.query(
+      'bloques_local',
+      where: 'activo = ?',
+      whereArgs: [1],
+      orderBy: 'finca, nombre',
+    );
+  }
+  
   Future<void> clearBloques() async {
     Database db = await database;
     await db.delete('bloques_local');
@@ -358,6 +378,193 @@ class DatabaseHelper {
   Future<void> clearVariedades() async {
     Database db = await database;
     await db.delete('variedades_local');
+  }
+
+  // ==================== MÉTODOS PARA APLICACIONES ====================
+
+  // Crear tablas para aplicaciones
+  Future<void> _createAplicacionesTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS fincas_aplicaciones (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nombre TEXT NOT NULL UNIQUE,
+        activo INTEGER DEFAULT 1,
+        fecha_actualizacion TEXT
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS bloques_aplicaciones (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nombre TEXT NOT NULL,
+        finca TEXT NOT NULL,
+        activo INTEGER DEFAULT 1,
+        fecha_actualizacion TEXT,
+        UNIQUE(nombre, finca)
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS bombas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nombre TEXT NOT NULL,
+        finca TEXT NOT NULL,
+        bloque TEXT NOT NULL,
+        activo INTEGER DEFAULT 1,
+        fecha_actualizacion TEXT,
+        UNIQUE(nombre, finca, bloque)
+      )
+    ''');
+  }
+
+  // Métodos para fincas aplicaciones
+  Future<int> insertOrUpdateFincaAplicaciones(Map<String, dynamic> finca) async {
+    Database db = await database;
+    return await db.insert(
+      'fincas_aplicaciones',
+      finca,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getAllFincasAplicaciones() async {
+    Database db = await database;
+    return await db.query(
+      'fincas_aplicaciones',
+      where: 'activo = ?',
+      whereArgs: [1],
+      orderBy: 'nombre',
+    );
+  }
+
+  Future<Map<String, dynamic>?> getFincaAplicacionesByNombre(String nombre) async {
+    Database db = await database;
+    List<Map<String, dynamic>> maps = await db.query(
+      'fincas_aplicaciones',
+      where: 'nombre = ? AND activo = ?',
+      whereArgs: [nombre, 1],
+    );
+    return maps.isNotEmpty ? maps.first : null;
+  }
+
+  Future<void> clearFincasAplicaciones() async {
+    Database db = await database;
+    await db.delete('fincas_aplicaciones');
+  }
+
+  // Métodos para bloques aplicaciones
+  Future<int> insertOrUpdateBloqueAplicaciones(Map<String, dynamic> bloque) async {
+    Database db = await database;
+    return await db.insert(
+      'bloques_aplicaciones',
+      bloque,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getBloquesByFincaAplicaciones(String finca) async {
+    Database db = await database;
+    return await db.query(
+      'bloques_aplicaciones',
+      where: 'finca = ? AND activo = ?',
+      whereArgs: [finca, 1],
+      orderBy: 'nombre',
+    );
+  }
+
+  Future<Map<String, dynamic>?> getBloqueAplicacionesByNombre(String nombre, String finca) async {
+    Database db = await database;
+    List<Map<String, dynamic>> maps = await db.query(
+      'bloques_aplicaciones',
+      where: 'nombre = ? AND finca = ? AND activo = ?',
+      whereArgs: [nombre, finca, 1],
+    );
+    return maps.isNotEmpty ? maps.first : null;
+  }
+
+  // MÉTODO FALTANTE: Obtener TODOS los bloques de aplicaciones
+  Future<List<Map<String, dynamic>>> getAllBloquesAplicaciones() async {
+    Database db = await database;
+    return await db.query(
+      'bloques_aplicaciones',
+      where: 'activo = ?',
+      whereArgs: [1],
+      orderBy: 'finca, nombre',
+    );
+  }
+
+  Future<void> clearBloquesAplicaciones() async {
+    Database db = await database;
+    await db.delete('bloques_aplicaciones');
+  }
+
+  // Métodos para bombas
+  Future<int> insertOrUpdateBomba(Map<String, dynamic> bomba) async {
+    Database db = await database;
+    return await db.insert(
+      'bombas',
+      bomba,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getBombasByFincaAndBloque(String finca, String bloque) async {
+    Database db = await database;
+    return await db.query(
+      'bombas',
+      where: 'finca = ? AND bloque = ? AND activo = ?',
+      whereArgs: [finca, bloque, 1],
+      orderBy: 'nombre',
+    );
+  }
+
+  Future<Map<String, dynamic>?> getBombaByNombre(String nombre, String finca, String bloque) async {
+    Database db = await database;
+    List<Map<String, dynamic>> maps = await db.query(
+      'bombas',
+      where: 'nombre = ? AND finca = ? AND bloque = ? AND activo = ?',
+      whereArgs: [nombre, finca, bloque, 1],
+    );
+    return maps.isNotEmpty ? maps.first : null;
+  }
+
+  // MÉTODO FALTANTE: Obtener TODAS las bombas
+  Future<List<Map<String, dynamic>>> getAllBombas() async {
+    Database db = await database;
+    return await db.query(
+      'bombas',
+      where: 'activo = ?',
+      whereArgs: [1],
+      orderBy: 'finca, bloque, nombre',
+    );
+  }
+
+  Future<void> clearBombas() async {
+    Database db = await database;
+    await db.delete('bombas');
+  }
+
+  // Estadísticas para aplicaciones
+  Future<Map<String, int>> getAplicacionesDatabaseStats() async {
+    Database db = await database;
+    
+    List<Map<String, dynamic>> fincasResult = await db.rawQuery(
+      'SELECT COUNT(*) as count FROM fincas_aplicaciones WHERE activo = 1'
+    );
+    
+    List<Map<String, dynamic>> bloquesResult = await db.rawQuery(
+      'SELECT COUNT(*) as count FROM bloques_aplicaciones WHERE activo = 1'
+    );
+    
+    List<Map<String, dynamic>> bombasResult = await db.rawQuery(
+      'SELECT COUNT(*) as count FROM bombas WHERE activo = 1'
+    );
+    
+    return {
+      'fincas': fincasResult.first['count'] ?? 0,
+      'bloques': bloquesResult.first['count'] ?? 0,
+      'bombas': bombasResult.first['count'] ?? 0,
+    };
   }
 
   // ==================== MÉTODOS GENERALES (Actualizados) ====================
@@ -396,6 +603,9 @@ class DatabaseHelper {
     await db.delete('fincas_local');
     await db.delete('bloques_local');
     await db.delete('variedades_local');
+    await db.delete('fincas_aplicaciones');
+    await db.delete('bloques_aplicaciones');
+    await db.delete('bombas');
   }
 
   Future<void> close() async {

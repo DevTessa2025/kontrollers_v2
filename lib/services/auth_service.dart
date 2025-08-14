@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:kontrollers_v2/services/aplicaciones_dropdown_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../database/database_helper.dart';
@@ -220,9 +221,10 @@ class AuthService {
 
       // Sincronizar datos de dropdown de COSECHA
       int cosechaDropdownSynced = 0;
+      int aplicacionesSynced = 0;
       String cosechaDropdownMessage = '';
       try {
-        Map<String, dynamic> cosechaResult = await CosechaDropdownService.syncCosechaData();
+        Map<String, dynamic> cosechaResult = await CosechaDropdownService.getCosechaDropdownData(forceSync: true);
         if (cosechaResult['success']) {
           cosechaDropdownSynced = cosechaResult['count'] ?? 0;
           cosechaDropdownMessage = 'Datos de cosecha sincronizados correctamente.';
@@ -234,6 +236,18 @@ class AuthService {
         print('Error sincronizando datos de cosecha: $e');
       }
 
+      try {
+        Map<String, dynamic> aplicacionesResult = await AplicacionesDropdownService.syncAplicacionesData();
+        if (aplicacionesResult['success']) {
+          aplicacionesSynced = aplicacionesResult['count'] ?? 0;
+          print('Aplicaciones sincronizadas en AuthService: $aplicacionesSynced');
+        } else {
+          print('Error sincronizando aplicaciones en AuthService: ${aplicacionesResult['message']}');
+        }
+      } catch (e) {
+        print('Error sincronizando aplicaciones en AuthService: $e');
+      }
+
       int totalDropdown = bodegaDropdownSynced + cosechaDropdownSynced;
 
       return {
@@ -243,7 +257,8 @@ class AuthService {
         'usersSynced': usersSynced,
         'dropdownSynced': totalDropdown,
         'bodegaDropdownSynced': bodegaDropdownSynced,
-        'cosechaDropdownSynced': cosechaDropdownSynced
+        'cosechaDropdownSynced': cosechaDropdownSynced,
+        'aplicacionesDropdownSynced': aplicacionesSynced,
       };
 
     } catch (e) {

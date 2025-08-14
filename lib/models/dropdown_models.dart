@@ -206,3 +206,51 @@ class Variedad {
   @override
   int get hashCode => nombre.hashCode;
 }
+
+class Bomba {
+  final String nombre;
+  final String? finca;
+  final String? bloque;
+
+  Bomba({
+    required this.nombre,
+    this.finca,
+    this.bloque,
+  });
+
+  factory Bomba.fromJson(Map<String, dynamic> json) {
+    return Bomba(
+      nombre: json['nombre'] ?? json['NUMERO_O_CODIGO_DE_LA_BOMBA'],
+      finca: json['finca'] ?? json['FINCA'],
+      bloque: _convertToString(json['bloque'] ?? json['BLOQUE']),
+    );
+  }
+
+  // Método helper para convertir cualquier tipo a String
+  static String? _convertToString(dynamic value) {
+    if (value == null) return null;
+    if (value is String) return value;
+    if (value is int) return value.toString();
+    if (value is double) return value.toInt().toString();
+    return value.toString();
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'nombre': nombre,
+      'finca': finca,
+      'bloque': bloque,
+    };
+  }
+
+  @override
+  String toString() => nombre;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Bomba && runtimeType == other.runtimeType && nombre == other.nombre;
+
+  @override
+  int get hashCode => nombre.hashCode;
+}

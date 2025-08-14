@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:kontrollers_v2/screens/checklist_aplicaciones_screen.dart' as checklist;
+import 'package:kontrollers_v2/services/RobustConnectionManager.dart';
 import '../services/auth_service.dart';
 import '../services/dropdown_service.dart';
 import '../services/cosecha_dropdown_service.dart';
@@ -8,6 +10,7 @@ import '../database/database_helper.dart';
 import 'login_screen.dart';
 import 'checklist_bodega_screen.dart';
 import 'checklist_cosecha_screen.dart';
+import '../services/aplicaciones_dropdown_service.dart' ;
 
 class HomeScreen extends StatefulWidget {
   @override
@@ -22,6 +25,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Map<String, int> _dbStats = {};
   Map<String, int> _cosechaDbStats = {};
   Map<String, dynamic> _validationInfo = {};
+  Map<String, int> _aplicacionesDbStats = {};
   
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
@@ -87,26 +91,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
       try {
         print('Iniciando sincronización automática en home screen...');
-        Map<String, dynamic> result = await AuthService.syncData();
+        Map<String, dynamic> syncResult = await IntelligentSyncService.performIntelligentSync();
 
-        if (result['success']) {
-          int users = result['usersSynced'] ?? 0;
-          int bodegaDropdown = result['bodegaDropdownSynced'] ?? 0;
-          int cosechaDropdown = result['cosechaDropdownSynced'] ?? 0;
-          
-          if (users > 0 || bodegaDropdown > 0 || cosechaDropdown > 0) {
-            Fluttertoast.showToast(
-              msg: "Sincronización completa: $users usuarios, $bodegaDropdown bodega, $cosechaDropdown cosecha",
-              toastLength: Toast.LENGTH_SHORT,
-              gravity: ToastGravity.BOTTOM,
-              backgroundColor: Colors.green[600],
-              textColor: Colors.white,
-            );
-          }
-
-          await _loadDatabaseStats();
+        if (syncResult['sync_status'] == 'success') {
+          print('Sincronización exitosa: ${syncResult['synced_items']} elementos');
         } else {
-          print('Error en sincronización automática: ${result['message']}');
+          print('Sincronización con problemas: ${syncResult['message']}');
         }
       } catch (e) {
         print('Error en sincronización automática: $e');
@@ -209,11 +199,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       Map<String, int> stats = await dbHelper.getDatabaseStats();
       
       // Cargar estadísticas de cosecha
-      Map<String, int> cosechaStats = await CosechaDropdownService.getLocalCosechaStats();
+      // Map<String, int> cosechaStats = await CosechaDropdownService.getLocalCosechaStats();
+      
+      // Cargar estadísticas de aplicaciones
+      // Map<String, int> aplicacionesStats = await AplicacionesDropdownService.getLocalAplicacionesStats();
       
       setState(() {
         _dbStats = stats;
-        _cosechaDbStats = cosechaStats;
+        // _cosechaDbStats = cosechaStats;
+        // _aplicacionesDbStats = aplicacionesStats;
       });
     } catch (e) {
       print('Error cargando estadísticas de base de datos: $e');
@@ -323,6 +317,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         Navigator.push(
           context,
           MaterialPageRoute(builder: (context) => ChecklistCosechaScreen()),
+        );
+        break;
+      case 'Aplicaciones':
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => checklist.ChecklistAplicacionesScreen()),
         );
         break;
       default:
@@ -931,7 +931,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         'icon': Icons.spa_outlined,
         'color': Colors.red[800]!,
         'description': 'Aplicaciones\nfitosanitarias',
-        'active': false,
+        'active': true,
       },
       {
         'title': 'Fertirriego',

@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'package:kontrollers_v2/services/RobustConnectionManager.dart';
+
 import '../models/dropdown_models.dart';
 import '../database/database_helper.dart';
 import 'sql_server_service.dart';
@@ -47,7 +49,10 @@ class DropdownService {
         ORDER BY nombre
       ''';
 
-      String result = await SqlServerService.executeQuery(query);
+      String result = await RobustSqlServerService.executeQueryRobust(
+  query, 
+  operationName: 'Get Fincas Aplicaciones'
+);
       List<Map<String, dynamic>> data = SqlServerService.processQueryResult(result);
       
       // Guardar en SQLite
@@ -108,7 +113,10 @@ class DropdownService {
         ORDER BY nombre
       ''';
 
-      String result = await SqlServerService.executeQuery(query);
+      String result = await RobustSqlServerService.executeQueryRobust(
+  query, 
+  operationName: 'Get Fincas Aplicaciones'
+);
       List<Map<String, dynamic>> data = SqlServerService.processQueryResult(result);
       
       // Guardar en SQLite
@@ -170,7 +178,10 @@ class DropdownService {
         ORDER BY LOCALIDAD
       ''';
 
-      String result = await SqlServerService.executeQuery(query);
+      String result = await RobustSqlServerService.executeQueryRobust(
+  query, 
+  operationName: 'Get Fincas Aplicaciones'
+);
       List<Map<String, dynamic>> data = SqlServerService.processQueryResult(result);
       
       // Guardar en SQLite
