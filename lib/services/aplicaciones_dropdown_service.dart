@@ -8,6 +8,60 @@ import 'auth_service.dart';
 
 class AplicacionesDropdownService {
   
+  // ==================== QUERIES OPTIMIZADAS ====================
+  
+  // Query para obtener fincas desde tabla optimizada
+  static String _getFincasQuery() {
+    return '''
+      SELECT DISTINCT finca as nombre
+      FROM aplicaciones_data 
+      WHERE activo = 1
+      ORDER BY finca
+    ''';
+  }
+  
+  // Query CORREGIDA para obtener bloques por finca desde tabla optimizada
+  static String _getBloquesByFincaQuery(String finca) {
+    String escapedFinca = finca.replaceAll("'", "''");
+    return '''
+      SELECT DISTINCT 
+        bloque as nombre,
+        CASE WHEN ISNUMERIC(bloque) = 1 THEN CAST(bloque AS INT) ELSE 999999 END as sort_order
+      FROM aplicaciones_data 
+      WHERE finca = '$escapedFinca' AND activo = 1
+      ORDER BY sort_order, nombre
+    ''';
+  }
+  
+  // Query para obtener bombas por finca y bloque desde tabla optimizada
+  static String _getBombasByFincaAndBloqueQuery(String finca, String bloque) {
+    String escapedFinca = finca.replaceAll("'", "''");
+    String escapedBloque = bloque.replaceAll("'", "''");
+    return '''
+      SELECT bomba as nombre
+      FROM aplicaciones_data 
+      WHERE finca = '$escapedFinca' AND bloque = '$escapedBloque' AND activo = 1
+      ORDER BY 
+        CASE WHEN ISNUMERIC(bomba) = 1 THEN CAST(bomba AS INT) ELSE 999999 END,
+        bomba
+    ''';
+  }
+  
+  // Query para validar combinación desde tabla optimizada
+  static String _validateCombinationQuery(String finca, String bloque, String bomba) {
+    String escapedFinca = finca.replaceAll("'", "''");
+    String escapedBloque = bloque.replaceAll("'", "''");
+    String escapedBomba = bomba.replaceAll("'", "''");
+    return '''
+      SELECT COUNT(*) as count
+      FROM aplicaciones_data 
+      WHERE finca = '$escapedFinca' 
+        AND bloque = '$escapedBloque' 
+        AND bomba = '$escapedBomba' 
+        AND activo = 1
+    ''';
+  }
+
   // ==================== FINCAS ====================
   
   // Obtener fincas (offline first)
@@ -56,21 +110,15 @@ class AplicacionesDropdownService {
     }
   }
 
-  // Obtener fincas del servidor y guardar localmente
+  // Obtener fincas del servidor usando tabla optimizada
   static Future<List<Finca>> _getFincasFromServer() async {
     try {
-      String query = '''
-        SELECT DISTINCT FINCA as nombre
-        FROM Kontrollers.dbo.base_MIPE 
-        WHERE FINCA IS NOT NULL 
-          AND FINCA != ''
-        ORDER BY FINCA
-      ''';
+      String query = _getFincasQuery();
 
       String result = await RobustSqlServerService.executeQueryRobust(
-  query, 
-  operationName: 'Get Fincas Aplicaciones'
-);
+        query, 
+        operationName: 'Get Fincas Aplicaciones Optimizado'
+      );
       List<Map<String, dynamic>> data = SqlServerService.processQueryResult(result);
       
       // Guardar en SQLite
@@ -84,19 +132,19 @@ class AplicacionesDropdownService {
           };
           await dbHelper.insertOrUpdateFincaAplicaciones(finca);
         }
-        print('${data.length} fincas sincronizadas desde servidor para aplicaciones');
+        print('${data.length} fincas sincronizadas desde tabla optimizada');
       }
       
       return data.map((item) => Finca.fromJson(item)).toList();
     } catch (e) {
-      print('Error obteniendo fincas del servidor para aplicaciones: $e');
+      print('Error obteniendo fincas del servidor optimizado: $e');
       return [];
     }
   }
 
   // ==================== BLOQUES (OPTIMIZADO) ====================
   
-  // Obtener bloques por finca (offline first) - VERSIÓN OPTIMIZADA
+  // Obtener bloques por finca (offline first)
   static Future<List<Bloque>> getBloquesByFinca(String finca) async {
     try {
       // Primero intentar obtener datos locales
@@ -111,9 +159,9 @@ class AplicacionesDropdownService {
         return bloques;
       }
 
-      // Si no hay datos locales y hay conexión, cargar SOLO los bloques de esta finca
+      // Si no hay datos locales y hay conexión, cargar desde tabla optimizada
       if (await AuthService.hasInternetConnection()) {
-        print('No hay bloques locales aplicaciones, obteniendo bloques de la finca $finca del servidor...');
+        print('No hay bloques locales aplicaciones, obteniendo desde tabla optimizada...');
         return await _getBloquesByFincaFromServer(finca);
       }
 
@@ -127,30 +175,18 @@ class AplicacionesDropdownService {
     }
   }
 
-  // MÉTODO OPTIMIZADO: Obtener bloques de UNA SOLA finca del servidor
+  // Obtener bloques desde tabla optimizada
   static Future<List<Bloque>> _getBloquesByFincaFromServer(String finca) async {
     try {
-      print('Obteniendo bloques de la finca $finca desde el servidor...');
+      print('Obteniendo bloques de la finca $finca desde tabla optimizada...');
       
-      // Query optimizada - SOLO para la finca específica
-      String query = '''
-        SELECT DISTINCT 
-          CAST(BLOQUE as NVARCHAR(50)) as nombre, 
-          FINCA as finca
-        FROM Kontrollers.dbo.base_MIPE 
-        WHERE FINCA = '$finca'
-          AND BLOQUE IS NOT NULL 
-          AND BLOQUE != ''
-      ''';
+      String query = _getBloquesByFincaQuery(finca);
 
       String result = await RobustSqlServerService.executeQueryRobust(
-  query, 
-  operationName: 'Get Fincas Aplicaciones'
-);
+        query, 
+        operationName: 'Get Bloques Aplicaciones Optimizado'
+      );
       List<Map<String, dynamic>> data = SqlServerService.processQueryResult(result);
-      
-      // Ordenar en memoria por bloque
-      data.sort((a, b) => _compareBlockNames(a['nombre'].toString(), b['nombre'].toString()));
       
       // Guardar en SQLite
       if (data.isNotEmpty) {
@@ -158,28 +194,31 @@ class AplicacionesDropdownService {
         for (Map<String, dynamic> bloqueData in data) {
           Map<String, dynamic> bloque = {
             'nombre': bloqueData['nombre'].toString(),
-            'finca': bloqueData['finca'],
+            'finca': finca,
             'activo': 1,
             'fecha_actualizacion': DateTime.now().toIso8601String(),
           };
           await dbHelper.insertOrUpdateBloqueAplicaciones(bloque);
         }
-        print('${data.length} bloques aplicaciones sincronizados desde servidor para finca $finca');
+        print('${data.length} bloques aplicaciones sincronizados desde tabla optimizada para finca $finca');
       }
       
-      return data.map((item) => Bloque.fromJson(item)).toList();
+      return data.map((item) => Bloque.fromJson({
+        'nombre': item['nombre'],
+        'finca': finca,
+      })).toList();
     } catch (e) {
-      print('Error obteniendo bloques de la finca $finca del servidor: $e');
+      print('Error obteniendo bloques de la finca $finca desde tabla optimizada: $e');
       return [];
     }
   }
 
-  // MÉTODO ALTERNATIVO: Sincronizar bloques por finca (para sincronización completa)
+  // Sincronizar todos los bloques desde tabla optimizada
   static Future<void> _syncAllBloquesFromServerWithTimeout() async {
     try {
-      print('Sincronizando bloques aplicaciones con timeout optimizado...');
+      print('Sincronizando bloques aplicaciones desde tabla optimizada...');
       
-      // Primero, obtener lista de fincas para procesar una por una
+      // Obtener todas las fincas primero
       List<Finca> fincas = await _getFincasFromServer();
       
       if (fincas.isEmpty) {
@@ -190,32 +229,24 @@ class AplicacionesDropdownService {
       int totalBloquesSynced = 0;
       DatabaseHelper dbHelper = DatabaseHelper();
 
-      // Procesar finca por finca para evitar timeouts
+      // Procesar finca por finca
       for (Finca finca in fincas) {
         try {
           print('Procesando bloques para finca: ${finca.nombre}');
           
-          String query = '''
-            SELECT DISTINCT 
-              CAST(BLOQUE as NVARCHAR(50)) as nombre, 
-              FINCA as finca
-            FROM Kontrollers.dbo.base_MIPE 
-            WHERE FINCA = '${finca.nombre}'
-              AND BLOQUE IS NOT NULL 
-              AND BLOQUE != ''
-          ''';
+          String query = _getBloquesByFincaQuery(finca.nombre);
 
           String result = await RobustSqlServerService.executeQueryRobust(
-  query, 
-  operationName: 'Get Fincas Aplicaciones'
-);
+            query, 
+            operationName: 'Sync Bloques ${finca.nombre}'
+          );
           List<Map<String, dynamic>> data = SqlServerService.processQueryResult(result);
           
           // Guardar bloques de esta finca
           for (Map<String, dynamic> bloqueData in data) {
             Map<String, dynamic> bloque = {
               'nombre': bloqueData['nombre'].toString(),
-              'finca': bloqueData['finca'],
+              'finca': finca.nombre,
               'activo': 1,
               'fecha_actualizacion': DateTime.now().toIso8601String(),
             };
@@ -225,110 +256,114 @@ class AplicacionesDropdownService {
           
           print('${data.length} bloques sincronizados para finca ${finca.nombre}');
           
-          // Pequeña pausa entre fincas para no sobrecargar el servidor
-          await Future.delayed(Duration(milliseconds: 500));
+          // Pequeña pausa entre fincas
+          await Future.delayed(Duration(milliseconds: 300));
           
         } catch (e) {
           print('Error procesando finca ${finca.nombre}: $e');
-          // Continuar con la siguiente finca
           continue;
         }
       }
       
-      print('$totalBloquesSynced bloques aplicaciones sincronizados desde servidor (POR FINCA)');
+      print('$totalBloquesSynced bloques aplicaciones sincronizados desde tabla optimizada');
     } catch (e) {
-      print('Error sincronizando bloques aplicaciones del servidor: $e');
+      print('Error sincronizando bloques aplicaciones: $e');
       rethrow;
     }
   }
 
   // ==================== BOMBAS (OPTIMIZADO) ====================
   
-  // Obtener bombas por finca y bloque (offline first) - VERSIÓN OPTIMIZADA
+  // Obtener bombas por finca y bloque (offline first)
   static Future<List<Bomba>> getBombasByFincaAndBloque(String finca, String bloque) async {
     try {
-      // Primero intentar obtener datos locales
-      DatabaseHelper dbHelper = DatabaseHelper();
-      List<Map<String, dynamic>> localData = await dbHelper.getBombasByFincaAndBloque(finca, bloque);
-      
-      // Si hay datos locales, usarlos
-      if (localData.isNotEmpty) {
-        print('Bombas cargadas desde SQLite: ${localData.length} para finca $finca, bloque $bloque');
-        return localData.map((item) => Bomba.fromJson(item)).toList();
-      }
-
-      // Si no hay datos locales y hay conexión, obtener solo las bombas específicas
-      if (await AuthService.hasInternetConnection()) {
-        print('No hay bombas locales, obteniendo bombas específicas del servidor...');
-        return await _getBombasByFincaAndBloqueFromServer(finca, bloque);
-      }
-
-      // Sin datos locales ni conexión
-      print('Sin bombas locales ni conexión para finca $finca, bloque $bloque');
-      return [];
-      
+      // Primero verificar cache local con timestamp
+      return await _getBombasByFincaAndBloqueWithCache(finca, bloque);
     } catch (e) {
       print('Error obteniendo bombas por finca y bloque: $e');
       return [];
     }
   }
 
-  // Método optimizado para obtener bombas específicas
-  static Future<List<Bomba>> _getBombasByFincaAndBloqueFromServer(String finca, String bloque) async {
+  // Método con cache inteligente
+  static Future<List<Bomba>> _getBombasByFincaAndBloqueWithCache(String finca, String bloque) async {
     try {
-      print('Obteniendo bombas específicas desde el servidor para finca $finca, bloque $bloque');
+      // Primero verificar cache local con timestamp
+      DatabaseHelper dbHelper = DatabaseHelper();
+      List<Map<String, dynamic>> localData = await dbHelper.getBombasByFincaAndBloque(finca, bloque);
       
-      String query = '''
-        SELECT b.FINCA, b.BLOQUE, b.NUMERO_O_CODIGO_DE_LA_BOMBA, b.DT_LOAD
-        FROM [Kontrollers].[dbo].[base_MIPE] b
-        INNER JOIN (
-            SELECT FINCA, BLOQUE, NUMERO_O_CODIGO_DE_LA_BOMBA, MAX(DT_LOAD) as max_dt_load
-            FROM [Kontrollers].[dbo].[base_MIPE]
-            GROUP BY FINCA, BLOQUE, NUMERO_O_CODIGO_DE_LA_BOMBA
-        ) max_dates ON b.FINCA = max_dates.FINCA
-                      AND b.BLOQUE = max_dates.BLOQUE
-                      AND b.NUMERO_O_CODIGO_DE_LA_BOMBA = max_dates.NUMERO_O_CODIGO_DE_LA_BOMBA
-                      AND b.DT_LOAD = max_dates.max_dt_load;
-      ''';
+      // Si hay datos locales y son recientes (menos de 1 hora), usarlos
+      if (localData.isNotEmpty) {
+        DateTime? lastUpdate = DateTime.tryParse(localData.first['fecha_actualizacion'] ?? '');
+        if (lastUpdate != null && DateTime.now().difference(lastUpdate).inHours < 1) {
+          print('Usando cache local de bombas (actualizado hace ${DateTime.now().difference(lastUpdate).inMinutes} minutos)');
+          List<Bomba> bombas = localData.map((item) => Bomba.fromJson(item)).toList();
+          bombas.sort((a, b) => _compareBlockNames(a.nombre, b.nombre));
+          return bombas;
+        }
+      }
+
+      // Si no hay cache válido y hay conexión, obtener desde tabla optimizada
+      if (await AuthService.hasInternetConnection()) {
+        print('Cache inválido o no existe, obteniendo bombas desde tabla optimizada...');
+        return await _getBombasByFincaAndBloqueFromServerOptimized(finca, bloque);
+      }
+
+      // Sin datos locales ni conexión
+      print('Sin bombas locales ni conexión para finca $finca, bloque $bloque');
+      return [];
+    } catch (e) {
+      print('Error en getBombasByFincaAndBloqueWithCache: $e');
+      return [];
+    }
+  }
+
+  // Obtener bombas desde tabla optimizada (SÚPER RÁPIDO)
+  static Future<List<Bomba>> _getBombasByFincaAndBloqueFromServerOptimized(String finca, String bloque) async {
+    try {
+      print('Obteniendo bombas específicas desde tabla optimizada para finca $finca, bloque $bloque');
+      
+      String query = _getBombasByFincaAndBloqueQuery(finca, bloque);
 
       String result = await RobustSqlServerService.executeQueryRobust(
-  query, 
-  operationName: 'Get Fincas Aplicaciones'
-);
+        query, 
+        operationName: 'Get Bombas Optimizado'
+      );
       List<Map<String, dynamic>> data = SqlServerService.processQueryResult(result);
       
-      // Ordenar por bomba
-      data.sort((a, b) => a['nombre'].toString().compareTo(b['nombre'].toString()));
-      
-      // Guardar en SQLite
+      // Guardar en SQLite con timestamp actualizado
       if (data.isNotEmpty) {
         DatabaseHelper dbHelper = DatabaseHelper();
         for (Map<String, dynamic> bombaData in data) {
           Map<String, dynamic> bomba = {
             'nombre': bombaData['nombre'],
-            'finca': bombaData['finca'],
-            'bloque': bombaData['bloque'].toString(),
+            'finca': finca,
+            'bloque': bloque,
             'activo': 1,
             'fecha_actualizacion': DateTime.now().toIso8601String(),
           };
           await dbHelper.insertOrUpdateBomba(bomba);
         }
-        print('${data.length} bombas sincronizadas desde servidor para finca $finca, bloque $bloque');
+        print('${data.length} bombas sincronizadas desde tabla optimizada');
       }
       
-      return data.map((item) => Bomba.fromJson(item)).toList();
+      return data.map((item) => Bomba.fromJson({
+        'nombre': item['nombre'],
+        'finca': finca,
+        'bloque': bloque,
+      })).toList();
     } catch (e) {
-      print('Error obteniendo bombas específicas del servidor: $e');
+      print('Error obteniendo bombas desde tabla optimizada: $e');
       return [];
     }
   }
 
-  // MÉTODO ALTERNATIVO: Sincronizar todas las bombas con timeout optimizado
+  // Sincronizar todas las bombas desde tabla optimizada
   static Future<void> _syncAllBombasFromServerWithTimeout() async {
     try {
-      print('Sincronizando bombas aplicaciones con timeout optimizado...');
+      print('Sincronizando bombas aplicaciones desde tabla optimizada...');
       
-      // Obtener todas las combinaciones finca-bloque para procesar
+      // Obtener todas las combinaciones finca-bloque
       DatabaseHelper dbHelper = DatabaseHelper();
       List<Map<String, dynamic>> bloques = await dbHelper.getAllBloquesAplicaciones();
       
@@ -339,7 +374,7 @@ class AplicacionesDropdownService {
 
       int totalBombasSynced = 0;
 
-      // Procesar bloque por bloque para evitar timeouts
+      // Procesar bloque por bloque
       for (Map<String, dynamic> bloqueData in bloques) {
         try {
           String finca = bloqueData['finca'];
@@ -347,31 +382,20 @@ class AplicacionesDropdownService {
           
           print('Procesando bombas para finca: $finca, bloque: $bloque');
           
-          String query = '''
-            SELECT b.FINCA, b.BLOQUE, b.NUMERO_O_CODIGO_DE_LA_BOMBA, b.DT_LOAD
-            FROM [Kontrollers].[dbo].[base_MIPE] b
-            INNER JOIN (
-                SELECT FINCA, BLOQUE, NUMERO_O_CODIGO_DE_LA_BOMBA, MAX(DT_LOAD) as max_dt_load
-                FROM [Kontrollers].[dbo].[base_MIPE]
-                GROUP BY FINCA, BLOQUE, NUMERO_O_CODIGO_DE_LA_BOMBA
-            ) max_dates ON b.FINCA = max_dates.FINCA
-                          AND b.BLOQUE = max_dates.BLOQUE
-                          AND b.NUMERO_O_CODIGO_DE_LA_BOMBA = max_dates.NUMERO_O_CODIGO_DE_LA_BOMBA
-                          AND b.DT_LOAD = max_dates.max_dt_load;
-          ''';
+          String query = _getBombasByFincaAndBloqueQuery(finca, bloque);
 
           String result = await RobustSqlServerService.executeQueryRobust(
-  query, 
-  operationName: 'Get Fincas Aplicaciones'
-);
+            query, 
+            operationName: 'Sync Bombas $finca-$bloque'
+          );
           List<Map<String, dynamic>> data = SqlServerService.processQueryResult(result);
           
           // Guardar bombas de este bloque
           for (Map<String, dynamic> bombaData in data) {
             Map<String, dynamic> bomba = {
               'nombre': bombaData['nombre'],
-              'finca': bombaData['finca'],
-              'bloque': bombaData['bloque'].toString(),
+              'finca': finca,
+              'bloque': bloque,
               'activo': 1,
               'fecha_actualizacion': DateTime.now().toIso8601String(),
             };
@@ -381,26 +405,25 @@ class AplicacionesDropdownService {
           
           print('${data.length} bombas sincronizadas para finca $finca, bloque $bloque');
           
-          // Pequeña pausa entre bloques para no sobrecargar el servidor
-          await Future.delayed(Duration(milliseconds: 300));
+          // Pequeña pausa entre bloques
+          await Future.delayed(Duration(milliseconds: 200));
           
         } catch (e) {
           print('Error procesando bloque ${bloqueData['finca']}-${bloqueData['nombre']}: $e');
-          // Continuar con el siguiente bloque
           continue;
         }
       }
       
-      print('$totalBombasSynced bombas aplicaciones sincronizadas desde servidor (POR BLOQUE)');
+      print('$totalBombasSynced bombas aplicaciones sincronizadas desde tabla optimizada');
     } catch (e) {
-      print('Error sincronizando bombas aplicaciones del servidor: $e');
+      print('Error sincronizando bombas aplicaciones: $e');
       rethrow;
     }
   }
 
   // ==================== MÉTODOS PRINCIPALES (OPTIMIZADOS) ====================
 
-  // Obtener todos los datos necesarios para el checklist de aplicaciones - OPTIMIZADO
+  // Obtener todos los datos necesarios para el checklist de aplicaciones
   static Future<Map<String, dynamic>> getAplicacionesDropdownData({required bool forceSync}) async {
     try {
       print('Obteniendo datos de dropdown para aplicaciones (forceSync: $forceSync)');
@@ -418,9 +441,6 @@ class AplicacionesDropdownService {
       if (fincas.isEmpty && await AuthService.hasInternetConnection()) {
         print('No hay fincas locales para aplicaciones, obteniendo del servidor...');
         fincas = await _getFincasFromServer();
-        
-        // NO sincronizar todos los bloques y bombas automáticamente
-        // Solo se cargarán cuando el usuario seleccione una finca/bloque específico
         print('Fincas cargadas, bloques y bombas se cargarán bajo demanda');
       }
       
@@ -445,36 +465,36 @@ class AplicacionesDropdownService {
   // Sincronización forzada optimizada
   static Future<Map<String, dynamic>> _forceSyncOptimized() async {
     try {
-      print('Iniciando sincronización forzada optimizada de aplicaciones...');
+      print('Iniciando sincronización forzada optimizada desde tabla aplicaciones_data...');
       
       // Sincronizar fincas
       List<Finca> fincas = await _getFincasFromServer();
       
-      // Sincronizar bloques por finca (más eficiente que la consulta masiva original)
+      // Sincronizar bloques desde tabla optimizada
       await _syncAllBloquesFromServerWithTimeout();
       
-      // Sincronizar bombas por bloque (opcional, puede ser muy pesado)
+      // Opcionalmente sincronizar bombas (comentado por defecto para evitar sobrecarga)
       // await _syncAllBombasFromServerWithTimeout();
       
       return {
         'success': true,
         'fincas': fincas,
-        'message': 'Sincronización forzada optimizada de aplicaciones exitosa'
+        'message': 'Sincronización forzada optimizada completada usando tabla aplicaciones_data'
       };
       
     } catch (e) {
-      print('Error en sincronización forzada optimizada de aplicaciones: $e');
+      print('Error en sincronización forzada optimizada: $e');
       return {
         'success': false,
         'fincas': <Finca>[],
-        'message': 'Error en sincronización forzada optimizada de aplicaciones: $e'
+        'message': 'Error en sincronización forzada optimizada: $e'
       };
     }
   }
 
-  // ==================== MÉTODOS DE SINCRONIZACIÓN (OPTIMIZADOS) ====================
+  // ==================== MÉTODOS DE SINCRONIZACIÓN ====================
 
-  // Sincronizar todos los datos de aplicaciones - VERSIÓN OPTIMIZADA
+  // Sincronizar todos los datos de aplicaciones usando tabla optimizada
   static Future<Map<String, dynamic>> syncAplicacionesData() async {
     try {
       if (!await AuthService.hasInternetConnection()) {
@@ -484,7 +504,7 @@ class AplicacionesDropdownService {
         };
       }
 
-      print('Iniciando sincronización completa optimizada de datos de aplicaciones...');
+      print('Iniciando sincronización completa desde tabla aplicaciones_data...');
 
       int totalSynced = 0;
       List<String> errors = [];
@@ -493,33 +513,31 @@ class AplicacionesDropdownService {
       try {
         List<Finca> fincas = await _getFincasFromServer();
         totalSynced += fincas.length;
-        print('Fincas sincronizadas para aplicaciones: ${fincas.length}');
+        print('Fincas sincronizadas: ${fincas.length}');
       } catch (e) {
         errors.add('Fincas aplicaciones: $e');
       }
 
-      // Sincronizar bloques con el método optimizado
+      // Sincronizar bloques
       try {
         await _syncAllBloquesFromServerWithTimeout();
         
-        // Contar cuántos bloques tenemos ahora
         DatabaseHelper dbHelper = DatabaseHelper();
         Map<String, int> stats = await dbHelper.getAplicacionesDatabaseStats();
         totalSynced += stats['bloques'] ?? 0;
-        print('Bloques sincronizados para aplicaciones: ${stats['bloques']}');
+        print('Bloques sincronizados: ${stats['bloques']}');
       } catch (e) {
         errors.add('Bloques aplicaciones: $e');
       }
 
-      // Sincronizar bombas con el método optimizado (opcional)
+      // Sincronizar bombas (opcional)
       try {
         await _syncAllBombasFromServerWithTimeout();
         
-        // Contar cuántas bombas tenemos ahora
         DatabaseHelper dbHelper = DatabaseHelper();
         Map<String, int> stats = await dbHelper.getAplicacionesDatabaseStats();
         totalSynced += stats['bombas'] ?? 0;
-        print('Bombas sincronizadas para aplicaciones: ${stats['bombas']}');
+        print('Bombas sincronizadas: ${stats['bombas']}');
       } catch (e) {
         errors.add('Bombas aplicaciones: $e');
       }
@@ -527,13 +545,13 @@ class AplicacionesDropdownService {
       if (errors.isEmpty) {
         return {
           'success': true,
-          'message': 'Sincronización optimizada de aplicaciones exitosa. $totalSynced registros sincronizados.',
+          'message': 'Sincronización desde tabla aplicaciones_data exitosa. $totalSynced registros sincronizados.',
           'count': totalSynced
         };
       } else {
         return {
           'success': false,
-          'message': 'Sincronización optimizada de aplicaciones parcial. Errores: ${errors.join(', ')}',
+          'message': 'Sincronización parcial. Errores: ${errors.join(', ')}',
           'count': totalSynced
         };
       }
@@ -541,33 +559,25 @@ class AplicacionesDropdownService {
     } catch (e) {
       return {
         'success': false,
-        'message': 'Error durante la sincronización optimizada de aplicaciones: $e'
+        'message': 'Error durante la sincronización: $e'
       };
     }
   }
 
   // ==================== MÉTODOS HELPER ====================
 
-  // Método helper para comparar nombres de bloques numéricamente
+  // Método helper para comparar nombres numéricamente
   static int _compareBlockNames(String a, String b) {
-    // Intentar convertir a números para comparación numérica
     int? numA = int.tryParse(a);
     int? numB = int.tryParse(b);
     
-    // Si ambos son números, comparar numéricamente
     if (numA != null && numB != null) {
       return numA.compareTo(numB);
     }
     
-    // Si solo uno es número, el número va primero
-    if (numA != null && numB == null) {
-      return -1;
-    }
-    if (numA == null && numB != null) {
-      return 1;
-    }
+    if (numA != null && numB == null) return -1;
+    if (numA == null && numB != null) return 1;
     
-    // Si ninguno es número, comparar alfabéticamente
     return a.compareTo(b);
   }
 
@@ -600,7 +610,7 @@ class AplicacionesDropdownService {
     }
   }
 
-  // Validar si existe una combinación finca-bloque-bomba
+  // Validar si existe una combinación finca-bloque-bomba usando tabla optimizada
   static Future<bool> validateCombination(String finca, String bloque, String bomba) async {
     try {
       DatabaseHelper dbHelper = DatabaseHelper();
@@ -612,20 +622,14 @@ class AplicacionesDropdownService {
         return true;
       }
 
-      // Si no existe localmente y hay conexión, verificar en servidor
+      // Si no existe localmente y hay conexión, verificar en tabla optimizada
       if (await AuthService.hasInternetConnection()) {
-        String query = '''
-          SELECT COUNT(*) as count
-          FROM Kontrollers.dbo.base_MIPE 
-          WHERE FINCA = '$finca'
-            AND BLOQUE = '$bloque'
-            AND NUMERO_O_CODIGO_DE_LA_BOMBA = '$bomba'
-        ''';
+        String query = _validateCombinationQuery(finca, bloque, bomba);
 
         String result = await RobustSqlServerService.executeQueryRobust(
-  query, 
-  operationName: 'Get Fincas Aplicaciones'
-);
+          query, 
+          operationName: 'Validate Combination Optimizado'
+        );
         List<Map<String, dynamic>> data = SqlServerService.processQueryResult(result);
         
         if (data.isNotEmpty) {
@@ -643,7 +647,7 @@ class AplicacionesDropdownService {
 
   // ==================== MÉTODOS DE ESTADÍSTICAS Y LIMPIEZA ====================
 
-  // Obtener estadísticas de datos locales de aplicaciones
+  // Obtener estadísticas de datos locales
   static Future<Map<String, int>> getLocalAplicacionesStats() async {
     try {
       DatabaseHelper dbHelper = DatabaseHelper();
@@ -662,6 +666,7 @@ class AplicacionesDropdownService {
   static Future<void> clearLocalAplicacionesData() async {
     try {
       DatabaseHelper dbHelper = DatabaseHelper();
+      await dbHelper.clearFincasAplicaciones();
       await dbHelper.clearBloquesAplicaciones();
       await dbHelper.clearBombas();
       print('Datos locales de aplicaciones limpiados');
@@ -671,25 +676,66 @@ class AplicacionesDropdownService {
     }
   }
 
-  // ==================== MÉTODOS DE OPTIMIZACIÓN ADICIONALES ====================
+  // ==================== MÉTODOS DE OPTIMIZACIÓN ====================
   
-  // Método para limpiar datos antiguos y optimizar base de datos local
-  static Future<void> optimizeLocalDatabase() async {
+  // Obtener estadísticas de la tabla optimizada en servidor
+  static Future<Map<String, dynamic>> getOptimizedTableStats() async {
     try {
-      DatabaseHelper dbHelper = DatabaseHelper();
+      if (!await AuthService.hasInternetConnection()) {
+        return {'error': 'Sin conexión a internet'};
+      }
+
+      String query = '''
+        SELECT 
+          COUNT(*) as total_registros,
+          COUNT(DISTINCT finca) as total_fincas,
+          COUNT(DISTINCT CONCAT(finca, '-', bloque)) as total_bloques,
+          MAX(fecha_actualizacion) as ultima_actualizacion
+        FROM aplicaciones_data 
+        WHERE activo = 1
+      ''';
+
+      String result = await RobustSqlServerService.executeQueryRobust(
+        query, 
+        operationName: 'Get Optimized Table Stats'
+      );
+      List<Map<String, dynamic>> data = SqlServerService.processQueryResult(result);
       
-      // Limpiar datos antiguos (más de 30 días)
-      DateTime cutoffDate = DateTime.now().subtract(Duration(days: 30));
-      String cutoffString = cutoffDate.toIso8601String();
-      
-      print('Optimizando base de datos local de aplicaciones...');
-      
-      // Aquí puedes agregar lógica para limpiar datos antiguos si tienes esos métodos
-      // await dbHelper.cleanOldAplicacionesData(cutoffString);
-      
-      print('Optimización de base de datos local completada');
+      return data.isNotEmpty ? data.first : {};
     } catch (e) {
-      print('Error optimizando base de datos local: $e');
+      print('Error obteniendo estadísticas de tabla optimizada: $e');
+      return {'error': e.toString()};
+    }
+  }
+
+  // Actualizar tabla optimizada en servidor (solo para administradores)
+  static Future<Map<String, dynamic>> updateOptimizedTable() async {
+    try {
+      if (!await AuthService.hasInternetConnection()) {
+        return {
+          'success': false,
+          'message': 'Sin conexión a internet'
+        };
+      }
+
+      String query = 'EXEC sp_update_aplicaciones_data';
+
+      String result = await RobustSqlServerService.executeQueryRobust(
+        query, 
+        operationName: 'Update Optimized Table'
+      );
+      
+      return {
+        'success': true,
+        'message': 'Tabla aplicaciones_data actualizada exitosamente',
+        'result': result
+      };
+    } catch (e) {
+      print('Error actualizando tabla optimizada: $e');
+      return {
+        'success': false,
+        'message': 'Error actualizando tabla optimizada: $e'
+      };
     }
   }
 
@@ -705,6 +751,7 @@ class AplicacionesDropdownService {
         'bombas': stats['bombas'] ?? 0,
         'lastSync': DateTime.now().toIso8601String(),
         'optimized': true,
+        'source': 'aplicaciones_data table'
       };
     } catch (e) {
       print('Error obteniendo estado de sincronización: $e');
@@ -714,14 +761,17 @@ class AplicacionesDropdownService {
         'bombas': 0,
         'lastSync': null,
         'optimized': false,
+        'error': e.toString()
       };
     }
   }
 
-  // Método para cargar datos bajo demanda (lazy loading)
+  // ==================== MÉTODOS DE PRECARGA (LAZY LOADING) ====================
+
+  // Precargar datos para una finca específica
   static Future<void> preloadDataForFinca(String finca) async {
     try {
-      print('Precargando datos para finca $finca...');
+      print('Precargando datos para finca $finca desde tabla optimizada...');
       
       // Cargar bloques de la finca
       await _getBloquesByFincaFromServer(finca);
@@ -732,17 +782,340 @@ class AplicacionesDropdownService {
     }
   }
 
-  // Método para cargar datos bajo demanda para bomba específica
+  // Precargar bombas para una combinación específica
   static Future<void> preloadBombasForFincaAndBloque(String finca, String bloque) async {
     try {
-      print('Precargando bombas para finca $finca, bloque $bloque...');
+      print('Precargando bombas para finca $finca, bloque $bloque desde tabla optimizada...');
       
-      // Cargar bombas específicas
-      await _getBombasByFincaAndBloqueFromServer(finca, bloque);
+      // Cargar bombas específicas usando la versión optimizada
+      await _getBombasByFincaAndBloqueFromServerOptimized(finca, bloque);
       
       print('Bombas precargadas para finca $finca, bloque $bloque');
     } catch (e) {
       print('Error precargando bombas para finca $finca, bloque $bloque: $e');
     }
+  }
+
+  // ==================== MÉTODOS DE BÚSQUEDA AVANZADA ====================
+
+  // Buscar fincas por patrón de texto
+  static Future<List<Finca>> searchFincasAplicaciones(String searchPattern) async {
+    try {
+      if (!await AuthService.hasInternetConnection()) {
+        // Buscar localmente si no hay conexión
+        DatabaseHelper dbHelper = DatabaseHelper();
+        List<Map<String, dynamic>> localData = await dbHelper.searchFincasAplicaciones(searchPattern);
+        return localData.map((item) => Finca.fromJson(item)).toList();
+      }
+
+      String escapedPattern = searchPattern.replaceAll("'", "''");
+      String query = '''
+        SELECT DISTINCT finca as nombre
+        FROM aplicaciones_data 
+        WHERE finca LIKE '%$escapedPattern%' AND activo = 1
+        ORDER BY finca
+      ''';
+
+      String result = await RobustSqlServerService.executeQueryRobust(
+        query, 
+        operationName: 'Search Fincas'
+      );
+      List<Map<String, dynamic>> data = SqlServerService.processQueryResult(result);
+      
+      return data.map((item) => Finca.fromJson(item)).toList();
+    } catch (e) {
+      print('Error buscando fincas: $e');
+      return [];
+    }
+  }
+
+  // Buscar bloques por patrón de texto en una finca
+  static Future<List<Bloque>> searchBloquesAplicaciones(String finca, String searchPattern) async {
+    try {
+      if (!await AuthService.hasInternetConnection()) {
+        // Buscar localmente si no hay conexión
+        DatabaseHelper dbHelper = DatabaseHelper();
+        List<Map<String, dynamic>> localData = await dbHelper.searchBloquesAplicaciones(finca, searchPattern);
+        return localData.map((item) => Bloque.fromJson(item)).toList();
+      }
+
+      String escapedFinca = finca.replaceAll("'", "''");
+      String escapedPattern = searchPattern.replaceAll("'", "''");
+      String query = '''
+        SELECT DISTINCT bloque as nombre
+        FROM aplicaciones_data 
+        WHERE finca = '$escapedFinca' 
+          AND bloque LIKE '%$escapedPattern%' 
+          AND activo = 1
+        ORDER BY 
+          CASE WHEN ISNUMERIC(bloque) = 1 THEN CAST(bloque AS INT) ELSE 999999 END,
+          bloque
+      ''';
+
+      String result = await RobustSqlServerService.executeQueryRobust(
+        query, 
+        operationName: 'Search Bloques'
+      );
+      List<Map<String, dynamic>> data = SqlServerService.processQueryResult(result);
+      
+      return data.map((item) => Bloque.fromJson({
+        'nombre': item['nombre'],
+        'finca': finca,
+      })).toList();
+    } catch (e) {
+      print('Error buscando bloques: $e');
+      return [];
+    }
+  }
+
+  // Buscar bombas por patrón de texto
+  static Future<List<Bomba>> searchBombas(String finca, String bloque, String searchPattern) async {
+    try {
+      if (!await AuthService.hasInternetConnection()) {
+        // Buscar localmente si no hay conexión
+        DatabaseHelper dbHelper = DatabaseHelper();
+        List<Map<String, dynamic>> localData = await dbHelper.searchBombas(finca, bloque, searchPattern);
+        return localData.map((item) => Bomba.fromJson(item)).toList();
+      }
+
+      String escapedFinca = finca.replaceAll("'", "''");
+      String escapedBloque = bloque.replaceAll("'", "''");
+      String escapedPattern = searchPattern.replaceAll("'", "''");
+      String query = '''
+        SELECT bomba as nombre
+        FROM aplicaciones_data 
+        WHERE finca = '$escapedFinca' 
+          AND bloque = '$escapedBloque' 
+          AND bomba LIKE '%$escapedPattern%' 
+          AND activo = 1
+        ORDER BY 
+          CASE WHEN ISNUMERIC(bomba) = 1 THEN CAST(bomba AS INT) ELSE 999999 END,
+          bomba
+      ''';
+
+      String result = await RobustSqlServerService.executeQueryRobust(
+        query, 
+        operationName: 'Search Bombas'
+      );
+      List<Map<String, dynamic>> data = SqlServerService.processQueryResult(result);
+      
+      return data.map((item) => Bomba.fromJson({
+        'nombre': item['nombre'],
+        'finca': finca,
+        'bloque': bloque,
+      })).toList();
+    } catch (e) {
+      print('Error buscando bombas: $e');
+      return [];
+    }
+  }
+
+  // ==================== MÉTODOS DE VALIDACIÓN Y DIAGNÓSTICO ====================
+
+  // Verificar la salud de la tabla optimizada
+  static Future<Map<String, dynamic>> checkOptimizedTableHealth() async {
+    try {
+      if (!await AuthService.hasInternetConnection()) {
+        return {
+          'healthy': false,
+          'error': 'Sin conexión a internet'
+        };
+      }
+
+      String query = '''
+        SELECT 
+          COUNT(*) as total_records,
+          COUNT(DISTINCT finca) as unique_fincas,
+          COUNT(DISTINCT CONCAT(finca, '-', bloque)) as unique_bloques,
+          COUNT(DISTINCT CONCAT(finca, '-', bloque, '-', bomba)) as unique_bombas,
+          MIN(fecha_actualizacion) as oldest_record,
+          MAX(fecha_actualizacion) as newest_record,
+          CASE 
+            WHEN COUNT(*) > 0 THEN 1 
+            ELSE 0 
+          END as has_data
+        FROM aplicaciones_data 
+        WHERE activo = 1
+      ''';
+
+      String result = await RobustSqlServerService.executeQueryRobust(
+        query, 
+        operationName: 'Check Table Health'
+      );
+      List<Map<String, dynamic>> data = SqlServerService.processQueryResult(result);
+      
+      if (data.isNotEmpty) {
+        Map<String, dynamic> stats = data.first;
+        return {
+          'healthy': stats['has_data'] == 1 && stats['total_records'] > 0,
+          'stats': stats,
+          'recommendations': _generateHealthRecommendations(stats)
+        };
+      }
+
+      return {
+        'healthy': false,
+        'error': 'No se pudieron obtener estadísticas'
+      };
+    } catch (e) {
+      print('Error verificando salud de tabla optimizada: $e');
+      return {
+        'healthy': false,
+        'error': e.toString()
+      };
+    }
+  }
+
+  // Generar recomendaciones basadas en las estadísticas
+  static List<String> _generateHealthRecommendations(Map<String, dynamic> stats) {
+    List<String> recommendations = [];
+    
+    int totalRecords = stats['total_records'] ?? 0;
+    int uniqueFincas = stats['unique_fincas'] ?? 0;
+    int uniqueBloques = stats['unique_bloques'] ?? 0;
+    
+    if (totalRecords == 0) {
+      recommendations.add('La tabla aplicaciones_data está vacía. Ejecutar sp_update_aplicaciones_data.');
+    } else if (totalRecords < 100) {
+      recommendations.add('Pocos registros en la tabla. Verificar si la sincronización es completa.');
+    }
+    
+    if (uniqueFincas < 5) {
+      recommendations.add('Pocas fincas encontradas. Verificar datos de origen en base_MIPE.');
+    }
+    
+    if (uniqueBloques < uniqueFincas) {
+      recommendations.add('Posibles fincas sin bloques. Revisar integridad de datos.');
+    }
+    
+    // Verificar edad de los datos
+    String? newestRecord = stats['newest_record'];
+    if (newestRecord != null) {
+      try {
+        DateTime newest = DateTime.parse(newestRecord);
+        int daysSinceUpdate = DateTime.now().difference(newest).inDays;
+        
+        if (daysSinceUpdate > 7) {
+          recommendations.add('Datos antiguos (${daysSinceUpdate} días). Considerar actualizar la tabla.');
+        } else if (daysSinceUpdate > 1) {
+          recommendations.add('Datos de hace $daysSinceUpdate días. Actualización opcional.');
+        }
+      } catch (e) {
+        recommendations.add('Error verificando fecha de actualización.');
+      }
+    }
+    
+    if (recommendations.isEmpty) {
+      recommendations.add('La tabla aplicaciones_data está en buen estado.');
+    }
+    
+    return recommendations;
+  }
+
+  // ==================== MÉTODOS DE MONITOREO Y PERFORMANCE ====================
+
+  // Medir tiempo de respuesta de queries
+  static Future<Map<String, dynamic>> benchmarkQueries() async {
+    Map<String, dynamic> results = {
+      'timestamp': DateTime.now().toIso8601String(),
+      'benchmarks': {}
+    };
+
+    try {
+      if (!await AuthService.hasInternetConnection()) {
+        results['error'] = 'Sin conexión a internet';
+        return results;
+      }
+
+      // Benchmark query de fincas
+      Stopwatch stopwatch = Stopwatch()..start();
+      await _getFincasFromServer();
+      stopwatch.stop();
+      results['benchmarks']['fincas_ms'] = stopwatch.elapsedMilliseconds;
+
+      // Benchmark query de bloques (usando primera finca disponible)
+      List<Finca> fincas = await _getFincasFromLocal();
+      if (fincas.isNotEmpty) {
+        stopwatch.reset();
+        stopwatch.start();
+        await _getBloquesByFincaFromServer(fincas.first.nombre);
+        stopwatch.stop();
+        results['benchmarks']['bloques_ms'] = stopwatch.elapsedMilliseconds;
+
+        // Benchmark query de bombas (usando primer bloque disponible)
+        List<Bloque> bloques = await getBloquesByFinca(fincas.first.nombre);
+        if (bloques.isNotEmpty) {
+          stopwatch.reset();
+          stopwatch.start();
+          await _getBombasByFincaAndBloqueFromServerOptimized(fincas.first.nombre, bloques.first.nombre);
+          stopwatch.stop();
+          results['benchmarks']['bombas_ms'] = stopwatch.elapsedMilliseconds;
+        }
+      }
+
+      // Calcular performance score
+      int totalTime = (results['benchmarks']['fincas_ms'] ?? 0) +
+                     (results['benchmarks']['bloques_ms'] ?? 0) +
+                     (results['benchmarks']['bombas_ms'] ?? 0);
+      
+      String performanceScore;
+      if (totalTime < 1000) {
+        performanceScore = 'Excelente';
+      } else if (totalTime < 3000) {
+        performanceScore = 'Bueno';
+      } else if (totalTime < 5000) {
+        performanceScore = 'Regular';
+      } else {
+        performanceScore = 'Lento';
+      }
+      
+      results['performance_score'] = performanceScore;
+      results['total_time_ms'] = totalTime;
+
+    } catch (e) {
+      results['error'] = 'Error durante benchmark: $e';
+    }
+
+    return results;
+  }
+
+  // ==================== MÉTODOS DE CONFIGURACIÓN ====================
+
+  // Configurar comportamiento del servicio
+  static void configureService({
+    Duration? cacheExpiration,
+    bool? enablePrefetch,
+    bool? enableBenchmarking
+  }) {
+    print('Configurando AplicacionesDropdownService:');
+    print('- Cache expiration: ${cacheExpiration ?? "1 hora (default)"}');
+    print('- Enable prefetch: ${enablePrefetch ?? "true (default)"}');
+    print('- Enable benchmarking: ${enableBenchmarking ?? "false (default)"}');
+    
+    // Aquí puedes implementar la lógica real de configuración
+    // Por ejemplo, guardar en SharedPreferences
+  }
+
+  // Obtener información de configuración actual
+  static Map<String, dynamic> getServiceInfo() {
+    return {
+      'service_name': 'AplicacionesDropdownService',
+      'version': '2.0.0-optimized',
+      'data_source': 'aplicaciones_data table',
+      'features': [
+        'Tabla optimizada',
+        'Cache inteligente',
+        'Lazy loading',
+        'Búsqueda avanzada',
+        'Benchmarking',
+        'Health checks'
+      ],
+      'performance': {
+        'cache_duration': '1 hour',
+        'offline_support': true,
+        'auto_retry': true,
+        'timeout_handling': true
+      }
+    };
   }
 }

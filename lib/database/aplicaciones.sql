@@ -554,3 +554,310 @@ SELECT
 FROM INFORMATION_SCHEMA.COLUMNS 
 WHERE TABLE_NAME = 'check_aplicaciones'
 ORDER BY ORDINAL_POSITION;
+
+
+
+--#################################################################################################################
+-- ============================================================================
+-- TABLA OPTIMIZADA PARA APLICACIONES
+-- Extrae datos únicos de base_MIPE para mejorar performance
+-- ============================================================================
+
+USE Kontrollers;
+GO
+
+-- ============================================================================
+-- 1. CREAR TABLA OPTIMIZADA
+-- ============================================================================
+
+IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[aplicaciones_data]') AND type in (N'U'))
+BEGIN
+    CREATE TABLE [dbo].[aplicaciones_data] (
+        [id] INT IDENTITY(1,1) PRIMARY KEY,
+        [finca] NVARCHAR(100) NOT NULL,
+        [bloque] NVARCHAR(50) NOT NULL,
+        [bomba] NVARCHAR(100) NOT NULL,
+        [activo] BIT DEFAULT 1,
+        [fecha_creacion] DATETIME2(3) DEFAULT GETDATE(),
+        [fecha_actualizacion] DATETIME2(3) DEFAULT GETDATE(),
+        
+        -- Constraint único para evitar duplicados
+        CONSTRAINT UK_aplicaciones_data_unique UNIQUE (finca, bloque, bomba)
+    );
+    
+    PRINT 'Tabla aplicaciones_data creada exitosamente';
+END
+ELSE
+BEGIN
+    PRINT 'Tabla aplicaciones_data ya existe';
+END
+GO
+
+-- ============================================================================
+-- 2. CREAR ÍNDICES PARA OPTIMIZAR CONSULTAS
+-- ============================================================================
+
+-- Índice por finca
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_aplicaciones_data_finca')
+BEGIN
+    CREATE NONCLUSTERED INDEX [IX_aplicaciones_data_finca]
+    ON [dbo].[aplicaciones_data] ([finca]) 
+    WHERE [activo] = 1;
+    PRINT 'Índice IX_aplicaciones_data_finca creado';
+END
+
+-- Índice por finca y bloque
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_aplicaciones_data_finca_bloque')
+BEGIN
+    CREATE NONCLUSTERED INDEX [IX_aplicaciones_data_finca_bloque]
+    ON [dbo].[aplicaciones_data] ([finca], [bloque]) 
+    WHERE [activo] = 1;
+    PRINT 'Índice IX_aplicaciones_data_finca_bloque creado';
+END
+
+-- Índice por fecha de actualización
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_aplicaciones_data_fecha_actualizacion')
+BEGIN
+    CREATE NONCLUSTERED INDEX [IX_aplicaciones_data_fecha_actualizacion]
+    ON [dbo].[aplicaciones_data] ([fecha_actualizacion] DESC);
+    PRINT 'Índice IX_aplicaciones_data_fecha_actualizacion creado';
+END
+GO
+
+-- ============================================================================
+-- 3. POBLAR TABLA CON DATOS ÚNICOS DE base_MIPE
+-- ============================================================================
+
+-- Limpiar tabla si existe data previa
+TRUNCATE TABLE [dbo].[aplicaciones_data];
+
+-- Insertar datos únicos con el registro más reciente por DT_LOAD
+INSERT INTO [dbo].[aplicaciones_data] (finca, bloque, bomba, activo, fecha_creacion, fecha_actualizacion)
+SELECT DISTINCT
+    b.FINCA as finca,
+    CAST(b.BLOQUE as NVARCHAR(50)) as bloque,
+    b.NUMERO_O_CODIGO_DE_LA_BOMBA as bomba,
+    1 as activo,
+    GETDATE() as fecha_creacion,
+    GETDATE() as fecha_actualizacion
+FROM [Kontrollers].[dbo].[base_MIPE] b
+INNER JOIN (
+    -- Subconsulta para obtener el registro más reciente por combinación
+    SELECT 
+        FINCA, 
+        BLOQUE, 
+        NUMERO_O_CODIGO_DE_LA_BOMBA, 
+        MAX(DT_LOAD) as max_dt_load
+    FROM [Kontrollers].[dbo].[base_MIPE]
+    WHERE FINCA IS NOT NULL 
+      AND FINCA != ''
+      AND BLOQUE IS NOT NULL 
+      AND BLOQUE != ''
+      AND NUMERO_O_CODIGO_DE_LA_BOMBA IS NOT NULL 
+      AND NUMERO_O_CODIGO_DE_LA_BOMBA != ''
+    GROUP BY FINCA, BLOQUE, NUMERO_O_CODIGO_DE_LA_BOMBA
+) latest ON b.FINCA = latest.FINCA
+        AND b.BLOQUE = latest.BLOQUE
+        AND b.NUMERO_O_CODIGO_DE_LA_BOMBA = latest.NUMERO_O_CODIGO_DE_LA_BOMBA
+        AND b.DT_LOAD = latest.max_dt_load
+WHERE b.FINCA IS NOT NULL 
+  AND b.FINCA != ''
+  AND b.BLOQUE IS NOT NULL 
+  AND b.BLOQUE != ''
+  AND b.NUMERO_O_CODIGO_DE_LA_BOMBA IS NOT NULL 
+  AND b.NUMERO_O_CODIGO_DE_LA_BOMBA != '';
+
+-- Mostrar estadísticas de la inserción
+SELECT 
+    COUNT(*) as total_registros,
+    COUNT(DISTINCT finca) as total_fincas,
+    COUNT(DISTINCT CONCAT(finca, '-', bloque)) as total_bloques,
+    MIN(fecha_creacion) as primera_insercion,
+    MAX(fecha_actualizacion) as ultima_actualizacion
+FROM [dbo].[aplicaciones_data];
+
+PRINT 'Datos insertados exitosamente en aplicaciones_data';
+GO
+
+-- ============================================================================
+-- 4. CREAR VISTAS PARA CONSULTAS RÁPIDAS
+-- ============================================================================
+
+-- Vista para obtener fincas únicas
+IF EXISTS (SELECT * FROM sys.views WHERE name = 'vw_aplicaciones_fincas')
+    DROP VIEW [dbo].[vw_aplicaciones_fincas];
+GO
+
+CREATE VIEW [dbo].[vw_aplicaciones_fincas] AS
+SELECT DISTINCT 
+    finca as nombre,
+    COUNT(*) as total_registros,
+    MAX(fecha_actualizacion) as ultima_actualizacion
+FROM [dbo].[aplicaciones_data] 
+WHERE activo = 1
+GROUP BY finca;
+GO
+
+-- Vista para obtener bloques por finca
+IF EXISTS (SELECT * FROM sys.views WHERE name = 'vw_aplicaciones_bloques')
+    DROP VIEW [dbo].[vw_aplicaciones_bloques];
+GO
+
+CREATE VIEW [dbo].[vw_aplicaciones_bloques] AS
+SELECT DISTINCT 
+    finca,
+    bloque as nombre,
+    COUNT(*) as total_bombas,
+    MAX(fecha_actualizacion) as ultima_actualizacion
+FROM [dbo].[aplicaciones_data] 
+WHERE activo = 1
+GROUP BY finca, bloque;
+GO
+
+-- Vista para obtener bombas por finca y bloque
+IF EXISTS (SELECT * FROM sys.views WHERE name = 'vw_aplicaciones_bombas')
+    DROP VIEW [dbo].[vw_aplicaciones_bombas];
+GO
+
+CREATE VIEW [dbo].[vw_aplicaciones_bombas] AS
+SELECT 
+    finca,
+    bloque,
+    bomba as nombre,
+    fecha_actualizacion
+FROM [dbo].[aplicaciones_data] 
+WHERE activo = 1;
+GO
+
+-- ============================================================================
+-- 5. QUERIES OPTIMIZADAS PARA LA APP
+-- ============================================================================
+
+-- Query para obtener fincas (SÚPER RÁPIDA)
+/*
+SELECT nombre 
+FROM vw_aplicaciones_fincas 
+ORDER BY nombre;
+*/
+
+-- Query para obtener bloques por finca (SÚPER RÁPIDA)
+/*
+SELECT nombre 
+FROM vw_aplicaciones_bloques 
+WHERE finca = 'NOMBRE_FINCA' 
+ORDER BY 
+    CASE WHEN ISNUMERIC(nombre) = 1 THEN CAST(nombre AS INT) ELSE 999999 END,
+    nombre;
+*/
+
+-- Query para obtener bombas por finca y bloque (SÚPER RÁPIDA)
+/*
+SELECT nombre 
+FROM vw_aplicaciones_bombas 
+WHERE finca = 'NOMBRE_FINCA' AND bloque = 'NOMBRE_BLOQUE' 
+ORDER BY 
+    CASE WHEN ISNUMERIC(nombre) = 1 THEN CAST(nombre AS INT) ELSE 999999 END,
+    nombre;
+*/
+
+-- ============================================================================
+-- 6. PROCEDIMIENTO PARA ACTUALIZAR DATOS (OPCIONAL)
+-- ============================================================================
+
+IF EXISTS (SELECT * FROM sys.procedures WHERE name = 'sp_update_aplicaciones_data')
+    DROP PROCEDURE [dbo].[sp_update_aplicaciones_data];
+GO
+
+CREATE PROCEDURE [dbo].[sp_update_aplicaciones_data]
+AS
+BEGIN
+    SET NOCOUNT ON;
+    
+    DECLARE @start_time DATETIME2 = GETDATE();
+    DECLARE @affected_rows INT = 0;
+    
+    BEGIN TRY
+        -- Marcar registros existentes como posiblemente obsoletos
+        UPDATE [dbo].[aplicaciones_data] 
+        SET activo = 0, fecha_actualizacion = GETDATE()
+        WHERE activo = 1;
+        
+        -- Insertar/actualizar con datos frescos de base_MIPE
+        MERGE [dbo].[aplicaciones_data] AS target
+        USING (
+            SELECT DISTINCT
+                b.FINCA as finca,
+                CAST(b.BLOQUE as NVARCHAR(50)) as bloque,
+                b.NUMERO_O_CODIGO_DE_LA_BOMBA as bomba
+            FROM [Kontrollers].[dbo].[base_MIPE] b
+            INNER JOIN (
+                SELECT 
+                    FINCA, 
+                    BLOQUE, 
+                    NUMERO_O_CODIGO_DE_LA_BOMBA, 
+                    MAX(DT_LOAD) as max_dt_load
+                FROM [Kontrollers].[dbo].[base_MIPE]
+                WHERE FINCA IS NOT NULL 
+                  AND FINCA != ''
+                  AND BLOQUE IS NOT NULL 
+                  AND BLOQUE != ''
+                  AND NUMERO_O_CODIGO_DE_LA_BOMBA IS NOT NULL 
+                  AND NUMERO_O_CODIGO_DE_LA_BOMBA != ''
+                GROUP BY FINCA, BLOQUE, NUMERO_O_CODIGO_DE_LA_BOMBA
+            ) latest ON b.FINCA = latest.FINCA
+                    AND b.BLOQUE = latest.BLOQUE
+                    AND b.NUMERO_O_CODIGO_DE_LA_BOMBA = latest.NUMERO_O_CODIGO_DE_LA_BOMBA
+                    AND b.DT_LOAD = latest.max_dt_load
+            WHERE b.FINCA IS NOT NULL 
+              AND b.FINCA != ''
+              AND b.BLOQUE IS NOT NULL 
+              AND b.BLOQUE != ''
+              AND b.NUMERO_O_CODIGO_DE_LA_BOMBA IS NOT NULL 
+              AND b.NUMERO_O_CODIGO_DE_LA_BOMBA != ''
+        ) AS source ON target.finca = source.finca 
+                    AND target.bloque = source.bloque 
+                    AND target.bomba = source.bomba
+        WHEN MATCHED THEN
+            UPDATE SET 
+                activo = 1,
+                fecha_actualizacion = GETDATE()
+        WHEN NOT MATCHED THEN
+            INSERT (finca, bloque, bomba, activo, fecha_creacion, fecha_actualizacion)
+            VALUES (source.finca, source.bloque, source.bomba, 1, GETDATE(), GETDATE());
+        
+        SET @affected_rows = @@ROWCOUNT;
+        
+        -- Eliminar registros que ya no existen en base_MIPE
+        DELETE FROM [dbo].[aplicaciones_data] WHERE activo = 0;
+        
+        PRINT 'Actualización completada exitosamente';
+        PRINT 'Registros afectados: ' + CAST(@affected_rows AS VARCHAR(10));
+        PRINT 'Tiempo transcurrido: ' + CAST(DATEDIFF(MILLISECOND, @start_time, GETDATE()) AS VARCHAR(10)) + ' ms';
+        
+    END TRY
+    BEGIN CATCH
+        PRINT 'Error durante la actualización: ' + ERROR_MESSAGE();
+        THROW;
+    END CATCH
+END
+GO
+
+-- ============================================================================
+-- 7. ESTADÍSTICAS FINALES
+-- ============================================================================
+
+SELECT 
+    'aplicaciones_data' as tabla,
+    COUNT(*) as total_registros,
+    COUNT(DISTINCT finca) as total_fincas,
+    COUNT(DISTINCT CONCAT(finca, '-', bloque)) as combinaciones_finca_bloque,
+    MIN(fecha_creacion) as fecha_creacion_tabla,
+    MAX(fecha_actualizacion) as ultima_actualizacion
+FROM [dbo].[aplicaciones_data]
+WHERE activo = 1;
+
+PRINT '============================================================================';
+PRINT 'TABLA APLICACIONES_DATA CREADA Y POBLADA EXITOSAMENTE';
+PRINT 'Usa las vistas vw_aplicaciones_* para consultas ultra-rápidas';
+PRINT 'Ejecuta sp_update_aplicaciones_data para actualizar datos periódicamente';
+PRINT '============================================================================';

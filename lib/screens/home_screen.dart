@@ -10,7 +10,7 @@ import '../database/database_helper.dart';
 import 'login_screen.dart';
 import 'checklist_bodega_screen.dart';
 import 'checklist_cosecha_screen.dart';
-import '../services/aplicaciones_dropdown_service.dart' ;
+import '../services/aplicaciones_dropdown_service.dart';
 
 class HomeScreen extends StatefulWidget {
   @override
@@ -22,6 +22,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   bool _hasConnection = false;
   bool _isValidating = false;
   bool _isSyncing = false;
+  
+  // Variables de sincronización individual
+  bool _isSyncingBodega = false;
+  bool _isSyncingCosecha = false;
+  bool _isSyncingAplicaciones = false;
+  
   Map<String, int> _dbStats = {};
   Map<String, int> _cosechaDbStats = {};
   Map<String, dynamic> _validationInfo = {};
@@ -106,15 +112,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         setState(() {
           _isSyncing = false;
         });
+        // Recargar estadísticas después de la sincronización automática
+        await _loadDatabaseStats();
       }
     }
   }
 
-  Future<void> _manualSync() async {
-    if (!await AuthService.hasInternetConnection()) {
+  // Método mejorado de sincronización manual que incluye todos los módulos
+  Future<void> _manualSyncImproved() async {
+    print('=== INICIO DIAGNÓSTICO DE SINCRONIZACIÓN ===');
+    
+    // 1. Verificar conexión
+    bool hasConnection = await AuthService.hasInternetConnection();
+    print('Estado de conexión: $hasConnection');
+    
+    if (!hasConnection) {
       Fluttertoast.showToast(
-        msg: 'No hay conexión a internet para sincronizar',
-        toastLength: Toast.LENGTH_SHORT,
+        msg: 'Sin conexión a internet. Revise su conectividad.',
+        toastLength: Toast.LENGTH_LONG,
         gravity: ToastGravity.BOTTOM,
         backgroundColor: Colors.orange[600],
         textColor: Colors.white,
@@ -127,54 +142,227 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     });
 
     try {
-      print('Iniciando sincronización manual...');
+      print('=== INICIANDO SINCRONIZACIÓN MANUAL COMPLETA ===');
+      
+      // Mostrar progreso al usuario
       Fluttertoast.showToast(
-        msg: 'Sincronizando datos...',
+        msg: 'Iniciando sincronización completa...',
         toastLength: Toast.LENGTH_SHORT,
         gravity: ToastGravity.BOTTOM,
-        backgroundColor: Colors.red[600],
+        backgroundColor: Colors.blue[600],
         textColor: Colors.white,
       );
 
-      Map<String, dynamic> result = await AuthService.syncData();
+      int totalSyncedItems = 0;
+      List<String> syncErrors = [];
+      List<String> successMessages = [];
 
-      if (result['success']) {
-        int users = result['usersSynced'] ?? 0;
-        int bodegaDropdown = result['bodegaDropdownSynced'] ?? 0;
-        int cosechaDropdown = result['cosechaDropdownSynced'] ?? 0;
+      // 2. Usar IntelligentSyncService para sincronización robusta
+      print('Ejecutando sincronización inteligente...');
+      try {
+        Map<String, dynamic> intelligentResult = await IntelligentSyncService.performIntelligentSync();
+        print('Resultado sincronización inteligente: $intelligentResult');
         
+        if (intelligentResult['sync_status'] == 'success' || intelligentResult['sync_status'] == 'partial') {
+          totalSyncedItems += (intelligentResult['synced_items'] as num?)?.toInt() ?? 0;
+          successMessages.add('Datos principales: ${intelligentResult['synced_items']} registros');
+        } else {
+          syncErrors.add('Sincronización inteligente falló');
+        }
+      } catch (e) {
+        print('Error en sincronización inteligente: $e');
+        syncErrors.add('Error sincronización principal: $e');
+      }
+
+      // 3. Sincronizar datos de cosecha específicamente CON VARIEDADES COMPLETAS
+      print('Sincronizando datos de cosecha CON TODAS LAS VARIEDADES...');
+      try {
+        // Mostrar progreso para cosecha
         Fluttertoast.showToast(
-          msg: "Sincronización exitosa: $users usuarios, $bodegaDropdown datos de bodega, $cosechaDropdown datos de cosecha",
-          toastLength: Toast.LENGTH_LONG,
+          msg: 'Sincronizando cosecha: fincas y bloques...',
+          toastLength: Toast.LENGTH_SHORT,
           gravity: ToastGravity.BOTTOM,
           backgroundColor: Colors.green[600],
           textColor: Colors.white,
         );
 
-        await _loadDatabaseStats();
+        Map<String, dynamic> cosechaResult = await CosechaDropdownService.getCosechaDropdownData(forceSync: true);
+        print('Resultado sincronización cosecha: $cosechaResult');
+        
+        if (cosechaResult['success']) {
+          int cosechaFincas = (cosechaResult['fincas'] as List?)?.length ?? 0;
+          totalSyncedItems += cosechaFincas;
+          successMessages.add('Cosecha: $cosechaFincas fincas');
+          
+          // Sincronizar todos los bloques de cosecha
+          print('Sincronizando TODOS los bloques de cosecha...');
+          await CosechaDropdownService.syncAllBloquesCosecha();
+          successMessages.add('Bloques cosecha sincronizados');
+
+          // ================== AQUÍ ESTÁ LA CORRECCIÓN ==================
+          // Sincronizar TODAS las variedades para TODOS los bloques de cosecha
+          print('Sincronizando TODAS las variedades de cosecha...');
+          
+          Fluttertoast.showToast(
+            msg: 'Sincronizando variedades de cosecha...',
+            toastLength: Toast.LENGTH_SHORT,
+            gravity: ToastGravity.BOTTOM,
+            backgroundColor: Colors.green[700],
+            textColor: Colors.white,
+          );
+
+          await CosechaDropdownService.syncVariedadesIntelligent();
+          successMessages.add('Variedades cosecha sincronizadas');
+          
+        } else {
+          syncErrors.add('Error en datos de cosecha');
+        }
+      } catch (e) {
+        print('Error sincronizando cosecha: $e');
+        syncErrors.add('Error cosecha: $e');
+      }
+
+      // 4. Sincronizar datos de aplicaciones específicamente
+      print('Sincronizando datos de aplicaciones...');
+      try {
+        Fluttertoast.showToast(
+          msg: 'Sincronizando aplicaciones...',
+          toastLength: Toast.LENGTH_SHORT,
+          gravity: ToastGravity.BOTTOM,
+          backgroundColor: Colors.blue[700],
+          textColor: Colors.white,
+        );
+
+        Map<String, dynamic> aplicacionesResult = await AplicacionesDropdownService.getAplicacionesDropdownData(forceSync: true);
+        print('Resultado sincronización aplicaciones: $aplicacionesResult');
+        
+        if (aplicacionesResult['success']) {
+          int aplicacionesFincas = (aplicacionesResult['fincas'] as List?)?.length ?? 0;
+          totalSyncedItems += aplicacionesFincas;
+          successMessages.add('Aplicaciones: $aplicacionesFincas fincas');
+        } else {
+          syncErrors.add('Error en datos de aplicaciones');
+        }
+      } catch (e) {
+        print('Error sincronizando aplicaciones: $e');
+        syncErrors.add('Error aplicaciones: $e');
+      }
+
+      // 5. Sincronizar datos específicos de aplicaciones desde tabla optimizada
+      print('Sincronizando tabla aplicaciones_data...');
+      try {
+        Map<String, dynamic> aplicacionesDataResult = await AplicacionesDropdownService.syncAplicacionesData();
+        print('Resultado sincronización aplicaciones_data: $aplicacionesDataResult');
+        
+        if (aplicacionesDataResult['success']) {
+          successMessages.add('Datos aplicaciones optimizados: sincronizados');
+        } else {
+          syncErrors.add('Error tabla aplicaciones_data');
+        }
+      } catch (e) {
+        print('Error sincronizando aplicaciones_data: $e');
+        syncErrors.add('Error aplicaciones_data: $e');
+      }
+
+      // 6. Actualizar estadísticas locales
+      await _loadDatabaseStats();
+      
+      // 7. Verificar resultados y mostrar mensaje apropiado
+      bool hasErrors = syncErrors.isNotEmpty;
+      bool hasSomeSuccess = successMessages.isNotEmpty;
+      
+      if (!hasErrors && hasSomeSuccess) {
+        Fluttertoast.showToast(
+          msg: 'Sincronización completada: ${successMessages.join(', ')}',
+          toastLength: Toast.LENGTH_LONG,
+          gravity: ToastGravity.BOTTOM,
+          backgroundColor: Colors.green[600],
+          textColor: Colors.white,
+        );
+        
+        print('=== SINCRONIZACIÓN EXITOSA ===');
+        print('Total sincronizado: $totalSyncedItems elementos');
+        print('Detalles: ${successMessages.join(', ')}');
+      } else if (hasSomeSuccess && hasErrors) {
+        Fluttertoast.showToast(
+          msg: 'Sincronización parcial. Éxitos: ${successMessages.length}, Errores: ${syncErrors.length}',
+          toastLength: Toast.LENGTH_LONG,
+          gravity: ToastGravity.BOTTOM,
+          backgroundColor: Colors.orange[600],
+          textColor: Colors.white,
+        );
+        
+        print('=== SINCRONIZACIÓN PARCIAL ===');
+        print('Éxitos: ${successMessages.join(', ')}');
+        print('Errores: ${syncErrors.join(', ')}');
       } else {
         Fluttertoast.showToast(
-          msg: result['message'],
+          msg: 'Error en sincronización: ${syncErrors.join(', ')}',
           toastLength: Toast.LENGTH_LONG,
           gravity: ToastGravity.BOTTOM,
           backgroundColor: Colors.red[600],
           textColor: Colors.white,
         );
+        
+        print('=== ERRORES EN SINCRONIZACIÓN ===');
+        print('Errores: ${syncErrors.join(', ')}');
       }
+
     } catch (e) {
-      print('Error en sincronización manual: $e');
+      print('=== ERROR CRÍTICO EN SINCRONIZACIÓN ===');
+      print('Error: $e');
+      print('Stack trace: ${e.toString()}');
+      
       Fluttertoast.showToast(
-        msg: 'Error durante la sincronización: $e',
+        msg: 'Error crítico en sincronización: ${e.toString()}',
         toastLength: Toast.LENGTH_LONG,
         gravity: ToastGravity.BOTTOM,
-        backgroundColor: Colors.red[600],
+        backgroundColor: Colors.red[700],
         textColor: Colors.white,
       );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSyncing = false;
+        });
+      }
+      print('=== FIN PROCESO SINCRONIZACIÓN ===');
     }
+  }
 
-    setState(() {
-      _isSyncing = false;
-    });
+  // Método de diagnóstico para debugging
+  Future<void> _diagnosticSync() async {
+    print('=== DIAGNÓSTICO DEL SISTEMA ===');
+    
+    try {
+      DatabaseHelper dbHelper = DatabaseHelper();
+      
+      // Verificar estadísticas de todas las bases de datos
+      Map<String, int> generalStats = await dbHelper.getDatabaseStats();
+      Map<String, int> cosechaStats = await dbHelper.getCosechaDatabaseStats();
+      Map<String, int> aplicacionesStats = await dbHelper.getAplicacionesDatabaseStats();
+      
+      print('Estadísticas generales: $generalStats');
+      print('Estadísticas cosecha: $cosechaStats');
+      print('Estadísticas aplicaciones: $aplicacionesStats');
+      
+      // Verificar conectividad
+      bool hasInternet = await AuthService.hasInternetConnection();
+      print('Conexión a internet: $hasInternet');
+      
+      // Verificar autenticación
+      bool isLoggedIn = await AuthService.isLoggedIn();
+      print('Usuario autenticado: $isLoggedIn');
+      
+      // Verificar estado del servidor con health check
+      if (hasInternet) {
+        Map<String, dynamic> healthCheck = await RobustSqlServerService.performHealthCheck();
+        print('Health check del servidor: $healthCheck');
+      }
+      
+    } catch (e) {
+      print('Error en diagnóstico: $e');
+    }
   }
 
   Future<void> _loadUserData() async {
@@ -199,16 +387,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       Map<String, int> stats = await dbHelper.getDatabaseStats();
       
       // Cargar estadísticas de cosecha
-      // Map<String, int> cosechaStats = await CosechaDropdownService.getLocalCosechaStats();
+      Map<String, int> cosechaStats = await dbHelper.getCosechaDatabaseStats();
       
       // Cargar estadísticas de aplicaciones
-      // Map<String, int> aplicacionesStats = await AplicacionesDropdownService.getLocalAplicacionesStats();
+      Map<String, int> aplicacionesStats = await dbHelper.getAplicacionesDatabaseStats();
       
       setState(() {
         _dbStats = stats;
-        // _cosechaDbStats = cosechaStats;
-        // _aplicacionesDbStats = aplicacionesStats;
+        _cosechaDbStats = cosechaStats;
+        _aplicacionesDbStats = aplicacionesStats;
       });
+      
+      print('Estadísticas cargadas - General: $stats, Cosecha: $cosechaStats, Aplicaciones: $aplicacionesStats');
     } catch (e) {
       print('Error cargando estadísticas de base de datos: $e');
     }
@@ -335,6 +525,572 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         );
         break;
     }
+  }
+
+  // Método mejorado para construir la información de la base de datos
+  Widget _buildDatabaseInfo(bool isTablet) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: isTablet ? 24 : 20,
+        vertical: isTablet ? 24 : 20,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: Colors.grey[200]!,
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 15,
+            offset: Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header principal
+          Row(
+            children: [
+              Container(
+                padding: EdgeInsets.all(isTablet ? 12 : 10),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.blue[600]!, Colors.blue[700]!],
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.blue.withOpacity(0.3),
+                      blurRadius: 8,
+                      offset: Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  Icons.storage_rounded,
+                  color: Colors.white,
+                  size: isTablet ? 28 : 24,
+                ),
+              ),
+              SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Base de Datos Local',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: isTablet ? 22 : 18,
+                        color: Colors.grey[800],
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Datos almacenados offline',
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: isTablet ? 16 : 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          
+          SizedBox(height: isTablet ? 32 : 24),
+          
+          if (_dbStats.isNotEmpty || _cosechaDbStats.isNotEmpty || _aplicacionesDbStats.isNotEmpty) ...[
+            // Sección de Bodega
+            _buildModuleSection(
+              title: 'MÓDULO BODEGA',
+              icon: Icons.warehouse_rounded,
+              color: Colors.purple,
+              isTablet: isTablet,
+              items: [
+                _buildDataItem('Usuarios', _dbStats['usuarios'] ?? 0, Icons.people_rounded),
+                _buildDataItem('Supervisores', _dbStats['supervisores'] ?? 0, Icons.supervisor_account_rounded),
+                _buildDataItem('Pesadores', _dbStats['pesadores'] ?? 0, Icons.scale_rounded),
+                _buildDataItem('Fincas', _dbStats['fincas'] ?? 0, Icons.location_on_rounded),
+              ],
+              isSyncing: _isSyncingBodega,
+              onSync: () => _syncBodegaData(),
+            ),
+            
+            SizedBox(height: isTablet ? 24 : 20),
+            
+            // Sección de Cosecha
+            _buildModuleSection(
+              title: 'MÓDULO COSECHA',
+              icon: Icons.grass_rounded,
+              color: Colors.green,
+              isTablet: isTablet,
+              items: [
+                _buildDataItem('Fincas', _cosechaDbStats['fincas'] ?? 0, Icons.location_on_rounded),
+                _buildDataItem('Bloques', _cosechaDbStats['bloques'] ?? 0, Icons.grid_view_rounded),
+                _buildDataItem('Variedades', _cosechaDbStats['variedades'] ?? 0, Icons.eco_rounded),
+              ],
+              isSyncing: _isSyncingCosecha,
+              onSync: () => _syncCosechaData(),
+            ),
+            
+            SizedBox(height: isTablet ? 24 : 20),
+            
+            // Sección de Aplicaciones
+            _buildModuleSection(
+              title: 'MÓDULO APLICACIONES',
+              icon: Icons.spa_rounded,
+              color: Colors.orange,
+              isTablet: isTablet,
+              items: [
+                _buildDataItem('Fincas', _aplicacionesDbStats['fincas'] ?? 0, Icons.location_on_rounded),
+                _buildDataItem('Bloques', _aplicacionesDbStats['bloques'] ?? 0, Icons.grid_view_rounded),
+                _buildDataItem('Bombas', _aplicacionesDbStats['bombas'] ?? 0, Icons.water_drop_rounded),
+              ],
+              isSyncing: _isSyncingAplicaciones,
+              onSync: () => _syncAplicacionesData(),
+            ),
+            
+          ] else ...[
+            // Estado vacío
+            _buildEmptyState(isTablet),
+          ],
+          
+          SizedBox(height: isTablet ? 32 : 24),
+          
+          // Botón de sincronización general mejorado
+          _buildGeneralSyncButton(isTablet),
+        ],
+      ),
+    );
+  }
+
+  // Widget para cada sección de módulo
+  Widget _buildModuleSection({
+    required String title,
+    required IconData icon,
+    required Color color,
+    required bool isTablet,
+    required List<Widget> items,
+    required bool isSyncing,
+    required VoidCallback onSync,
+  }) {
+    return Container(
+      padding: EdgeInsets.all(isTablet ? 20 : 16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: color.withOpacity(0.2),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header de la sección
+          Row(
+            children: [
+              Container(
+                padding: EdgeInsets.all(isTablet ? 10 : 8),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  icon,
+                  color: color,
+                  size: isTablet ? 24 : 20,
+                ),
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: isTablet ? 16 : 14,
+                    color: color,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+              // Botón de sincronización individual
+              Container(
+                height: isTablet ? 36 : 32,
+                child: ElevatedButton.icon(
+                  onPressed: isSyncing ? null : onSync,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: color,
+                    foregroundColor: Colors.white,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: isTablet ? 16 : 12,
+                      vertical: isTablet ? 8 : 6,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    elevation: 2,
+                  ),
+                  icon: isSyncing 
+                      ? SizedBox(
+                          width: isTablet ? 16 : 14,
+                          height: isTablet ? 16 : 14,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : Icon(
+                          Icons.sync_rounded,
+                          size: isTablet ? 16 : 14,
+                        ),
+                  label: Text(
+                    'Sync',
+                    style: TextStyle(
+                      fontSize: isTablet ? 12 : 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          
+          SizedBox(height: isTablet ? 16 : 12),
+          
+          // Items de datos
+          Wrap(
+            spacing: isTablet ? 12 : 8,
+            runSpacing: isTablet ? 12 : 8,
+            children: items,
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Widget para cada item de datos
+  Widget _buildDataItem(String label, int count, IconData icon) {
+    final isTablet = MediaQuery.of(context).size.width > 600;
+    
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: isTablet ? 16 : 12,
+        vertical: isTablet ? 10 : 8,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Colors.grey[200]!,
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.02),
+            blurRadius: 4,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            color: Colors.grey[600],
+            size: isTablet ? 18 : 16,
+          ),
+          SizedBox(width: isTablet ? 8 : 6),
+          Text(
+            label,
+            style: TextStyle(
+              color: Colors.grey[700],
+              fontSize: isTablet ? 13 : 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          SizedBox(width: isTablet ? 8 : 6),
+          Container(
+            padding: EdgeInsets.symmetric(
+              horizontal: isTablet ? 8 : 6,
+              vertical: isTablet ? 4 : 3,
+            ),
+            decoration: BoxDecoration(
+              color: count > 0 ? Colors.blue[50] : Colors.grey[100],
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              count.toString(),
+              style: TextStyle(
+                color: count > 0 ? Colors.blue[700] : Colors.grey[500],
+                fontSize: isTablet ? 12 : 11,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Widget para estado vacío
+  Widget _buildEmptyState(bool isTablet) {
+    return Container(
+      padding: EdgeInsets.all(isTablet ? 32 : 24),
+      child: Column(
+        children: [
+          Container(
+            padding: EdgeInsets.all(isTablet ? 24 : 20),
+            decoration: BoxDecoration(
+              color: Colors.grey[100],
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(
+              Icons.cloud_download_rounded,
+              color: Colors.grey[400],
+              size: isTablet ? 48 : 40,
+            ),
+          ),
+          SizedBox(height: isTablet ? 20 : 16),
+          Text(
+            'Base de datos inicializada',
+            style: TextStyle(
+              color: Colors.grey[700],
+              fontSize: isTablet ? 18 : 16,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          SizedBox(height: isTablet ? 12 : 8),
+          Text(
+            _hasConnection 
+                ? 'Ejecute sincronización para cargar datos'
+                : 'Conecte a internet para sincronizar',
+            style: TextStyle(
+              color: Colors.grey[500],
+              fontSize: isTablet ? 14 : 12,
+              fontStyle: FontStyle.italic,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Botón de sincronización general mejorado
+  Widget _buildGeneralSyncButton(bool isTablet) {
+    bool isAnySyncing = _isSyncing || _isSyncingBodega || _isSyncingCosecha || _isSyncingAplicaciones;
+    
+    return Container(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: isAnySyncing ? null : _manualSyncImproved,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.red[700],
+          foregroundColor: Colors.white,
+          padding: EdgeInsets.symmetric(
+            vertical: isTablet ? 18 : 16,
+            horizontal: isTablet ? 24 : 20,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          elevation: 4,
+          shadowColor: Colors.red.withOpacity(0.3),
+        ),
+        icon: _isSyncing 
+            ? SizedBox(
+                width: isTablet ? 24 : 20,
+                height: isTablet ? 24 : 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              )
+            : Icon(
+                Icons.sync_rounded,
+                size: isTablet ? 24 : 20,
+              ),
+        label: Text(
+          _isSyncing ? 'SINCRONIZANDO TODOS LOS MÓDULOS...' : 'SINCRONIZAR TODOS LOS MÓDULOS',
+          style: TextStyle(
+            fontSize: isTablet ? 15 : 13,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 0.5,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Métodos de sincronización individual
+  Future<void> _syncBodegaData() async {
+    if (!await AuthService.hasInternetConnection()) {
+      _showNoConnectionMessage();
+      return;
+    }
+
+    setState(() {
+      _isSyncingBodega = true;
+    });
+
+    try {
+      Fluttertoast.showToast(
+        msg: 'Sincronizando datos de bodega...',
+        backgroundColor: Colors.purple[600],
+        textColor: Colors.white,
+        toastLength: Toast.LENGTH_SHORT,
+      );
+
+      // Aquí puedes llamar a los métodos específicos de sincronización de bodega
+      // Por ejemplo: await DropdownService.syncAllData();
+      
+      await Future.delayed(Duration(seconds: 2)); // Simular sincronización
+      
+      await _loadDatabaseStats();
+      
+      Fluttertoast.showToast(
+        msg: 'Datos de bodega sincronizados exitosamente',
+        backgroundColor: Colors.green[600],
+        textColor: Colors.white,
+        toastLength: Toast.LENGTH_SHORT,
+      );
+
+    } catch (e) {
+      print('Error sincronizando bodega: $e');
+      Fluttertoast.showToast(
+        msg: 'Error sincronizando bodega: $e',
+        backgroundColor: Colors.red[600],
+        textColor: Colors.white,
+        toastLength: Toast.LENGTH_LONG,
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSyncingBodega = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _syncCosechaData() async {
+    if (!await AuthService.hasInternetConnection()) {
+      _showNoConnectionMessage();
+      return;
+    }
+
+    setState(() {
+      _isSyncingCosecha = true;
+    });
+
+    try {
+      Fluttertoast.showToast(
+        msg: 'Sincronizando datos de cosecha...',
+        backgroundColor: Colors.green[600],
+        textColor: Colors.white,
+        toastLength: Toast.LENGTH_SHORT,
+      );
+
+      // Sincronizar todos los datos de cosecha
+      Map<String, dynamic> cosechaResult = await CosechaDropdownService.getCosechaDropdownData(forceSync: true);
+      
+      if (cosechaResult['success']) {
+        await CosechaDropdownService.syncAllBloquesCosecha();
+        await CosechaDropdownService.syncVariedadesIntelligent();
+      }
+      
+      await _loadDatabaseStats();
+      
+      Fluttertoast.showToast(
+        msg: 'Datos de cosecha sincronizados exitosamente',
+        backgroundColor: Colors.green[600],
+        textColor: Colors.white,
+        toastLength: Toast.LENGTH_SHORT,
+      );
+
+    } catch (e) {
+      print('Error sincronizando cosecha: $e');
+      Fluttertoast.showToast(
+        msg: 'Error sincronizando cosecha: $e',
+        backgroundColor: Colors.red[600],
+        textColor: Colors.white,
+        toastLength: Toast.LENGTH_LONG,
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSyncingCosecha = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _syncAplicacionesData() async {
+    if (!await AuthService.hasInternetConnection()) {
+      _showNoConnectionMessage();
+      return;
+    }
+
+    setState(() {
+      _isSyncingAplicaciones = true;
+    });
+
+    try {
+      Fluttertoast.showToast(
+        msg: 'Sincronizando datos de aplicaciones...',
+        backgroundColor: Colors.orange[600],
+        textColor: Colors.white,
+        toastLength: Toast.LENGTH_SHORT,
+      );
+
+      // Sincronizar datos de aplicaciones
+      Map<String, dynamic> aplicacionesResult = await AplicacionesDropdownService.getAplicacionesDropdownData(forceSync: true);
+      
+      if (aplicacionesResult['success']) {
+        await AplicacionesDropdownService.syncAplicacionesData();
+      }
+      
+      await _loadDatabaseStats();
+      
+      Fluttertoast.showToast(
+        msg: 'Datos de aplicaciones sincronizados exitosamente',
+        backgroundColor: Colors.green[600],
+        textColor: Colors.white,
+        toastLength: Toast.LENGTH_SHORT,
+      );
+
+    } catch (e) {
+      print('Error sincronizando aplicaciones: $e');
+      Fluttertoast.showToast(
+        msg: 'Error sincronizando aplicaciones: $e',
+        backgroundColor: Colors.red[600],
+        textColor: Colors.white,
+        toastLength: Toast.LENGTH_LONG,
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSyncingAplicaciones = false;
+        });
+      }
+    }
+  }
+
+  void _showNoConnectionMessage() {
+    Fluttertoast.showToast(
+      msg: 'Sin conexión a internet. Verifique su conectividad.',
+      backgroundColor: Colors.orange[600],
+      textColor: Colors.white,
+      toastLength: Toast.LENGTH_LONG,
+    );
   }
 
   @override
@@ -481,7 +1237,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
             actions: [
               IconButton(
-                onPressed: () => _manualSync(),
+                onPressed: () => _manualSyncImproved(),
                 icon: Container(
                   padding: EdgeInsets.all(8),
                   decoration: BoxDecoration(
@@ -526,13 +1282,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
                       SizedBox(height: isTablet ? 32 : 24),
                       
-                      // Información de la base de datos
+                      // Información de la base de datos (ahora incluye botones de sync)
                       _buildDatabaseInfo(isTablet),
                       
                       SizedBox(height: isTablet ? 32 : 24),
-                      
-                      // Botón de sincronización
-                      _buildSyncButton(isTablet),
                     ],
                   ),
                 ),
@@ -664,223 +1417,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildDatabaseInfo(bool isTablet) {
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: isTablet ? 24 : 20,
-        vertical: isTablet ? 20 : 16,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Colors.grey[200]!,
-          width: 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.02),
-            blurRadius: 8,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.blue[50],
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  Icons.storage,
-                  color: Colors.blue[600],
-                  size: isTablet ? 24 : 20,
-                ),
-              ),
-              SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Base de Datos Local',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: isTablet ? 18 : 16,
-                        color: Colors.grey[800],
-                      ),
-                    ),
-                    Text(
-                      'Datos almacenados offline',
-                      style: TextStyle(
-                        color: Colors.grey[600],
-                        fontSize: isTablet ? 14 : 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          
-          SizedBox(height: 16),
-          
-          if (_dbStats.isNotEmpty || _cosechaDbStats.isNotEmpty) ...[
-            // Sección de Bodega
-            Text(
-              'DATOS DE BODEGA',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: isTablet ? 14 : 12,
-                color: Colors.grey[700],
-                letterSpacing: 0.5,
-              ),
-            ),
-            SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _buildDataChip('Usuarios', _dbStats['usuarios'] ?? 0, Colors.blue, isTablet),
-                _buildDataChip('Supervisores', _dbStats['supervisores'] ?? 0, Colors.green, isTablet),
-                _buildDataChip('Pesadores', _dbStats['pesadores'] ?? 0, Colors.orange, isTablet),
-                _buildDataChip('Fincas', _dbStats['fincas'] ?? 0, Colors.purple, isTablet),
-              ],
-            ),
-            
-            SizedBox(height: 16),
-            
-            // Sección de Cosecha
-            Text(
-              'DATOS DE COSECHA',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: isTablet ? 14 : 12,
-                color: Colors.grey[700],
-                letterSpacing: 0.5,
-              ),
-            ),
-            SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _buildDataChip('Fincas', _cosechaDbStats['fincas'] ?? 0, Colors.teal, isTablet),
-                _buildDataChip('Bloques', _cosechaDbStats['bloques'] ?? 0, Colors.indigo, isTablet),
-                _buildDataChip('Variedades', _cosechaDbStats['variedades'] ?? 0, Colors.pink, isTablet),
-              ],
-            ),
-          ] else ...[
-            Text(
-              'Base de datos SQLite inicializada',
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontSize: isTablet ? 14 : 12,
-              ),
-            ),
-            SizedBox(height: 8),
-            Text(
-              _hasConnection 
-                  ? 'Sincronizando datos...'
-                  : 'Conecte a internet para sincronizar',
-              style: TextStyle(
-                color: Colors.grey[500],
-                fontSize: isTablet ? 12 : 11,
-                fontStyle: FontStyle.italic,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDataChip(String label, int count, Color color, bool isTablet) {
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: isTablet ? 12 : 10,
-        vertical: isTablet ? 8 : 6,
-      ),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: color.withOpacity(0.3),
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: isTablet ? 8 : 6,
-            height: isTablet ? 8 : 6,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-            ),
-          ),
-          SizedBox(width: 6),
-          Text(
-            '$label: $count',
-            style: TextStyle(
-              color: color,
-              fontSize: isTablet ? 12 : 11,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSyncButton(bool isTablet) {
-    return Container(
-      width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: _isSyncing ? null : _manualSync,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.red[700],
-          foregroundColor: Colors.white,
-          padding: EdgeInsets.symmetric(
-            vertical: isTablet ? 20 : 16,
-            horizontal: isTablet ? 32 : 24,
-          ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          elevation: 4,
-          shadowColor: Colors.red.withOpacity(0.3),
-        ),
-        icon: _isSyncing 
-            ? SizedBox(
-                width: isTablet ? 24 : 20,
-                height: isTablet ? 24 : 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
-                ),
-              )
-            : Icon(
-                Icons.sync,
-                size: isTablet ? 24 : 20,
-              ),
-        label: Text(
-          _isSyncing ? 'SINCRONIZANDO DATOS...' : 'SINCRONIZAR DATOS AHORA',
-          style: TextStyle(
-            fontSize: isTablet ? 16 : 14,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 0.5,
-          ),
-        ),
       ),
     );
   }

@@ -217,10 +217,12 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
     });
 
     try {
-      List<Variedad> variedades = await CosechaDropdownServiceUltra.getVariedadesByFincaAndBloque(finca, bloque);
+      // CORREGIR: Usar CosechaDropdownService en lugar de CosechaDropdownServiceUltra
+      List<Variedad> loadedVariedades = await CosechaDropdownService.getVariedadesByFincaAndBloque(finca, bloque);
       
       setState(() {
-        variedades = variedades;
+        // CORREGIR: Cambiar nombre de variable para evitar conflicto
+        variedades = loadedVariedades;
         _isLoadingVariedades = false;
       });
 

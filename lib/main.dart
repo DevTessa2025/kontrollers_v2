@@ -50,7 +50,7 @@ class _SplashScreenState extends State<SplashScreen> {
     if (isLoggedIn) {
       print('Usuario con sesión activa, validando estado...');
       // Validar si el usuario sigue activo con validación forzada
-      bool isUserActive = await AuthService.forceValidateActiveUser();
+      bool isUserActive = (await AuthService.forceValidateActiveUser()) as bool;
       
       print('Resultado de validación: $isUserActive');
       
