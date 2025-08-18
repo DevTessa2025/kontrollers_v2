@@ -118,7 +118,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
-  // Método mejorado de sincronización manual que incluye todos los módulos
+  // Método mejorado de sincronización manual que incluye todos los módulos - CORREGIDO
   Future<void> _manualSyncImproved() async {
     print('=== INICIO DIAGNÓSTICO DE SINCRONIZACIÓN ===');
     
@@ -156,6 +156,32 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       int totalSyncedItems = 0;
       List<String> syncErrors = [];
       List<String> successMessages = [];
+
+      // 1. SINCRONIZAR DATOS DE BODEGA PRIMERO
+      print('Sincronizando datos de bodega...');
+      try {
+        Fluttertoast.showToast(
+          msg: 'Sincronizando bodega: supervisores, pesadores, fincas...',
+          toastLength: Toast.LENGTH_SHORT,
+          gravity: ToastGravity.BOTTOM,
+          backgroundColor: Colors.purple[600],
+          textColor: Colors.white,
+        );
+
+        Map<String, dynamic> bodegaResult = await DropdownService.syncDropdownData();
+        print('Resultado sincronización bodega: $bodegaResult');
+        
+        if (bodegaResult['success']) {
+          int bodegaCount = (bodegaResult['count'] as num?)?.toInt() ?? 0;
+          totalSyncedItems += bodegaCount;
+          successMessages.add('Bodega: $bodegaCount registros');
+        } else {
+          syncErrors.add('Error en datos de bodega: ${bodegaResult['message']}');
+        }
+      } catch (e) {
+        print('Error sincronizando bodega: $e');
+        syncErrors.add('Error bodega: $e');
+      }
 
       // 2. Usar IntelligentSyncService para sincronización robusta
       print('Ejecutando sincronización inteligente...');
@@ -199,7 +225,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           await CosechaDropdownService.syncAllBloquesCosecha();
           successMessages.add('Bloques cosecha sincronizados');
 
-          // ================== AQUÍ ESTÁ LA CORRECCIÓN ==================
           // Sincronizar TODAS las variedades para TODOS los bloques de cosecha
           print('Sincronizando TODAS las variedades de cosecha...');
           
@@ -392,11 +417,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       // Cargar estadísticas de aplicaciones
       Map<String, int> aplicacionesStats = await dbHelper.getAplicacionesDatabaseStats();
       
-      setState(() {
-        _dbStats = stats;
-        _cosechaDbStats = cosechaStats;
-        _aplicacionesDbStats = aplicacionesStats;
-      });
+      if(mounted) {
+        setState(() {
+          _dbStats = stats;
+          _cosechaDbStats = cosechaStats;
+          _aplicacionesDbStats = aplicacionesStats;
+        });
+      }
       
       print('Estadísticas cargadas - General: $stats, Cosecha: $cosechaStats, Aplicaciones: $aplicacionesStats');
     } catch (e) {
@@ -606,8 +633,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           
           SizedBox(height: isTablet ? 32 : 24),
           
-          if (_dbStats.isNotEmpty || _cosechaDbStats.isNotEmpty || _aplicacionesDbStats.isNotEmpty) ...[
-            // Sección de Bodega
+          if (!_hasDataInBodega() && !_hasDataInCosecha() && !_hasDataInAplicaciones())
+            _buildEmptyState(isTablet)
+          else ...[
+            // Si hay datos en al menos un módulo, se muestran todos
             _buildModuleSection(
               title: 'MÓDULO BODEGA',
               icon: Icons.warehouse_rounded,
@@ -621,11 +650,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ],
               isSyncing: _isSyncingBodega,
               onSync: () => _syncBodegaData(),
+              isEnabled: _hasDataInBodega(),
             ),
             
             SizedBox(height: isTablet ? 24 : 20),
             
-            // Sección de Cosecha
             _buildModuleSection(
               title: 'MÓDULO COSECHA',
               icon: Icons.grass_rounded,
@@ -638,11 +667,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ],
               isSyncing: _isSyncingCosecha,
               onSync: () => _syncCosechaData(),
+              isEnabled: _hasDataInCosecha(),
             ),
             
             SizedBox(height: isTablet ? 24 : 20),
             
-            // Sección de Aplicaciones
             _buildModuleSection(
               title: 'MÓDULO APLICACIONES',
               icon: Icons.spa_rounded,
@@ -655,11 +684,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ],
               isSyncing: _isSyncingAplicaciones,
               onSync: () => _syncAplicacionesData(),
+              isEnabled: _hasDataInAplicaciones(),
             ),
-            
-          ] else ...[
-            // Estado vacío
-            _buildEmptyState(isTablet),
           ],
           
           SizedBox(height: isTablet ? 32 : 24),
@@ -671,7 +697,52 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  // Widget para cada sección de módulo
+  // Métodos para verificar si hay datos en cada módulo (SUMA > 0)
+  bool _hasDataInBodega() {
+    int totalBodega = (_dbStats['usuarios'] ?? 0) + 
+                     (_dbStats['supervisores'] ?? 0) + 
+                     (_dbStats['pesadores'] ?? 0) + 
+                     (_dbStats['fincas'] ?? 0);
+    return totalBodega > 0;
+  }
+
+  bool _hasDataInCosecha() {
+    int totalCosecha = (_cosechaDbStats['fincas'] ?? 0) + 
+                      (_cosechaDbStats['bloques'] ?? 0) + 
+                      (_cosechaDbStats['variedades'] ?? 0);
+    return totalCosecha > 0;
+  }
+
+  bool _hasDataInAplicaciones() {
+    int totalAplicaciones = (_aplicacionesDbStats['fincas'] ?? 0) + 
+                           (_aplicacionesDbStats['bloques'] ?? 0) + 
+                           (_aplicacionesDbStats['bombas'] ?? 0);
+    return totalAplicaciones > 0;
+  }
+  
+  // ** INICIO DE NUEVAS FUNCIONES **
+  // Métodos para verificar si un módulo está listo (CADA CONTADOR > 0)
+  bool _isBodegaModuleActive() {
+    return (_dbStats['usuarios'] ?? 0) > 0 &&
+           (_dbStats['supervisores'] ?? 0) > 0 &&
+           (_dbStats['pesadores'] ?? 0) > 0 &&
+           (_dbStats['fincas'] ?? 0) > 0;
+  }
+
+  bool _isCosechaModuleActive() {
+    return (_cosechaDbStats['fincas'] ?? 0) > 0 &&
+           (_cosechaDbStats['bloques'] ?? 0) > 0 &&
+           (_cosechaDbStats['variedades'] ?? 0) > 0;
+  }
+
+  bool _isAplicacionesModuleActive() {
+    return (_aplicacionesDbStats['fincas'] ?? 0) > 0 &&
+           (_aplicacionesDbStats['bloques'] ?? 0) > 0 &&
+           (_aplicacionesDbStats['bombas'] ?? 0) > 0;
+  }
+  // ** FIN DE NUEVAS FUNCIONES **
+
+  // Widget para cada sección de módulo (actualizado)
   Widget _buildModuleSection({
     required String title,
     required IconData icon,
@@ -680,15 +751,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     required List<Widget> items,
     required bool isSyncing,
     required VoidCallback onSync,
+    required bool isEnabled,
   }) {
-    return Container(
+    return AnimatedContainer(
+      duration: Duration(milliseconds: 300),
       padding: EdgeInsets.all(isTablet ? 20 : 16),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.05),
+        color: isEnabled ? color.withOpacity(0.05) : Colors.grey[50],
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: color.withOpacity(0.2),
-          width: 1,
+          color: isEnabled ? color.withOpacity(0.2) : Colors.grey[300]!,
+          width: isEnabled ? 1 : 1,
         ),
       ),
       child: Column(
@@ -697,28 +770,70 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           // Header de la sección
           Row(
             children: [
-              Container(
+              // Icono con estado visual
+              AnimatedContainer(
+                duration: Duration(milliseconds: 300),
                 padding: EdgeInsets.all(isTablet ? 10 : 8),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.15),
+                  color: isEnabled ? color.withOpacity(0.15) : Colors.grey[200],
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
                   icon,
-                  color: color,
+                  color: isEnabled ? color : Colors.grey[500],
                   size: isTablet ? 24 : 20,
                 ),
               ),
               SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: isTablet ? 16 : 14,
-                    color: color,
-                    letterSpacing: 0.5,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: isTablet ? 16 : 14,
+                        color: isEnabled ? color: Colors.grey[600],
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    // Indicador de estado
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isTablet ? 8 : 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isEnabled ? Colors.green[50] : Colors.orange[50],
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: isEnabled ? Colors.green[200]! : Colors.orange[200]!,
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            isEnabled ? Icons.check_circle_outline : Icons.warning_amber_rounded,
+                            color: isEnabled ? Colors.green[600] : Colors.orange[600],
+                            size: isTablet ? 12 : 10,
+                          ),
+                          SizedBox(width: 4),
+                          Text(
+                            isEnabled ? 'Con datos' : 'Sin datos',
+                            style: TextStyle(
+                              fontSize: isTablet ? 10 : 9,
+                              color: isEnabled ? Colors.green[700] : Colors.orange[700],
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
               // Botón de sincronización individual
@@ -727,7 +842,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 child: ElevatedButton.icon(
                   onPressed: isSyncing ? null : onSync,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: color,
+                    backgroundColor: isEnabled ? color: Colors.grey[400],
                     foregroundColor: Colors.white,
                     padding: EdgeInsets.symmetric(
                       horizontal: isTablet ? 16 : 12,
@@ -736,7 +851,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(20),
                     ),
-                    elevation: 2,
+                    elevation: isEnabled ? 2 : 1,
                   ),
                   icon: isSyncing 
                       ? SizedBox(
@@ -765,12 +880,53 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           
           SizedBox(height: isTablet ? 16 : 12),
           
-          // Items de datos
-          Wrap(
-            spacing: isTablet ? 12 : 8,
-            runSpacing: isTablet ? 12 : 8,
-            children: items,
+          // Items de datos con estado visual
+          AnimatedOpacity(
+            duration: Duration(milliseconds: 300),
+            opacity: isEnabled ? 1.0 : 0.6,
+            child: Wrap(
+              spacing: isTablet ? 12 : 8,
+              runSpacing: isTablet ? 12 : 8,
+              children: items,
+            ),
           ),
+          
+          // Mensaje de estado cuando no hay datos
+          if (!isEnabled) ...[
+            SizedBox(height: isTablet ? 16 : 12),
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.all(isTablet ? 16 : 12),
+              decoration: BoxDecoration(
+                color: Colors.orange[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Colors.orange[200]!,
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    color: Colors.orange[600],
+                    size: isTablet ? 20 : 18,
+                  ),
+                  SizedBox(width: isTablet ? 12 : 8),
+                  Expanded(
+                    child: Text(
+                      'Este módulo no tiene datos. Ejecute sincronización para cargar información.',
+                      style: TextStyle(
+                        color: Colors.orange[700],
+                        fontSize: isTablet ? 13 : 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -931,7 +1087,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  // Métodos de sincronización individual
+  // Métodos de sincronización individual - CORREGIDO
   Future<void> _syncBodegaData() async {
     if (!await AuthService.hasInternetConnection()) {
       _showNoConnectionMessage();
@@ -950,19 +1106,30 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         toastLength: Toast.LENGTH_SHORT,
       );
 
-      // Aquí puedes llamar a los métodos específicos de sincronización de bodega
-      // Por ejemplo: await DropdownService.syncAllData();
+      // CORRECCIÓN: Llamar al método real de sincronización del DropdownService
+      Map<String, dynamic> syncResult = await DropdownService.syncDropdownData();
       
-      await Future.delayed(Duration(seconds: 2)); // Simular sincronización
-      
-      await _loadDatabaseStats();
-      
-      Fluttertoast.showToast(
-        msg: 'Datos de bodega sincronizados exitosamente',
-        backgroundColor: Colors.green[600],
-        textColor: Colors.white,
-        toastLength: Toast.LENGTH_SHORT,
-      );
+      if (syncResult['success']) {
+        await _loadDatabaseStats(); // Recargar estadísticas
+        
+        Fluttertoast.showToast(
+          msg: 'Datos de bodega sincronizados exitosamente: ${syncResult['count']} registros',
+          backgroundColor: Colors.green[600],
+          textColor: Colors.white,
+          toastLength: Toast.LENGTH_SHORT,
+        );
+        
+        print('Sincronización bodega exitosa: ${syncResult['message']}');
+      } else {
+        Fluttertoast.showToast(
+          msg: 'Error sincronizando bodega: ${syncResult['message']}',
+          backgroundColor: Colors.orange[600],
+          textColor: Colors.white,
+          toastLength: Toast.LENGTH_LONG,
+        );
+        
+        print('Error en sincronización bodega: ${syncResult['message']}');
+      }
 
     } catch (e) {
       print('Error sincronizando bodega: $e');
@@ -1203,13 +1370,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                   height: 20,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    color: Colors.red[700],
+                                    color: Colors.white,
                                   ),
                                 )
                               ] else ...[
                                 Icon(
                                   _hasConnection ? Icons.wifi : Icons.wifi_off,
-                                  color: _hasConnection ? Colors.green[700] : Colors.orange[700],
+                                  color: _hasConnection ? Colors.green[400] : Colors.orange[400],
                                   size: 20,
                                 ),
                               ],
@@ -1219,9 +1386,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                     ? 'Sincronizando...' 
                                     : (_hasConnection ? 'Conectado' : 'Sin conexión'),
                                 style: TextStyle(
-                                  color: _isSyncing 
-                                      ? Colors.red[700]
-                                      : (_hasConnection ? Colors.green[700] : Colors.orange[700]),
+                                  color: Colors.white,
                                   fontSize: isTablet ? 14 : 12,
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -1421,30 +1586,28 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
+  // ** WIDGET MODIFICADO **
   Widget _buildModulesGrid(int crossAxisCount, bool isTablet) {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
     
-    // Detectar orientación y ajustar diseño
     final isLandscape = screenWidth > screenHeight;
     final isTabletPortrait = isTablet && !isLandscape;
     
-    // Ajustar número de columnas según orientación
     int adaptiveCrossAxisCount;
     if (isTablet) {
-      adaptiveCrossAxisCount = isLandscape ? 4 : 3; // 4 en horizontal, 3 en vertical
+      adaptiveCrossAxisCount = isLandscape ? 4 : 3;
     } else {
-      adaptiveCrossAxisCount = 2; // Siempre 2 en móviles
+      adaptiveCrossAxisCount = 2;
     }
     
-    // Calcular aspect ratio dinámico
     double aspectRatio;
     if (isTabletPortrait) {
-      aspectRatio = 0.85; // Más alto en tablet vertical
+      aspectRatio = 0.85;
     } else if (isTablet && isLandscape) {
-      aspectRatio = 1.1; // Más ancho en tablet horizontal
+      aspectRatio = 1.1;
     } else {
-      aspectRatio = 1.0; // Cuadrado en móviles
+      aspectRatio = 1.0;
     }
 
     final modules = [
@@ -1453,21 +1616,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         'icon': Icons.warehouse,
         'color': Colors.red[600]!,
         'description': 'Gestión de inventario\ny almacén',
-        'active': true,
+        'active': _isBodegaModuleActive(), // Llama a la nueva función de validación
+        'isComingSoon': false,
       },
       {
         'title': 'Cosecha',
         'icon': Icons.grass,
         'color': Colors.red[700]!,
         'description': 'Control de\ncosecha',
-        'active': true,
+        'active': _isCosechaModuleActive(), // Llama a la nueva función de validación
+        'isComingSoon': false,
       },
       {
         'title': 'Aplicaciones',
         'icon': Icons.spa_outlined,
         'color': Colors.red[800]!,
         'description': 'Aplicaciones\nfitosanitarias',
-        'active': true,
+        'active': _isAplicacionesModuleActive(), // Llama a la nueva función de validación
+        'isComingSoon': false,
       },
       {
         'title': 'Fertirriego',
@@ -1475,6 +1641,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         'color': Colors.red[500]!,
         'description': 'Sistema de\nriego',
         'active': false,
+        'isComingSoon': true, // Este sí es un módulo futuro
       },
     ];
 
@@ -1524,6 +1691,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               color: module['color'] as Color,
               description: module['description'] as String,
               isActive: module['active'] as bool,
+              isComingSoon: module['isComingSoon'] as bool, // Pasa el nuevo valor
               isTablet: isTablet,
               onTap: () => _navigateToModule(module['title'] as String),
             );
@@ -1533,12 +1701,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
+  // ** WIDGET MODIFICADO **
   Widget _buildModuleCard({
     required String title,
     required IconData icon,
     required Color color,
     required String description,
     required bool isActive,
+    required bool isComingSoon, // Nuevo parámetro
     required bool isTablet,
     required VoidCallback onTap,
   }) {
@@ -1617,7 +1787,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         border: Border.all(color: Colors.orange[200]!),
                       ),
                       child: Text(
-                        'Próximamente',
+                        // Lógica para mostrar el texto correcto
+                        isComingSoon ? 'Próximamente' : 'Datos incompletos',
                         style: TextStyle(
                           fontSize: isTablet ? 11 : 10,
                           color: Colors.orange[700],
