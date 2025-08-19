@@ -458,7 +458,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     });
 
     try {
-      await AuthService.validateUserQuietly();
+      await AuthService.forceValidateActiveUser();
       await _loadValidationInfo();
       await _checkConnection();
     } catch (e) {
