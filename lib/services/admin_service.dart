@@ -4,7 +4,7 @@ import '../services/sql_server_service.dart';
 class AdminService {
   // IDs de usuarios que tienen permisos de administrador
   // Puedes modificar esta lista según tus necesidades
-  static const List<int> ADMIN_USER_IDS = [1, 2]; // Cambia estos IDs según corresponda
+  static const List<int> ADMIN_USER_IDS = [1, 2, 3]; // Cambia estos IDs según corresponda
   
   // Verificar si el usuario actual es administrador
   static Future<bool> isCurrentUserAdmin() async {
@@ -140,6 +140,8 @@ class AdminService {
           id,
           checklist_uuid,
           finca_nombre,
+          supervisor_nombre,
+          pesador_nombre,
           usuario_id,
           usuario_nombre,
           fecha_creacion,
@@ -300,6 +302,8 @@ class AdminService {
           id,
           checklist_uuid,
           finca_nombre,
+          bloque_nombre,
+          variedad_nombre,
           usuario_id,
           usuario_nombre,
           fecha_creacion,
