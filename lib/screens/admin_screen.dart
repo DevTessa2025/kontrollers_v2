@@ -1,8 +1,15 @@
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:kontrollers_v2/services/pdf_service.dart';
+import 'package:path_provider/path_provider.dart';
 import 'dart:convert';
 import '../services/admin_service.dart';
 import '../services/auth_service.dart';
+import '../widget/share_dialog_widget.dart';
 
 class AdminScreen extends StatefulWidget {
   @override
@@ -1464,12 +1471,48 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
-          IconButton(
-            icon: Icon(Icons.share),
-            onPressed: () {
-              // TODO: Implementar compartir detalles
+          // Botón de compartir mejorado
+          PopupMenuButton<String>(
+            icon: Icon(Icons.share, color: Colors.white),
+            iconSize: 24,
+            tooltip: 'Compartir reporte',
+            onSelected: (value) {
+              if (value == 'share') {
+                _showShareDialog();
+              }
             },
+            itemBuilder: (BuildContext context) => [
+              PopupMenuItem<String>(
+                value: 'share',
+                child: Row(
+                  children: [
+                    Icon(Icons.share, color: _getChecklistColor(), size: 20),
+                    SizedBox(width: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Compartir Reporte',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
+                        ),
+                        Text(
+                          'PDF con detalles completos',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
+          SizedBox(width: 8),
         ],
       ),
       body: Container(
@@ -2417,6 +2460,325 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
       },
     );
   }
+  void _showShareDialogOffline() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return ShareDialogOffline(
+          recordData: _fullRecord!,
+          checklistType: widget.checklistType,
+        );
+      },
+    );
+  }
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(Icons.error_outline, color: Colors.white, size: 20),
+            SizedBox(width: 8),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: Colors.red,
+        duration: Duration(seconds: 3),
+      ),
+    );
+  }
+  
+
+  Future<void> _showShareDialog() async {
+  if (_fullRecord == null) {
+    _showErrorSnackBar('No se pueden compartir los datos. Intenta recargar el registro.');
+    return;
+  }
+
+  Future<bool> _checkConnectivity() async {
+    try {
+      // Puedes usar el paquete connectivity_plus
+      // import 'package:connectivity_plus/connectivity_plus.dart';
+      
+      final connectivityResult = await Connectivity().checkConnectivity();
+      return connectivityResult != ConnectivityResult.none;
+    } catch (e) {
+      print('Error verificando conectividad: $e');
+      return false; // Asumir sin conexión si hay error
+    }
+  }
+
+  // Verificar conectividad para envío por correo
+  bool hasConnection = await _checkConnectivity();
+  
+  if (!hasConnection) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.wifi_off, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('Sin Conexión'),
+          ],
+        ),
+        content: Text(
+          'No hay conexión a internet. Solo estará disponible la opción de descarga local. '
+          'Para enviar por correo, conecta a internet e inténtalo nuevamente.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _showShareDialogOffline();
+            },
+            child: Text('Solo Descarga'),
+          ),
+        ],
+      ),
+    );
+    return;
+  }
+
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (BuildContext context) {
+      return ShareDialog(
+        recordData: _fullRecord!,
+        checklistType: widget.checklistType,
+      );
+    },
+  );
+}
+}
+
+class ShareDialogOffline extends StatefulWidget {
+  final Map<String, dynamic> recordData;
+  final String checklistType;
+
+  ShareDialogOffline({
+    required this.recordData,
+    required this.checklistType,
+  });
+
+  @override
+  _ShareDialogOfflineState createState() => _ShareDialogOfflineState();
+}
+
+class _ShareDialogOfflineState extends State<ShareDialogOffline> {
+  bool _isGeneratingPDF = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Container(
+        constraints: BoxConstraints(maxWidth: 400),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildHeader(),
+            Padding(
+              padding: EdgeInsets.all(20),
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.wifi_off,
+                    size: 64,
+                    color: Colors.orange[300],
+                  ),
+                  SizedBox(height: 16),
+                  Text(
+                    'Modo Sin Conexión',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey[800],
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'Solo está disponible la descarga local del reporte.',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[600],
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _isGeneratingPDF ? null : _downloadPDF,
+                      icon: _isGeneratingPDF
+                          ? SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : Icon(Icons.download),
+                      label: Text(_isGeneratingPDF ? 'Generando...' : 'Descargar PDF'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                        foregroundColor: Colors.white,
+                        padding: EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: Text('Cancelar'),
+                      style: OutlinedButton.styleFrom(
+                        padding: EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Container(
+      padding: EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.orange[700],
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.download, color: Colors.white),
+          SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Descarga Local',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          IconButton(
+            icon: Icon(Icons.close, color: Colors.white),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _downloadPDF() async {
+    setState(() {
+      _isGeneratingPDF = true;
+    });
+
+    try {
+      // Generar PDF usando el PDFService
+      final pdfBytes = await PDFService.generarReporteChecklist(
+        recordData: widget.recordData,
+        checklistType: widget.checklistType,
+      );
+
+      // Guardar archivo - implementación similar a ShareDialog
+      final result = await _saveFile(pdfBytes);
+      
+      if (result['success']) {
+        _showSuccessMessage('PDF descargado exitosamente en: ${result['path']}');
+        Navigator.pop(context);
+      } else {
+        _showErrorMessage('Error al guardar PDF: ${result['error']}');
+      }
+
+    } catch (e) {
+      _showErrorMessage('Error al generar PDF: $e');
+    } finally {
+      setState(() {
+        _isGeneratingPDF = false;
+      });
+    }
+  }
+
+  Future<Map<String, dynamic>> _saveFile(Uint8List pdfBytes) async {
+    // Implementación igual que en ShareDialog
+    try {
+      Directory? directory;
+      
+      if (Platform.isAndroid) {
+        directory = await getExternalStorageDirectory();
+        directory = Directory('${directory!.path}/Download');
+        if (!await directory.exists()) {
+          await directory.create(recursive: true);
+        }
+      } else {
+        directory = await getApplicationDocumentsDirectory();
+      }
+
+      final String fileName = _generateFileName();
+      final File file = File('${directory!.path}/$fileName');
+      
+      await file.writeAsBytes(pdfBytes);
+      
+      return {
+        'success': true,
+        'path': file.path,
+        'fileName': fileName,
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'error': e.toString(),
+      };
+    }
+  }
+
+  String _generateFileName() {
+    final String fecha = DateTime.now().toString().substring(0, 10).replaceAll('-', '');
+    final String tipo = widget.checklistType.toUpperCase();
+    final int id = widget.recordData['id'];
+    
+    return 'Checklist_${tipo}_ID${id}_$fecha.pdf';
+  }
+
+  void _showSuccessMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.green,
+        duration: Duration(seconds: 3),
+      ),
+    );
+  }
+
+  void _showErrorMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        duration: Duration(seconds: 3),
+      ),
+    );
+  }
 }
 
 // ==================== EXTENSIONES Y UTILIDADES ====================
@@ -2507,7 +2869,7 @@ class AdminScreenConstants {
     'fertirriego': ['finca_nombre', 'bloque_nombre'],
     'bodega': ['finca_nombre', 'supervisor_nombre', 'pesador_nombre'],
     'aplicaciones': ['finca_nombre', 'bloque_nombre', 'bomba_nombre'],
-    'cosecha': ['finca_nombre', 'bloque_nombre', 'variedad_nombre'],
+    'cosechas': ['finca_nombre', 'bloque_nombre', 'variedad_nombre'],
   };
 
   // Títulos legibles
@@ -2515,7 +2877,7 @@ class AdminScreenConstants {
     'fertirriego': 'Fertirriego',
     'bodega': 'Bodega',
     'aplicaciones': 'Aplicaciones',
-    'cosecha': 'Cosechas',
+    'cosechas': 'Cosechas',
   };
 
   // Subtítulos con campos
@@ -2523,7 +2885,7 @@ class AdminScreenConstants {
     'fertirriego': 'Finca • Bloque',
     'bodega': 'Finca • Supervisor • Pesador',
     'aplicaciones': 'Finca • Bloque • Bomba',
-    'cosecha': 'Finca • Bloque • Variedad',
+    'cosechas': 'Finca • Bloque • Variedad',
   };
 
   // Configuración de zoom para imágenes
