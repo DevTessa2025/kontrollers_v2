@@ -1282,6 +1282,16 @@ Future<List<Map<String, dynamic>>> searchBombas(String finca, String bloque, Str
       };
     }
   }
+  // Agregar estos métodos después de los métodos existentes para otras secciones
+
+  // Métodos para Fertirriego - usar los mismos datos de cosecha
+  Future<List<Map<String, dynamic>>> getFertiriegoFincas() async {
+    return await getAllFincas(); // Reutilizar las fincas existentes
+  }
+
+  Future<List<Map<String, dynamic>>> getFertirriegoBloques(String fincaNombre) async {
+    return await getBloquesByFinca(fincaNombre); // Reutilizar los bloques existentes
+  }
 
 //   Future<List<Map<String, dynamic>>> searchVariedades(String finca, String bloque, String searchPattern) async {
 //   Database db = await database;

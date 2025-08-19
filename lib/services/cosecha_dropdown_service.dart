@@ -126,15 +126,15 @@ class CosechaDropdownService {
       String escapedFinca = finca.replaceAll("'", "''");
       String query = '''
         SELECT 
-          CAST(BLOCK as NVARCHAR(50)) as nombre, 
+          BLOCK as nombre, 
           LOCALIDAD as finca
         FROM Bi_TESSACORP.dbo.PLANO_CULTIVO_SCRAPING 
         WHERE LOCALIDAD = '$escapedFinca'
           AND BLOCK IS NOT NULL 
           AND BLOCK != ''
           AND LEN(BLOCK) > 0
-        GROUP BY CAST(BLOCK as NVARCHAR(50)), LOCALIDAD
-        ORDER BY CAST(BLOCK as NVARCHAR(50))
+        GROUP BY BLOCK, LOCALIDAD
+        ORDER BY BLOCK
       ''';
 
       String result = await RobustSqlServerService.executeQueryRobust(
@@ -259,10 +259,10 @@ class CosechaDropdownService {
       SELECT DISTINCT
         PRODUCTO as nombre, 
         LOCALIDAD as finca, 
-        CAST(BLOCK as NVARCHAR(50)) as bloque
+        BLOCK as bloque
       FROM Bi_TESSACORP.dbo.PLANO_CULTIVO_SCRAPING 
       WHERE LOCALIDAD = '$escapedFinca'
-        AND CAST(BLOCK as NVARCHAR(50)) = '$escapedBloque'
+        AND BLOCK = '$escapedBloque'
         AND PRODUCTO IS NOT NULL 
         AND PRODUCTO != ''
         AND LEN(PRODUCTO) > 1
@@ -272,7 +272,7 @@ class CosechaDropdownService {
         AND DT_LOAD = (
           SELECT MAX(DT_LOAD) 
           FROM Bi_TESSACORP.dbo.PLANO_CULTIVO_SCRAPING 
-          WHERE LOCALIDAD = '$escapedFinca' AND CAST(BLOCK as NVARCHAR(50)) = '$escapedBloque'
+          WHERE LOCALIDAD = '$escapedFinca' AND BLOCK = '$escapedBloque'
         )
         -- ==========================================================
       ORDER BY PRODUCTO

@@ -26,7 +26,7 @@ class AplicacionesDropdownService {
     return '''
       SELECT DISTINCT 
         bloque as nombre,
-        CASE WHEN ISNUMERIC(bloque) = 1 THEN CAST(bloque AS INT) ELSE 999999 END as sort_order
+        CASE WHEN ISNUMERIC(bloque) = 1 THEN bloque ELSE 999999 END as sort_order
       FROM aplicaciones_data 
       WHERE finca = '$escapedFinca' AND activo = 1
       ORDER BY sort_order, nombre
@@ -42,7 +42,7 @@ class AplicacionesDropdownService {
       FROM aplicaciones_data 
       WHERE finca = '$escapedFinca' AND bloque = '$escapedBloque' AND activo = 1
       ORDER BY 
-        CASE WHEN ISNUMERIC(bomba) = 1 THEN CAST(bomba AS INT) ELSE 999999 END,
+        CASE WHEN ISNUMERIC(bomba) = 1 THEN bomba ELSE 999999 END,
         bomba
     ''';
   }
@@ -848,7 +848,7 @@ class AplicacionesDropdownService {
           AND bloque LIKE '%$escapedPattern%' 
           AND activo = 1
         ORDER BY 
-          CASE WHEN ISNUMERIC(bloque) = 1 THEN CAST(bloque AS INT) ELSE 999999 END,
+          CASE WHEN ISNUMERIC(bloque) = 1 THEN bloque ELSE 999999 END,
           bloque
       ''';
 
@@ -889,7 +889,7 @@ class AplicacionesDropdownService {
           AND bomba LIKE '%$escapedPattern%' 
           AND activo = 1
         ORDER BY 
-          CASE WHEN ISNUMERIC(bomba) = 1 THEN CAST(bomba AS INT) ELSE 999999 END,
+          CASE WHEN ISNUMERIC(bomba) = 1 THEN bomba ELSE 999999 END,
           bomba
       ''';
 

@@ -1125,6 +1125,18 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
             ),
             actions: [
               if (!_isEditMode) ...[
+                // IconButton(
+                //   icon: Container(
+                //     padding: EdgeInsets.all(8),
+                //     decoration: BoxDecoration(
+                //       color: Colors.white.withOpacity(0.2),
+                //       borderRadius: BorderRadius.circular(8),
+                //     ),
+                //     child: Icon(Icons.sync, color: Colors.white, size: 20),
+                //   ),
+                //   onPressed: () => _loadDropdownData(forceSync: true),
+                //   tooltip: 'Sincronizar datos',
+                // ),
                 IconButton(
                   icon: Container(
                     padding: EdgeInsets.all(8),
@@ -1132,19 +1144,16 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
                       color: Colors.white.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Icon(Icons.sync, color: Colors.white, size: 20),
-                  ),
-                  onPressed: () => _loadDropdownData(forceSync: true),
-                  tooltip: 'Sincronizar datos',
-                ),
-                IconButton(
-                  icon: Container(
-                    padding: EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(8),
+                    child: Row(
+                      children: [
+                        Text(
+                          "Registros",
+                          style: TextStyle(color: Colors.white, fontSize: 14),
+                        ),
+                        SizedBox(width: 6),
+                        Icon(Icons.folder_open, color: Colors.white, size: 20),
+                      ],
                     ),
-                    child: Icon(Icons.folder_open, color: Colors.white, size: 20),
                   ),
                   onPressed: _navigateToRecords,
                   tooltip: 'Ver registros',
@@ -1157,7 +1166,16 @@ class _ChecklistCosechaScreenState extends State<ChecklistCosechaScreen> {
                     color: Colors.white.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Icon(Icons.save, color: Colors.white, size: 20),
+                  child: Row(
+                      children: [
+                        Text(
+                          "Guardar",
+                          style: TextStyle(color: Colors.white, fontSize: 14),
+                        ),
+                        SizedBox(width: 6),
+                        Icon(Icons.save, color: Colors.white, size: 20),
+                      ],
+                    ),
                 ),
                 onPressed: _saveLocalChecklist,
                 tooltip: _isEditMode ? 'Actualizar' : 'Guardar localmente',

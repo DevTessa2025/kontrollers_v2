@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:kontrollers_v2/screens/checklist_aplicaciones_screen.dart' as checklist;
+import 'package:kontrollers_v2/screens/checklist_fertirriego_screen.dart';
 import 'package:kontrollers_v2/services/RobustConnectionManager.dart';
 import '../services/auth_service.dart';
 import '../services/dropdown_service.dart';
@@ -542,6 +543,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           MaterialPageRoute(builder: (context) => checklist.ChecklistAplicacionesScreen()),
         );
         break;
+      case 'Fertirriego':
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => ChecklistFertiriegoScreen()),
+        );
+        break;
       default:
         Fluttertoast.showToast(
           msg: 'Módulo $moduleName - En desarrollo',
@@ -656,7 +663,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             SizedBox(height: isTablet ? 24 : 20),
             
             _buildModuleSection(
-              title: 'MÓDULO COSECHA',
+              title: 'MÓDULO COSECHA Y FERTIRRIEGO',
               icon: Icons.grass_rounded,
               color: Colors.green,
               isTablet: isTablet,
@@ -1401,27 +1408,27 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
             ),
             actions: [
-              IconButton(
-                onPressed: () => _manualSyncImproved(),
-                icon: Container(
-                  padding: EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: _isSyncing 
-                      ? SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : Icon(Icons.sync, color: Colors.white, size: 20),
-                ),
-                tooltip: 'Sincronizar datos',
-              ),
+              // IconButton(
+              //   onPressed: () => _manualSyncImproved(),
+              //   icon: Container(
+              //     padding: EdgeInsets.all(8),
+              //     decoration: BoxDecoration(
+              //       color: Colors.white.withOpacity(0.2),
+              //       borderRadius: BorderRadius.circular(12),
+              //     ),
+              //     child: _isSyncing 
+              //         ? SizedBox(
+              //             width: 20,
+              //             height: 20,
+              //             child: CircularProgressIndicator(
+              //               strokeWidth: 2,
+              //               color: Colors.white,
+              //             ),
+              //           )
+              //         : Icon(Icons.sync, color: Colors.white, size: 20),
+              //   ),
+              //   tooltip: 'Sincronizar datos',
+              // ),
               SizedBox(width: 8),
             ],
           ),
@@ -1640,8 +1647,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         'icon': Icons.water_drop,
         'color': Colors.red[500]!,
         'description': 'Sistema de\nriego',
-        'active': false,
-        'isComingSoon': true, // Este sí es un módulo futuro
+        'active': true,
+        'isComingSoon': false, // Este sí es un módulo futuro
       },
     ];
 
