@@ -12,6 +12,8 @@ import 'login_screen.dart';
 import 'checklist_bodega_screen.dart';
 import 'checklist_cosecha_screen.dart';
 import '../services/aplicaciones_dropdown_service.dart';
+import '../services/admin_service.dart';
+import 'admin_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   @override
@@ -37,6 +39,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
+
+  bool _isAdmin = false;
 
   @override
   void initState() {
@@ -70,6 +74,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _loadValidationInfo();
     _validateUserPeriodically();
     _autoSyncOnLoad();
+    _checkAdminPermissions(); 
     
     // Iniciar animación
     _animationController.forward();
@@ -88,6 +93,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void dispose() {
     _animationController.dispose();
     super.dispose();
+  }
+
+  Future<void> _checkAdminPermissions() async {
+    bool isAdmin = await AdminService.isCurrentUserAdmin();
+    setState(() {
+      _isAdmin = isAdmin;
+    });
   }
 
   Future<void> _autoSyncOnLoad() async {
@@ -1597,17 +1609,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget _buildModulesGrid(int crossAxisCount, bool isTablet) {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
-    
+
     final isLandscape = screenWidth > screenHeight;
     final isTabletPortrait = isTablet && !isLandscape;
-    
+
     int adaptiveCrossAxisCount;
     if (isTablet) {
       adaptiveCrossAxisCount = isLandscape ? 4 : 3;
     } else {
       adaptiveCrossAxisCount = 2;
     }
-    
+
     double aspectRatio;
     if (isTabletPortrait) {
       aspectRatio = 0.85;
@@ -1623,7 +1635,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         'icon': Icons.warehouse,
         'color': Colors.red[600]!,
         'description': 'Gestión de inventario\ny almacén',
-        'active': _isBodegaModuleActive(), // Llama a la nueva función de validación
+        'active': _isBodegaModuleActive(),
         'isComingSoon': false,
       },
       {
@@ -1631,7 +1643,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         'icon': Icons.grass,
         'color': Colors.red[700]!,
         'description': 'Control de\ncosecha',
-        'active': _isCosechaModuleActive(), // Llama a la nueva función de validación
+        'active': _isCosechaModuleActive(),
         'isComingSoon': false,
       },
       {
@@ -1639,7 +1651,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         'icon': Icons.spa_outlined,
         'color': Colors.red[800]!,
         'description': 'Aplicaciones\nfitosanitarias',
-        'active': _isAplicacionesModuleActive(), // Llama a la nueva función de validación
+        'active': _isAplicacionesModuleActive(),
         'isComingSoon': false,
       },
       {
@@ -1648,9 +1660,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         'color': Colors.red[500]!,
         'description': 'Sistema de\nriego',
         'active': true,
-        'isComingSoon': false, // Este sí es un módulo futuro
+        'isComingSoon': false,
       },
     ];
+
+    // Si el usuario es administrador, agrega el botón de administración
+    if (_isAdmin) {
+      modules.add({
+        'title': 'Administración',
+        'icon': Icons.admin_panel_settings,
+        'color': Colors.red[700]!,
+        'description': 'Gestión administrativa',
+        'active': true,
+        'isComingSoon': false,
+      });
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1679,7 +1703,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ],
           ),
         ),
-        
         GridView.builder(
           shrinkWrap: true,
           physics: NeverScrollableScrollPhysics(),
@@ -1698,9 +1721,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               color: module['color'] as Color,
               description: module['description'] as String,
               isActive: module['active'] as bool,
-              isComingSoon: module['isComingSoon'] as bool, // Pasa el nuevo valor
+              isComingSoon: module['isComingSoon'] as bool,
               isTablet: isTablet,
-              onTap: () => _navigateToModule(module['title'] as String),
+              onTap: () {
+                if (module['title'] == 'Administración') {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => AdminScreen()),
+                  );
+                } else {
+                  _navigateToModule(module['title'] as String);
+                }
+              },
             );
           },
         ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:kontrollers_v2/screens/admin_screen.dart';
 import 'services/auth_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
@@ -108,6 +109,7 @@ class _MyAppState extends State<MyApp> {
         '/login': (context) => LoginScreen(),
         '/home': (context) => HomeScreen(),
         '/checklist_fertirriego': (context) => ChecklistFertiriegoScreen(),
+        '/admin': (context) => AdminScreen(),
       },
       debugShowCheckedModeBanner: false,
     );
