@@ -193,8 +193,8 @@ class PDFService {
           // Campos específicos según tipo
           ..._construirCamposEspecificos(data, checklistType),
           
-          _construirFilaInfo('Fecha de Creación:', _formatearFecha(data['fecha_creacion'])),
-          _construirFilaInfo('Fecha de Envío:', _formatearFecha(data['fecha_envio'])),
+          _construirFilaInfo('Fecha de Inicio de Auditoría :', _formatearFecha(data['fecha_creacion'])),
+          _construirFilaInfo('Fecha de Sincronización:', _formatearFecha(data['fecha_envio'])),
         ],
       ),
     );
@@ -534,7 +534,7 @@ class PDFService {
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
         pw.Text(
-          'ITEMS RELEVANTES (${items.length} items con observaciones, fotos o respuestas NO)',
+          'RESULTADOS DEL CHECKLIST',
           style: pw.TextStyle(
             fontSize: 14,
             fontWeight: pw.FontWeight.bold,
@@ -789,11 +789,20 @@ class PDFService {
   }
 
   static String _formatearFecha(String? fechaString) {
-    if (fechaString == null) return 'N/A';
+    if (fechaString == null || fechaString.isEmpty) return 'N/A';
+    
     try {
-      DateTime fecha = DateTime.parse(fechaString);
-      return DateFormat('dd/MM/yyyy HH:mm:ss').format(fecha);
+      DateTime fechaUTC = DateTime.parse(fechaString);
+      
+      // Ajusta a la zona horaria de Ecuador (UTC-5)
+      DateTime fechaLocal = fechaUTC.subtract(const Duration(hours: 5));
+      
+      // Formatea la fecha ya ajustada
+      return DateFormat('dd/MM/yyyy HH:mm:ss', 'es_EC').format(fechaLocal);
+
     } catch (e) {
+      // Si falla el parseo, devuelve el string original
+      print('Error al formatear fecha: $e');
       return fechaString;
     }
   }

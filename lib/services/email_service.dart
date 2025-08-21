@@ -306,9 +306,6 @@ Tessa Corporation
             • <span class="highlight">Generado por:</span> $kontrollerQueHizoReporte
         </div>
 
-        <div class="attachment-note">
-            <strong>📎 Archivo Adjunto:</strong> ${_generarNombrePDF(checklistType, recordId, 'Finca')}
-        </div>
 ''';
 
     if (observaciones != null && observaciones.isNotEmpty) {

@@ -344,7 +344,7 @@ class _ShareDialogState extends State<ShareDialog> {
           keyboardType: TextInputType.emailAddress,
           decoration: InputDecoration(
             labelText: 'Destinatarios',
-            hintText: 'ej: hernan.iturralde, admin...',
+            hintText: 'ej: nombre.apellido',
             prefixIcon: const Icon(Icons.person_add_alt_1_outlined),
             suffixIcon: IconButton(
               icon: const Icon(Icons.add_circle_outline),
