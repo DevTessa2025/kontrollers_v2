@@ -501,7 +501,7 @@ static pw.Widget _construirGraficoCircularProgreso(double porcentaje, PdfColor c
           decoration: pw.BoxDecoration(
             shape: pw.BoxShape.circle,
             border: pw.Border.all(
-              color: COLOR_GRIS_CLARO,
+              color: PdfColors.grey100,
               width: 8,
             ),
           ),
@@ -518,7 +518,7 @@ static pw.Widget _construirGraficoCircularProgreso(double porcentaje, PdfColor c
                 value: porcentaje / 100,
                 strokeWidth: 8,
                 color: colorCumplimiento,
-                backgroundColor: PdfColor.fromInt(0x00000000),
+                backgroundColor: PdfColors.grey100,
               ),
             ),
           ),
@@ -548,14 +548,14 @@ static pw.Widget _construirGraficoCircularProgreso(double porcentaje, PdfColor c
                     ),
                   ),
                   pw.SizedBox(height: 2),
-                  pw.Text(
-                    _obtenerNivelTexto(porcentaje),
-                    style: pw.TextStyle(
-                      fontSize: 12,
-                      fontWeight: pw.FontWeight.bold,
-                      color: COLOR_GRIS_MEDIO,
-                    ),
-                  ),
+                  // pw.Text(
+                  //   _obtenerNivelTexto(porcentaje),
+                  //   style: pw.TextStyle(
+                  //     fontSize: 12,
+                  //     fontWeight: pw.FontWeight.bold,
+                  //     color: COLOR_GRIS_MEDIO,
+                  //   ),
+                  // ),
                 ],
               ),
             ),
