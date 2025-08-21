@@ -3,8 +3,17 @@ import '../services/sql_server_service.dart';
 
 class AdminService {
   // IDs de usuarios que tienen permisos de administrador
-  // Puedes modificar esta lista según tus necesidades
-  static const List<int> ADMIN_USER_IDS = [1, 2, 3]; // Cambia estos IDs según corresponda
+  static const List<int> ADMIN_USER_IDS = [1, 2, 3];
+  
+  // ==================== CONFIGURACIÓN DE ITEMS POR TIPO ====================
+  
+  // Definir los items que existen para cada tipo de checklist
+  static Map<String, List<int>> ITEMS_POR_TIPO = {
+    'check_fertirriego': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 17, 18, 20, 21, 22, 23, 24, 25], // 23 items, falta 12 y 19
+    'check_bodega': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20], // 20 items
+    'check_aplicaciones': List.generate(30, (index) => index + 1), // 30 items del 1 al 30
+    'check_cosecha': List.generate(20, (index) => index + 1), // 20 items del 1 al 20
+  };
   
   // Verificar si el usuario actual es administrador
   static Future<bool> isCurrentUserAdmin() async {
@@ -416,20 +425,96 @@ class AdminService {
         throw Exception('Tabla no válida: $tableName');
       }
       
-      String query = '''
-        SELECT * 
-        FROM $tableName 
-        WHERE id = $recordId
-      ''';
+      // Obtener los items que existen para este tipo de checklist
+      List<int> itemsExistentes = ITEMS_POR_TIPO[tableName] ?? [];
+      
+      print('🔍 Obteniendo detalle para $tableName ID $recordId');
+      print('📋 Items existentes: $itemsExistentes');
+      
+      // Construir la lista de campos dinámicamente basada en los items existentes
+      List<String> camposItems = [];
+      for (int itemNum in itemsExistentes) {
+        camposItems.addAll([
+          'item_${itemNum}_respuesta',
+          'item_${itemNum}_valor_numerico', 
+          'item_${itemNum}_observaciones',
+          'item_${itemNum}_foto_base64'
+        ]);
+      }
+      
+      // Construir query dinámico con campos específicos según el tipo
+      String query = _buildSpecificQuery(tableName, recordId, camposItems);
+      
+      print('🔍 Query generado: ${query.substring(0, 100)}...');
       
       String result = await SqlServerService.executeQuery(query);
       List<Map<String, dynamic>> records = SqlServerService.processQueryResult(result);
       
-      return records.isNotEmpty ? records.first : null;
+      if (records.isNotEmpty) {
+        Map<String, dynamic> record = records.first;
+        
+        print('✅ Datos obtenidos exitosamente para $tableName ID $recordId');
+        print('   Finca: ${record['finca_nombre']}');
+        print('   Items procesados: ${itemsExistentes.length}');
+        
+        return record;
+      }
+      
+      print('❌ No se encontró registro para $tableName ID $recordId');
+      return null;
       
     } catch (e) {
-      print('Error obteniendo detalle del registro: $e');
+      print('❌ Error obteniendo detalle del registro: $e');
       return null;
     }
+  }
+  
+  // ==================== CONSTRUIR QUERY ESPECÍFICO POR TABLA ====================
+  
+  static String _buildSpecificQuery(String tableName, int recordId, List<String> camposItems) {
+    // Campos base comunes
+    List<String> camposBase = [
+      'id', 'checklist_uuid', 'finca_nombre', 
+      'usuario_id', 'usuario_nombre', 'fecha_creacion', 
+      'fecha_envio', 'porcentaje_cumplimiento'
+    ];
+    
+    // Campos específicos por tipo
+    switch (tableName) {
+      case 'check_fertirriego':
+        camposBase.add('bloque_nombre');
+        break;
+      case 'check_bodega':
+        camposBase.addAll(['supervisor_nombre', 'pesador_nombre']);
+        break;
+      case 'check_aplicaciones':
+        camposBase.addAll(['bloque_nombre', 'bomba_nombre']);
+        break;
+      case 'check_cosecha':
+        camposBase.addAll(['bloque_nombre', 'variedad_nombre']);
+        break;
+    }
+    
+    // Combinar campos base con campos de items
+    List<String> todosCampos = [...camposBase, ...camposItems];
+    
+    return '''
+      SELECT ${todosCampos.join(', ')}
+      FROM $tableName 
+      WHERE id = $recordId
+    ''';
+  }
+  
+  // ==================== MÉTODO AUXILIAR PARA VALIDAR EXISTENCIA DE ITEMS ====================
+  
+  static bool itemExistsForType(String tableName, int itemNumber) {
+    List<int> itemsExistentes = ITEMS_POR_TIPO[tableName] ?? [];
+    return itemsExistentes.contains(itemNumber);
+  }
+  
+  // ==================== OBTENER LISTA DE ITEMS EXISTENTES ====================
+  
+  static List<int> getExistingItemsForType(String tableName) {
+    return ITEMS_POR_TIPO[tableName] ?? [];
   }
 }
