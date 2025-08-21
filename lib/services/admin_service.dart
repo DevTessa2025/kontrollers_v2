@@ -2,8 +2,9 @@ import '../services/auth_service.dart';
 import '../services/sql_server_service.dart';
 
 class AdminService {
-  // IDs de usuarios que tienen permisos de administrador
-  static const List<int> ADMIN_USER_IDS = [1, 2, 3];
+  // Permitir que todos los usuarios tengan acceso de administrador
+  // Lista vacía = todos los usuarios pueden acceder
+  static const List<int> ADMIN_USER_IDS = [];
   
   // ==================== CONFIGURACIÓN DE ITEMS POR TIPO ====================
   
@@ -16,6 +17,7 @@ class AdminService {
   };
   
   // Verificar si el usuario actual es administrador
+  // MODIFICADO: Ahora permite a todos los usuarios autenticados
   static Future<bool> isCurrentUserAdmin() async {
     try {
       Map<String, dynamic>? currentUser = await AuthService.getCurrentUser();
@@ -24,8 +26,8 @@ class AdminService {
         return false;
       }
       
-      int userId = currentUser['id'] ?? 0;
-      return ADMIN_USER_IDS.contains(userId);
+      // Permitir acceso a todos los usuarios autenticados
+      return true;
       
     } catch (e) {
       print('Error verificando permisos de admin: $e');
