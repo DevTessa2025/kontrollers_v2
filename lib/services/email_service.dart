@@ -18,6 +18,7 @@ class EmailService {
     required Uint8List pdfBytes,
     String? observaciones,
     String? usuarioCreador, // NUEVO: Nombre del usuario que creó el checklist
+    String? fincaNombre, // NUEVO: Nombre de la finca para el archivo
   }) async {
     try {
       // Validar y procesar destinatarios
@@ -55,12 +56,12 @@ class EmailService {
         ..from = Address(_senderEmail, 'Sistema Kontrollers - Reportes')
         ..subject = asunto
         ..text = cuerpoMensaje
-        ..html = _generarCuerpoHTML(checklistType, recordId, observaciones, usuarioCreador)
+        ..html = _generarCuerpoHTML(checklistType, recordId, observaciones, usuarioCreador, fincaNombre)
         ..attachments = [
           StreamAttachment(
             Stream.fromIterable([pdfBytes]),
             'application/pdf',
-            fileName: _generarNombrePDF(checklistType, recordId),
+            fileName: _generarNombrePDF(checklistType, recordId, fincaNombre),
           ),
         ];
 
@@ -220,7 +221,7 @@ class EmailService {
     final String tipoChecklist = _obtenerNombreChecklist(checklistType);
     final String fecha = DateTime.now().toString().substring(0, 10);
     
-    return 'Reporte de $tipoChecklist - $fecha';
+    return 'Reporte de $tipoChecklist - ID: $recordId - $fecha';
   }
 
   static String _generarCuerpoMensaje(String checklistType, int recordId, String? observaciones, String? usuarioCreador) {
@@ -233,12 +234,21 @@ class EmailService {
     String mensaje = '''
 Estimado/a usuario/a,
 
-Se adjunta el reporte detallado del checklist de $tipoChecklist correspondiente al Kontroller: $kontrollerQueHizoReporte.
+Se adjunta el reporte detallado del checklist de $tipoChecklist correspondiente al registro ID: $recordId.
 
 INFORMACIÓN DEL REPORTE:
-- Checklist: $tipoChecklist
+- Tipo de Checklist: $tipoChecklist
+- ID del Registro: $recordId
 - Fecha de Generación: $fecha
 - Generado por: $kontrollerQueHizoReporte
+
+El archivo PDF adjunto contiene:
+✓ Información general del checklist
+✓ Detalles de todos los items completados
+✓ Valores numéricos registrados
+✓ Observaciones de campo
+✓ Fotografías adjuntas (si las hay)
+✓ Porcentaje de cumplimiento
 ''';
 
     if (observaciones != null && observaciones.isNotEmpty) {
@@ -258,7 +268,7 @@ Tessa Corporation
     return mensaje;
   }
 
-  static String _generarCuerpoHTML(String checklistType, int recordId, String? observaciones, String? usuarioCreador) {
+  static String _generarCuerpoHTML(String checklistType, int recordId, String? observaciones, String? usuarioCreador, String? fincaNombre) {
     final String tipoChecklist = _obtenerNombreChecklist(checklistType);
     final String fecha = DateTime.now().toString().substring(0, 19);
     final String colorTema = _obtenerColorTema(checklistType);
@@ -285,22 +295,19 @@ Tessa Corporation
     </style>
 </head>
 <body>
-    <div class="header">
-        <div>Reporte de Checklist - $tipoChecklist</div>
-    </div>
-
     <div class="checklist-details">
         <h2>📋 Información del Reporte</h2>
         
         <div class="info-box">
             <strong>Detalles del Registro:</strong><br>
             • <span class="highlight">Checklist:</span> $tipoChecklist<br>
+            • <span class="highlight">Finca: </span> $fincaNombre<br>
             • <span class="highlight">Fecha de Generación:</span> $fecha<br>
             • <span class="highlight">Generado por:</span> $kontrollerQueHizoReporte
         </div>
 
         <div class="attachment-note">
-            <strong>📎 Archivo Adjunto:</strong> ${_generarNombrePDF(checklistType, recordId)}
+            <strong>📎 Archivo Adjunto:</strong> ${_generarNombrePDF(checklistType, recordId, 'Finca')}
         </div>
 ''';
 
@@ -327,10 +334,11 @@ Tessa Corporation
     return htmlContent;
   }
 
-  static String _generarNombrePDF(String checklistType, int recordId) {
+  static String _generarNombrePDF(String checklistType, int recordId, String? fincaNombre) {
     final String fecha = DateTime.now().toString().substring(0, 10).replaceAll('-', '');
     final String tipoChecklist = checklistType.toUpperCase();
-    return 'Checklist_${tipoChecklist}_ID${recordId}_$fecha.pdf';
+    final String finca = (fincaNombre ?? 'SinFinca').replaceAll(' ', '_').replaceAll('/', '_');
+    return 'Checklist_${tipoChecklist}_${finca}_$fecha.pdf';
   }
 
   static String _obtenerNombreChecklist(String checklistType) {

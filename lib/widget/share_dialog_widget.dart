@@ -7,555 +7,112 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
 import '../services/pdf_service.dart';
 import '../services/email_service.dart';
-import '../widget/multi_email_field.dart'; // Importar el nuevo widget
+
+// Clase de tema para mantener la consistencia visual
+class _ChecklistTheme {
+  final Color color;
+  final IconData icon;
+  final String title;
+  _ChecklistTheme({required this.color, required this.icon, required this.title});
+
+  factory _ChecklistTheme.fromType(String type) {
+    switch (type.toLowerCase()) {
+      case 'fertirriego':
+        return _ChecklistTheme(color: Colors.blue.shade700, icon: Icons.water_drop_outlined, title: 'Fertirriego');
+      case 'bodega':
+        return _ChecklistTheme(color: Colors.orange.shade700, icon: Icons.warehouse_outlined, title: 'Bodega');
+      case 'aplicaciones':
+        return _ChecklistTheme(color: Colors.green.shade700, icon: Icons.science_outlined, title: 'Aplicaciones');
+      case 'cosechas':
+        return _ChecklistTheme(color: Colors.purple.shade700, icon: Icons.agriculture_outlined, title: 'Cosechas');
+      default:
+        return _ChecklistTheme(color: Colors.grey.shade700, icon: Icons.assignment_outlined, title: type);
+    }
+  }
+}
 
 class ShareDialog extends StatefulWidget {
   final Map<String, dynamic> recordData;
   final String checklistType;
 
-  ShareDialog({
+  const ShareDialog({
+    super.key,
     required this.recordData,
     required this.checklistType,
   });
 
   @override
-  _ShareDialogState createState() => _ShareDialogState();
+  State<ShareDialog> createState() => _ShareDialogState();
 }
 
 class _ShareDialogState extends State<ShareDialog> {
   final _formKey = GlobalKey<FormState>();
+  final _emailController = TextEditingController();
   final _observacionesController = TextEditingController();
-  
+
   bool _isGeneratingPDF = false;
   bool _isSendingEmail = false;
   Uint8List? _pdfBytes;
-  List<String> _destinatarios = []; // Lista de destinatarios
+  final List<String> _destinatarios = [];
+
+  late final _ChecklistTheme _theme;
+
+  @override
+  void initState() {
+    super.initState();
+    _theme = _ChecklistTheme.fromType(widget.checklistType);
+  }
 
   @override
   void dispose() {
+    _emailController.dispose();
     _observacionesController.dispose();
     super.dispose();
   }
+  
+  // =======================================================================
+  // INICIO DE LA LÓGICA DE GUARDADO Y PERMISOS (DE TU VERSIÓN FUNCIONAL)
+  // =======================================================================
 
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Container(
-        constraints: BoxConstraints(
-          maxWidth: 500,
-          maxHeight: MediaQuery.of(context).size.height * 0.85,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildHeader(),
-            Flexible(
-              child: SingleChildScrollView(
-                padding: EdgeInsets.all(20),
-                child: _buildContent(),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeader() {
-    return Container(
-      padding: EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: _getChecklistColor(),
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(20),
-          topRight: Radius.circular(20),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(
-              Icons.share,
-              color: Colors.white,
-              size: 24,
-            ),
-          ),
-          SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Compartir Reporte',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  '${_getChecklistTitle()} - ID: ${widget.recordData['id']}',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.9),
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            icon: Icon(Icons.close, color: Colors.white),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildContent() {
-    return Form(
-      key: _formKey,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Información del registro
-          _buildInfoCard(),
-          
-          SizedBox(height: 20),
-          
-          // Opciones de compartir
-          Text(
-            'Opciones de Compartir',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey[800],
-            ),
-          ),
-          
-          SizedBox(height: 12),
-          
-          // Botón Descargar PDF
-          _buildActionButton(
-            icon: Icons.download,
-            title: 'Descargar PDF',
-            subtitle: 'Guardar reporte en el dispositivo',
-            color: Colors.blue,
-            onTap: _downloadPDF,
-            isLoading: _isGeneratingPDF,
-          ),
-          
-          SizedBox(height: 12),
-          
-          // Sección para envío por correo
-          _buildEmailSection(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInfoCard() {
-    return Container(
-      padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: _getChecklistColor().withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: _getChecklistColor().withOpacity(0.3),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(_getChecklistIcon(), color: _getChecklistColor()),
-              SizedBox(width: 8),
-              Text(
-                'Información del Reporte',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: _getChecklistColor(),
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 8),
-          _buildInfoRow('Tipo:', _getChecklistTitle()),
-          _buildInfoRow('Usuario:', widget.recordData['usuario_nombre'] ?? 'N/A'),
-          _buildInfoRow('Finca:', widget.recordData['finca_nombre'] ?? 'N/A'),
-          _buildInfoRow('Cumplimiento:', '${widget.recordData['porcentaje_cumplimiento']?.toStringAsFixed(1) ?? '0'}%'),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInfoRow(String label, String value) {
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 80,
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: Colors.grey[700],
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: TextStyle(fontSize: 12),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActionButton({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required Color color,
-    required VoidCallback onTap,
-    bool isLoading = false,
-  }) {
-    return InkWell(
-      onTap: isLoading ? null : onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          border: Border.all(color: color.withOpacity(0.3)),
-          borderRadius: BorderRadius.circular(12),
-          color: color.withOpacity(0.05),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: isLoading
-                  ? SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: color,
-                      ),
-                    )
-                  : Icon(icon, color: color, size: 20),
-            ),
-            SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: color,
-                    ),
-                  ),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (!isLoading)
-              Icon(Icons.arrow_forward_ios, size: 16, color: color),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildEmailSection() {
-    return Container(
-      padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.orange.withOpacity(0.3)),
-        borderRadius: BorderRadius.circular(12),
-        color: Colors.orange.withOpacity(0.05),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(Icons.email, color: Colors.orange, size: 20),
-              ),
-              SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Enviar por Correo Electrónico',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.orange[700],
-                      ),
-                    ),
-                    Text(
-                      'Puedes agregar múltiples destinatarios',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.orange[600],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          
-          SizedBox(height: 16),
-          
-          // Campo de emails múltiples con autocompletado
-          MultiEmailField(
-            labelText: 'Destinatarios *',
-            hintText: 'ej: hernan.iturralde',
-            initialEmails: _destinatarios,
-            onEmailsChanged: (emails) {
-              setState(() {
-                _destinatarios = emails;
-              });
-            },
-            validator: (emails) {
-              if (emails.isEmpty) {
-                return 'Debe agregar al menos un destinatario';
-              }
-              return null;
-            },
-            maxEmails: 10,
-          ),
-          
-          SizedBox(height: 16),
-          
-          // Campo de observaciones adicionales
-          TextFormField(
-            controller: _observacionesController,
-            decoration: InputDecoration(
-              labelText: 'Observaciones adicionales (opcional)',
-              hintText: 'Comentarios o notas para incluir en el correo...',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              prefixIcon: Icon(Icons.note_outlined),
-              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              alignLabelWithHint: true,
-            ),
-            maxLines: 3,
-            maxLength: 500,
-          ),
-          
-          SizedBox(height: 16),
-          
-          // Botón enviar por correo
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: (_isSendingEmail || _isGeneratingPDF || _destinatarios.isEmpty) 
-                  ? null 
-                  : _sendByEmail,
-              icon: _isSendingEmail
-                  ? SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : Icon(Icons.send),
-              label: Text(_isSendingEmail 
-                  ? 'Enviando...' 
-                  : _destinatarios.isEmpty
-                      ? 'Agrega destinatarios'
-                      : 'Enviar a ${_destinatarios.length} destinatario${_destinatarios.length > 1 ? 's' : ''}'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange,
-                foregroundColor: Colors.white,
-                padding: EdgeInsets.symmetric(vertical: 12),
-              ),
-            ),
-          ),
-
-          // Información sobre el envío múltiple
-          if (_destinatarios.length > 1)
-            Padding(
-              padding: EdgeInsets.only(top: 12),
-              child: Container(
-                padding: EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.blue[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue[200]!),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.info_outline, size: 16, color: Colors.blue[600]),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Se enviará el mismo reporte a todos los destinatarios en un solo correo.',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.blue[700],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _downloadPDF() async {
-    setState(() {
-      _isGeneratingPDF = true;
-    });
-
+  Future<bool> _requestPermissions() async {
     try {
-      // Generar PDF
-      final pdfBytes = await PDFService.generarReporteChecklist(
-        recordData: widget.recordData,
-        checklistType: widget.checklistType,
-      );
-
-      // Solicitar permisos
-      await _requestStoragePermission();
-
-      // Guardar archivo
-      final result = await _saveFile(pdfBytes);
-      
-      if (result['success']) {
-        _showSuccessMessage('PDF descargado exitosamente en: ${result['path']}');
-        
-        // Opción adicional para compartir
-        _showShareOption(result['path']);
-      } else {
-        _showErrorMessage('Error al guardar PDF: ${result['error']}');
+      if (Platform.isAndroid) {
+        var status = await Permission.storage.status;
+        if (!status.isGranted) {
+          status = await Permission.storage.request();
+        }
+        if (!status.isGranted) {
+          var manageStatus = await Permission.manageExternalStorage.status;
+          if (!manageStatus.isGranted) {
+            manageStatus = await Permission.manageExternalStorage.request();
+          }
+          return manageStatus.isGranted;
+        }
+        return status.isGranted;
       }
-
+      return true; // iOS
     } catch (e) {
-      _showErrorMessage('Error al generar PDF: $e');
-    } finally {
-      setState(() {
-        _isGeneratingPDF = false;
-      });
+      print('Error solicitando permisos: $e');
+      return false;
     }
   }
-
-   Future<void> _sendByEmail() async {
-    // Validar que haya destinatarios
-    if (_destinatarios.isEmpty) {
-      _showErrorMessage('Debe agregar al menos un destinatario');
-      return;
-    }
-
-    setState(() {
-      _isSendingEmail = true;
-    });
-
-    try {
-      // Generar PDF si no existe
-      if (_pdfBytes == null) {
-        _pdfBytes = await PDFService.generarReporteChecklist(
-          recordData: widget.recordData,
-          checklistType: widget.checklistType,
-        );
-      }
-
-      // ✅ CAMBIO AQUÍ: Obtener el nombre del usuario que creó el checklist
-      String? usuarioQueCreoElChecklist = widget.recordData['usuario_nombre'];
-
-      // Enviar por correo a múltiples destinatarios
-      final result = await EmailService.enviarReporteChecklist(
-        destinatarios: _destinatarios,
-        checklistType: widget.checklistType,
-        recordId: widget.recordData['id'],
-        pdfBytes: _pdfBytes!,
-        observaciones: _observacionesController.text.trim().isNotEmpty 
-            ? _observacionesController.text.trim() 
-            : null,
-        usuarioCreador: usuarioQueCreoElChecklist, // ✅ Pasar el usuario que creó el checklist
-      );
-
-      if (result['exito']) {
-        List<String> destinatariosEnviados = result['destinatarios'] ?? _destinatarios;
-        _showSuccessMessage(
-          'Correo enviado exitosamente a ${destinatariosEnviados.length} destinatario${destinatariosEnviados.length > 1 ? 's' : ''}'
-        );
-        Navigator.of(context).pop();
-      } else {
-        _showErrorMessage('Error al enviar correo: ${result['mensaje']}');
-      }
-
-    } catch (e) {
-      _showErrorMessage('Error inesperado: $e');
-    } finally {
-      setState(() {
-        _isSendingEmail = false;
-      });
-    }
-  }
-
-  Future<void> _requestStoragePermission() async {
-    if (Platform.isAndroid) {
-      await Permission.storage.request();
-    }
+  
+  Future<String> _getPackageName() async {
+    // Asegúrate de que este sea el package name correcto de tu app.
+    return 'com.tessa.kontrollers_v2'; 
   }
 
   Future<Map<String, dynamic>> _saveFile(Uint8List pdfBytes) async {
     try {
       bool hasPermission = await _requestPermissions();
       if (!hasPermission) {
-        return {
-          'success': false,
-          'error': 'Permisos de almacenamiento denegados',
-          'action': 'permissions'
-        };
+        return {'success': false, 'error': 'Permisos de almacenamiento denegados'};
       }
 
       Directory? downloadDir;
       
       if (Platform.isAndroid) {
+        // Lógica de búsqueda de directorio de tu versión anterior
         downloadDir = Directory('/storage/emulated/0/Download');
         
         if (!await downloadDir.exists()) {
@@ -565,19 +122,21 @@ class _ShareDialogState extends State<ShareDialog> {
         if (!await downloadDir.exists()) {
           final externalDir = await getExternalStorageDirectory();
           if (externalDir != null) {
-            String publicDownload = externalDir.path
-                .replaceAll('/Android/data/${await _getPackageName()}/files', '/Download');
+            String publicDownload = externalDir.path.replaceAll('/Android/data/${await _getPackageName()}/files', '/Download');
             downloadDir = Directory(publicDownload);
           }
         }
         
         if (!await downloadDir.exists()) {
           final externalDir = await getExternalStorageDirectory();
-          downloadDir = Directory('${externalDir!.path}/Downloads');
-          await downloadDir.create(recursive: true);
+          if (externalDir != null) {
+            downloadDir = Directory('${externalDir.path}/Downloads');
+            await downloadDir.create(recursive: true);
+          }
         }
         
       } else {
+        // iOS
         downloadDir = await getApplicationDocumentsDirectory();
       }
 
@@ -588,175 +147,437 @@ class _ShareDialogState extends State<ShareDialog> {
       final String fileName = _generateFileName();
       final File file = File('${downloadDir.path}/$fileName');
       
+      print('🔍 Intentando guardar en: ${file.path}');
       await file.writeAsBytes(pdfBytes);
       
       if (await file.exists()) {
-        final int fileSize = await file.length();
-        
-        return {
-          'success': true,
-          'path': file.path,
-          'fileName': fileName,
-          'directory': downloadDir.path,
-          'size': fileSize,
-        };
+        print('✅ Archivo guardado exitosamente en: ${file.path}');
+        return {'success': true, 'path': file.path};
       } else {
-        throw Exception('El archivo no se pudo crear');
+        throw Exception('El archivo no se pudo crear en la ruta especificada.');
       }
 
     } catch (e) {
-      return {
-        'success': false,
-        'error': e.toString(),
-      };
+      print('❌ Error al guardar archivo: $e');
+      return {'success': false, 'error': e.toString()};
     }
   }
 
-  Future<bool> _requestPermissions() async {
-    try {
-      if (Platform.isAndroid) {
-        var status = await Permission.storage.status;
-        
-        if (!status.isGranted) {
-          status = await Permission.storage.request();
-        }
-        
-        if (!status.isGranted) {
-          var manageStatus = await Permission.manageExternalStorage.status;
-          if (!manageStatus.isGranted) {
-            manageStatus = await Permission.manageExternalStorage.request();
-          }
-          return manageStatus.isGranted;
-        }
-        
-        return status.isGranted;
-      }
-      
-      return true; // iOS
-    } catch (e) {
-      return false;
-    }
-  }
+  // =====================================================================
+  // FIN DE LA LÓGICA DE GUARDADO
+  // =====================================================================
 
-  Future<String> _getPackageName() async {
-    return 'com.tessa.kontrollers_v2';
-  }
 
-  String _generateFileName() {
-    final String fecha = DateTime.now().toString().substring(0, 10).replaceAll('-', '');
-    final String tipo = widget.checklistType.toUpperCase();
-    final int id = widget.recordData['id'];
-    
-    return 'Checklist_${tipo}_ID${id}_$fecha.pdf';
-  }
-
-  void _showShareOption(String filePath) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('PDF Guardado'),
-        content: Text('¿Desea compartir el archivo usando otras aplicaciones?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('No'),
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 500),
+          child: CustomScrollView(
+            slivers: [
+              _buildSliverHeader(),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildInfoCard(),
+                        const SizedBox(height: 24),
+                        const _SectionTitle(title: 'Opciones de Exportación'),
+                        const SizedBox(height: 12),
+                        _buildDownloadButton(),
+                        const SizedBox(height: 24),
+                        const _SectionTitle(title: 'Enviar por Correo'),
+                        const SizedBox(height: 16),
+                        _buildMultiEmailField(),
+                        const SizedBox(height: 16),
+                        _buildObservacionesField(),
+                        const SizedBox(height: 24),
+                        _buildSendEmailButton(),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              Share.shareXFiles([XFile(filePath)]);
-            },
-            child: Text('Compartir'),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSliverHeader() {
+    return SliverAppBar(
+      backgroundColor: _theme.color,
+      foregroundColor: Colors.white,
+      pinned: true,
+      automaticallyImplyLeading: false,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      title: const Text('Compartir Reporte'),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ],
+      expandedHeight: 120.0,
+      flexibleSpace: FlexibleSpaceBar(
+        background: Container(
+          decoration: BoxDecoration(
+            color: _theme.color,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.only(left: 16, bottom: 16, right: 16),
+            child: Align(
+              alignment: Alignment.bottomLeft,
+              child: Row(
+                children: [
+                  Icon(_theme.icon, color: Colors.white.withOpacity(0.8), size: 32),
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _theme.title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        'ID del Registro: ${widget.recordData['id']}',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.9),
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildInfoRow('Usuario:', widget.recordData['usuario_nombre'] ?? 'N/A'),
+          _buildInfoRow('Finca:', widget.recordData['finca_nombre'] ?? 'N/A'),
+          _buildInfoRow('Cumplimiento:', '${widget.recordData['porcentaje_cumplimiento']?.toStringAsFixed(1) ?? '0'}%'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 90,
+            child: Text(
+              label,
+              style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+            ),
           ),
         ],
       ),
     );
   }
 
-  void _showSuccessMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            Icon(Icons.check_circle, color: Colors.white, size: 20),
-            SizedBox(width: 8),
-            Expanded(child: Text(message)),
-          ],
+  Widget _buildDownloadButton() {
+    return ListTile(
+      onTap: _isGeneratingPDF ? null : _downloadPDF,
+      leading: _isGeneratingPDF
+          ? SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2, color: _theme.color),
+            )
+          : Icon(Icons.download_for_offline_outlined, color: _theme.color),
+      title: Text('Descargar PDF', style: TextStyle(color: _theme.color, fontWeight: FontWeight.bold)),
+      subtitle: const Text('Guardar el reporte en el dispositivo'),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.grey.shade300),
+      ),
+      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+    );
+  }
+
+  Widget _buildMultiEmailField() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextFormField(
+          controller: _emailController,
+          keyboardType: TextInputType.emailAddress,
+          decoration: InputDecoration(
+            labelText: 'Destinatarios',
+            hintText: 'ej: hernan.iturralde, admin...',
+            prefixIcon: const Icon(Icons.person_add_alt_1_outlined),
+            suffixIcon: IconButton(
+              icon: const Icon(Icons.add_circle_outline),
+              color: Theme.of(context).primaryColor,
+              onPressed: _addEmailsFromField,
+              tooltip: 'Agregar destinatarios',
+            ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          onFieldSubmitted: (_) => _addEmailsFromField(),
         ),
-        backgroundColor: Colors.green,
-        duration: Duration(seconds: 4),
-        action: SnackBarAction(
-          label: 'OK',
-          textColor: Colors.white,
-          onPressed: () {},
+        const SizedBox(height: 8),
+        if (_destinatarios.isNotEmpty)
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _destinatarios.map((email) => _EmailChip(
+              email: email,
+              onDeleted: () => _removeDestination(email),
+            )).toList(),
+          )
+      ],
+    );
+  }
+
+  Widget _buildObservacionesField() {
+    return TextFormField(
+      controller: _observacionesController,
+      decoration: InputDecoration(
+        labelText: 'Observaciones (opcional)',
+        hintText: 'Añadir un comentario al correo...',
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        alignLabelWithHint: true,
+      ),
+      maxLines: 3,
+      maxLength: 500,
+      textCapitalization: TextCapitalization.sentences,
+    );
+  }
+
+  Widget _buildSendEmailButton() {
+    final bool canSend = !_isSendingEmail && _destinatarios.isNotEmpty;
+    final String buttonText = _isSendingEmail
+        ? 'Enviando...'
+        : 'Enviar a ${_destinatarios.length} destinatario${_destinatarios.length == 1 ? '' : 's'}';
+
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: canSend ? _sendByEmail : null,
+        icon: _isSendingEmail
+            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+            : const Icon(Icons.send_outlined),
+        label: Text(buttonText),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: _theme.color,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
       ),
     );
+  }
+
+  void _addEmailsFromField() {
+    if (_emailController.text.trim().isEmpty) return;
+    
+    final emails = _emailController.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty);
+
+    setState(() {
+      for (final email in emails) {
+        final processedEmail = EmailService.procesarEmail(email);
+        if (processedEmail.isNotEmpty && EmailService.validarEmail(processedEmail) && !_destinatarios.contains(processedEmail)) {
+          _destinatarios.add(processedEmail);
+        }
+      }
+      _emailController.clear();
+    });
+  }
+
+  void _removeDestination(String email) {
+    setState(() {
+      _destinatarios.remove(email);
+    });
+  }
+
+  Future<void> _downloadPDF() async {
+    setState(() => _isGeneratingPDF = true);
+    try {
+      final pdfBytes = await PDFService.generarReporteChecklist(
+        recordData: widget.recordData,
+        checklistType: widget.checklistType,
+      );
+      final result = await _saveFile(pdfBytes);
+      if (mounted) {
+        if (result['success']) {
+          _showSuccessMessage('PDF guardado en: ${result['path']}');
+          _showShareOption(result['path']);
+        } else {
+          _showErrorMessage('Error al guardar PDF: ${result['error']}');
+        }
+      }
+    } catch (e) {
+      _showErrorMessage('Error al generar PDF: $e');
+    } finally {
+      if (mounted) setState(() => _isGeneratingPDF = false);
+    }
+  }
+
+  Future<void> _sendByEmail() async {
+    if (_destinatarios.isEmpty) {
+      _showErrorMessage('Agrega al menos un destinatario.');
+      return;
+    }
+
+    setState(() => _isSendingEmail = true);
+    try {
+      _pdfBytes ??= await PDFService.generarReporteChecklist(
+        recordData: widget.recordData,
+        checklistType: widget.checklistType,
+      );
+
+      final result = await EmailService.enviarReporteChecklist(
+        destinatarios: _destinatarios,
+        checklistType: widget.checklistType,
+        recordId: widget.recordData['id'],
+        pdfBytes: _pdfBytes!,
+        observaciones: _observacionesController.text.trim().isNotEmpty ? _observacionesController.text.trim() : null,
+        usuarioCreador: widget.recordData['usuario_nombre'],
+        fincaNombre: widget.recordData['finca_nombre'],
+      );
+
+      if (result['exito'] && mounted) {
+        _showSuccessMessage(result['mensaje']);
+        Navigator.of(context).pop();
+      } else {
+        _showErrorMessage(result['mensaje']);
+      }
+    } catch (e) {
+      _showErrorMessage('Error inesperado: $e');
+    } finally {
+      if (mounted) setState(() => _isSendingEmail = false);
+    }
+  }
+
+  void _showSuccessMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(message),
+      backgroundColor: Colors.green.shade700,
+    ));
   }
 
   void _showErrorMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            Icon(Icons.error_outline, color: Colors.white, size: 20),
-            SizedBox(width: 8),
-            Expanded(child: Text(message)),
-          ],
-        ),
-        backgroundColor: Colors.red,
-        duration: Duration(seconds: 4),
-        action: SnackBarAction(
-          label: 'OK',
-          textColor: Colors.white,
-          onPressed: () {},
-        ),
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(message),
+      backgroundColor: Colors.red.shade700,
+    ));
+  }
+  
+  String _generateFileName() {
+    final String fecha = DateTime.now().toString().substring(0, 10).replaceAll('-', '');
+    final String tipo = widget.checklistType.toUpperCase();
+    final String finca = (widget.recordData['finca_nombre'] ?? 'SinFinca')
+        .replaceAll(' ', '_')
+        .replaceAll(RegExp(r'[/\\]'), '_');
+
+    return 'Checklist_${tipo}_${finca}_$fecha.pdf';
+  }
+
+  void _showShareOption(String filePath) {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('PDF Guardado'),
+        content: const Text('¿Deseas compartir el archivo con otra aplicación?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cerrar'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Share.shareXFiles([XFile(filePath)]);
+            },
+            child: const Text('Compartir'),
+          ),
+        ],
       ),
     );
   }
+}
 
-  Color _getChecklistColor() {
-    switch (widget.checklistType) {
-      case 'fertirriego':
-        return Colors.blue[700]!;
-      case 'bodega':
-        return Colors.orange[700]!;
-      case 'aplicaciones':
-        return Colors.green[700]!;
-      case 'cosechas':
-        return Colors.purple[700]!;
-      default:
-        return Colors.red[700]!;
-    }
+// Widgets auxiliares para la UI
+class _SectionTitle extends StatelessWidget {
+  final String title;
+  const _SectionTitle({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      title,
+      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+        fontWeight: FontWeight.bold,
+        color: Colors.grey.shade800,
+      ),
+    );
   }
+}
 
-  IconData _getChecklistIcon() {
-    switch (widget.checklistType) {
-      case 'fertirriego':
-        return Icons.water_drop;
-      case 'bodega':
-        return Icons.warehouse;
-      case 'aplicaciones':
-        return Icons.science;
-      case 'cosechas':
-        return Icons.agriculture;
-      default:
-        return Icons.assignment;
-    }
-  }
+class _EmailChip extends StatelessWidget {
+  final String email;
+  final VoidCallback onDeleted;
 
-  String _getChecklistTitle() {
-    switch (widget.checklistType) {
-      case 'fertirriego':
-        return 'Fertirriego';
-      case 'bodega':
-        return 'Bodega';
-      case 'aplicaciones':
-        return 'Aplicaciones';
-      case 'cosechas':
-        return 'Cosechas';
-      default:
-        return widget.checklistType;
-    }
+  const _EmailChip({required this.email, required this.onDeleted});
+
+  @override
+  Widget build(BuildContext context) {
+    final primaryColor = Theme.of(context).primaryColor;
+    return Chip(
+      label: Text(email),
+      onDeleted: onDeleted,
+      backgroundColor: primaryColor.withOpacity(0.1),
+      deleteIconColor: primaryColor.withOpacity(0.7),
+      labelStyle: TextStyle(
+        color: primaryColor,
+        fontWeight: FontWeight.w500,
+      ),
+      side: BorderSide(color: primaryColor.withOpacity(0.2)),
+    );
   }
 }
