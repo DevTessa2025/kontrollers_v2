@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:intl/intl.dart';
+import 'package:flutter/services.dart' show rootBundle;
 
 class PDFService {
   
@@ -17,6 +18,31 @@ class PDFService {
     'cosecha': List.generate(20, (index) => index + 1), // 20 items del 1 al 20
     'cosechas': List.generate(20, (index) => index + 1), // Alias para cosecha
   };
+
+  // ==================== COLORES DE LA NUEVA PALETA ====================
+  
+  // Colores principales - Negro, gris y rojo
+  static const PdfColor COLOR_NEGRO = PdfColors.black;
+  static const PdfColor COLOR_GRIS_OSCURO = PdfColor.fromInt(0xFF424242);
+  static const PdfColor COLOR_GRIS_MEDIO = PdfColor.fromInt(0xFF757575);
+  static const PdfColor COLOR_GRIS_CLARO = PdfColor.fromInt(0xFFBDBDBD);
+  static const PdfColor COLOR_GRIS_MUY_CLARO = PdfColor.fromInt(0xFFF5F5F5);
+  static const PdfColor COLOR_ROJO_PRINCIPAL = PdfColor.fromInt(0xFFD32F2F);
+  static const PdfColor COLOR_ROJO_CLARO = PdfColor.fromInt(0xFFFFEBEE);
+  
+  // Colores para respuestas (únicos elementos con color)
+  static const PdfColor COLOR_RESPUESTA_SI = PdfColor.fromInt(0xFF2E7D32);      // Verde para SÍ
+  static const PdfColor COLOR_RESPUESTA_NO = PdfColor.fromInt(0xFFD32F2F);      // Rojo para NO
+  static const PdfColor COLOR_RESPUESTA_NA = PdfColor.fromInt(0xFFFF8F00);      // Naranja para N/A
+  static const PdfColor COLOR_RESPUESTA_SI_FONDO = PdfColor.fromInt(0xFFE8F5E8);
+  static const PdfColor COLOR_RESPUESTA_NO_FONDO = PdfColor.fromInt(0xFFFFEBEE);
+  static const PdfColor COLOR_RESPUESTA_NA_FONDO = PdfColor.fromInt(0xFFFFF3E0);
+
+  // Colores para porcentajes de cumplimiento
+  static const PdfColor COLOR_CUMPLIMIENTO_EXCELENTE = PdfColor.fromInt(0xFF1B5E20); // Verde oscuro ≥90%
+  static const PdfColor COLOR_CUMPLIMIENTO_BUENO = PdfColor.fromInt(0xFF2E7D32);     // Verde medio ≥70%
+  static const PdfColor COLOR_CUMPLIMIENTO_REGULAR = PdfColor.fromInt(0xFFFF8F00);   // Naranja ≥50%
+  static const PdfColor COLOR_CUMPLIMIENTO_MALO = PdfColor.fromInt(0xFFD32F2F);      // Rojo <50%
   
   /// Genera un PDF completo del checklist con todos los detalles
   static Future<Uint8List> generarReporteChecklist({
@@ -25,25 +51,51 @@ class PDFService {
   }) async {
     final pdf = pw.Document();
     
+    // Intentar cargar imagen del banner desde diferentes rutas posibles
+    pw.MemoryImage? bannerImage;
+    List<String> rutasPosibles = [
+      'assets/images/Tessa_banner.png',
+      'assets/images/tessa_banner.png',
+      'assets/Tessa_banner.png',
+      'images/Tessa_banner.png',
+    ];
+    
+    for (String ruta in rutasPosibles) {
+      try {
+        final ByteData data = await rootBundle.load(ruta);
+        final Uint8List bytes = data.buffer.asUint8List();
+        bannerImage = pw.MemoryImage(bytes);
+        print('✅ Imagen del banner cargada desde: $ruta');
+        break; // Salir del bucle si encuentra la imagen
+      } catch (e) {
+        print('❌ No se encontró imagen en: $ruta');
+        continue; // Intentar siguiente ruta
+      }
+    }
+    
+    if (bannerImage == null) {
+      print('⚠️ No se pudo cargar la imagen del banner desde ninguna ruta');
+      print('📝 Continuando con header solo de texto...');
+    }
+    
     // Obtener datos específicos
     final String tipoChecklist = _obtenerNombreChecklist(checklistType);
-    final PdfColor colorTema = _obtenerColorTema(checklistType);
     
-    print('🎨 Generando PDF para $tipoChecklist...');
+    print('🎨 Generando PDF para $tipoChecklist con nueva paleta de colores...');
     
     // Página principal con información general
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         margin: pw.EdgeInsets.all(20),
-        header: (context) => _construirHeader(tipoChecklist, colorTema, recordData),
+        header: (context) => _construirHeader(tipoChecklist, recordData, bannerImage),
         footer: (context) => _construirFooter(context),
         build: (context) => [
-          _construirInformacionGeneral(recordData, checklistType, colorTema),
+          _construirInformacionGeneral(recordData, checklistType),
           pw.SizedBox(height: 20),
-          _construirResumenCumplimiento(recordData, colorTema),
+          _construirResumenCumplimiento(recordData),
           pw.SizedBox(height: 20),
-          _construirItemsRelevantes(recordData, checklistType, colorTema),
+          _construirItemsRelevantes(recordData, checklistType),
         ],
       ),
     );
@@ -55,102 +107,194 @@ class PDFService {
         pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
           margin: pw.EdgeInsets.all(20),
-          header: (context) => _construirHeaderFotos(tipoChecklist, colorTema),
+          header: (context) => _construirHeaderFotos(tipoChecklist, bannerImage),
           footer: (context) => _construirFooter(context),
           build: (context) => [
-            _construirSeccionFotografias(itemsConFotos, colorTema),
+            _construirSeccionFotografias(itemsConFotos),
           ],
         ),
       );
     }
 
-    print('✅ PDF generado exitosamente');
+    print('✅ PDF generado exitosamente con nueva paleta de colores');
     return pdf.save();
   }
 
   // ==================== CONSTRUCCIÓN DE COMPONENTES ====================
 
-  static pw.Widget _construirHeader(String tipoChecklist, PdfColor colorTema, Map<String, dynamic> data) {
+  static pw.Widget _construirHeader(String tipoChecklist, Map<String, dynamic> data, pw.MemoryImage? bannerImage) {
     return pw.Container(
-      padding: pw.EdgeInsets.all(10),
+      height: 80,
       decoration: pw.BoxDecoration(
-        color: colorTema,
-        borderRadius: pw.BorderRadius.circular(5),
+        color: COLOR_NEGRO,
+        borderRadius: pw.BorderRadius.circular(8),
       ),
-      child: pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-        children: [
-          pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Text(
-                'SISTEMA KONTROLLERS',
-                style: pw.TextStyle(
-                  color: PdfColors.white,
-                  fontSize: 16,
-                  fontWeight: pw.FontWeight.bold,
+      child: pw.Padding(
+        padding: pw.EdgeInsets.all(16),
+        child: pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: pw.CrossAxisAlignment.center,
+          children: [
+            // IZQUIERDA: Imagen del banner (si existe)
+            pw.Container(
+              width: 120,
+              height: 48,
+              child: bannerImage != null 
+                ? pw.Image(
+                    bannerImage,
+                    fit: pw.BoxFit.contain,
+                  )
+                : pw.Container(
+                    decoration: pw.BoxDecoration(
+                      border: pw.Border.all(color: COLOR_GRIS_CLARO, width: 1),
+                      borderRadius: pw.BorderRadius.circular(4),
+                    ),
+                    child: pw.Center(
+                      child: pw.Text(
+                        'TESSA',
+                        style: pw.TextStyle(
+                          color: PdfColors.white,
+                          fontSize: 14,
+                          fontWeight: pw.FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+            ),
+            
+            // CENTRO: Sistema Kontrollers
+            pw.Expanded(
+              child: pw.Center(
+                child: pw.Column(
+                  mainAxisAlignment: pw.MainAxisAlignment.center,
+                  children: [
+                    pw.Text(
+                      'SISTEMA KONTROLLERS',
+                      style: pw.TextStyle(
+                        color: PdfColors.white,
+                        fontSize: 18,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                      textAlign: pw.TextAlign.center,
+                    ),
+                    pw.SizedBox(height: 4),
+                    pw.Text(
+                      'Reporte de $tipoChecklist',
+                      style: pw.TextStyle(
+                        color: COLOR_GRIS_CLARO,
+                        fontSize: 12,
+                        fontWeight: pw.FontWeight.normal,
+                      ),
+                      textAlign: pw.TextAlign.center,
+                    ),
+                  ],
                 ),
               ),
-              pw.Text(
-                'Reporte de $tipoChecklist',
-                style: pw.TextStyle(
-                  color: PdfColors.white,
-                  fontSize: 12,
-                ),
+            ),
+            
+            // DERECHA: Finca y fecha
+            pw.Container(
+              width: 140,
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.end,
+                mainAxisAlignment: pw.MainAxisAlignment.center,
+                children: [
+                  pw.Text(
+                    'Finca: ${data['finca_nombre'] ?? 'N/A'}',
+                    style: pw.TextStyle(
+                      color: PdfColors.white,
+                      fontSize: 11,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                    textAlign: pw.TextAlign.right,
+                  ),
+                  pw.SizedBox(height: 4),
+                  pw.Text(
+                    DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now()),
+                    style: pw.TextStyle(
+                      color: COLOR_GRIS_CLARO,
+                      fontSize: 9,
+                    ),
+                    textAlign: pw.TextAlign.right,
+                  ),
+                ],
               ),
-            ],
-          ),
-          pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.end,
-            children: [
-              pw.Text(
-                'Finca: ${data['finca_nombre'] ?? 'N/A'}',
-                style: pw.TextStyle(
-                  color: PdfColors.white,
-                  fontSize: 12,
-                  fontWeight: pw.FontWeight.bold,
-                ),
-              ),
-              pw.Text(
-                DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now()),
-                style: pw.TextStyle(
-                  color: PdfColors.white,
-                  fontSize: 10,
-                ),
-              ),
-            ],
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  static pw.Widget _construirHeaderFotos(String tipoChecklist, PdfColor colorTema) {
+  static pw.Widget _construirHeaderFotos(String tipoChecklist, pw.MemoryImage? bannerImage) {
     return pw.Container(
-      padding: pw.EdgeInsets.all(10),
+      height: 60,
       decoration: pw.BoxDecoration(
-        color: colorTema,
-        borderRadius: pw.BorderRadius.circular(5),
+        color: COLOR_NEGRO,
+        borderRadius: pw.BorderRadius.circular(8),
       ),
-      child: pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-        children: [
-          pw.Text(
-            'FOTOGRAFÍAS ADJUNTAS - $tipoChecklist',
-            style: pw.TextStyle(
-              color: PdfColors.white,
-              fontSize: 14,
-              fontWeight: pw.FontWeight.bold,
+      child: pw.Padding(
+        padding: pw.EdgeInsets.all(12),
+        child: pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: pw.CrossAxisAlignment.center,
+          children: [
+            // IZQUIERDA: Imagen pequeña del banner (si existe)
+            pw.Container(
+              width: 80,
+              height: 36,
+              child: bannerImage != null 
+                ? pw.Image(
+                    bannerImage,
+                    fit: pw.BoxFit.contain,
+                  )
+                : pw.Container(
+                    decoration: pw.BoxDecoration(
+                      border: pw.Border.all(color: COLOR_GRIS_CLARO, width: 1),
+                      borderRadius: pw.BorderRadius.circular(4),
+                    ),
+                    child: pw.Center(
+                      child: pw.Text(
+                        'TESSA',
+                        style: pw.TextStyle(
+                          color: PdfColors.white,
+                          fontSize: 10,
+                          fontWeight: pw.FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
             ),
-          ),
-          pw.Text(
-            'Página de Anexos',
-            style: pw.TextStyle(
-              color: PdfColors.white,
-              fontSize: 10,
+            
+            // CENTRO: Título de fotografías
+            pw.Expanded(
+              child: pw.Center(
+                child: pw.Text(
+                  'FOTOGRAFÍAS ADJUNTAS - $tipoChecklist',
+                  style: pw.TextStyle(
+                    color: PdfColors.white,
+                    fontSize: 14,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                  textAlign: pw.TextAlign.center,
+                ),
+              ),
             ),
-          ),
-        ],
+            
+            // DERECHA: Etiqueta de anexos
+            pw.Container(
+              width: 80,
+              child: pw.Text(
+                'Página de Anexos',
+                style: pw.TextStyle(
+                  color: COLOR_GRIS_CLARO,
+                  fontSize: 10,
+                ),
+                textAlign: pw.TextAlign.right,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -161,17 +305,18 @@ class PDFService {
       margin: pw.EdgeInsets.only(top: 10),
       child: pw.Text(
         'Página ${context.pageNumber} de ${context.pagesCount}',
-        style: pw.TextStyle(fontSize: 10, color: PdfColors.grey600),
+        style: pw.TextStyle(fontSize: 10, color: COLOR_GRIS_MEDIO),
       ),
     );
   }
 
-  static pw.Widget _construirInformacionGeneral(Map<String, dynamic> data, String checklistType, PdfColor colorTema) {
+  static pw.Widget _construirInformacionGeneral(Map<String, dynamic> data, String checklistType) {
     return pw.Container(
-      padding: pw.EdgeInsets.all(15),
+      padding: pw.EdgeInsets.all(16),
       decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: colorTema, width: 2),
+        border: pw.Border.all(color: COLOR_GRIS_MEDIO, width: 1.5),
         borderRadius: pw.BorderRadius.circular(8),
+        color: PdfColors.white,
       ),
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -181,10 +326,16 @@ class PDFService {
             style: pw.TextStyle(
               fontSize: 16,
               fontWeight: pw.FontWeight.bold,
-              color: colorTema,
+              color: COLOR_NEGRO,
             ),
           ),
-          pw.SizedBox(height: 10),
+          pw.SizedBox(height: 2),
+          pw.Container(
+            height: 2,
+            width: 60,
+            color: COLOR_ROJO_PRINCIPAL,
+          ),
+          pw.SizedBox(height: 12),
           
           // Información básica
           _construirFilaInfo('Kontroller:', data['usuario_nombre'] ?? 'N/A'),
@@ -193,7 +344,7 @@ class PDFService {
           // Campos específicos según tipo
           ..._construirCamposEspecificos(data, checklistType),
           
-          _construirFilaInfo('Fecha de Inicio de Auditoría :', _formatearFecha(data['fecha_creacion'])),
+          _construirFilaInfo('Fecha de Auditoría:', _formatearFecha(data['fecha_creacion'])),
           _construirFilaInfo('Fecha de Sincronización:', _formatearFecha(data['fecha_envio'])),
         ],
       ),
@@ -205,14 +356,12 @@ class PDFService {
     
     switch (checklistType.toLowerCase()) {
       case 'fertirriego':
-        // Fertirriego: finca y bloque
         if (data['bloque_nombre'] != null && data['bloque_nombre'].toString().isNotEmpty) {
           campos.add(_construirFilaInfo('Bloque:', data['bloque_nombre'].toString()));
         }
         break;
         
       case 'bodega':
-        // Bodega: finca, supervisor y pesador
         if (data['supervisor_nombre'] != null && data['supervisor_nombre'].toString().isNotEmpty) {
           campos.add(_construirFilaInfo('Supervisor:', data['supervisor_nombre'].toString()));
         }
@@ -222,7 +371,6 @@ class PDFService {
         break;
         
       case 'aplicaciones':
-        // Aplicaciones: finca, bloque y bomba
         if (data['bloque_nombre'] != null && data['bloque_nombre'].toString().isNotEmpty) {
           campos.add(_construirFilaInfo('Bloque:', data['bloque_nombre'].toString()));
         }
@@ -233,7 +381,6 @@ class PDFService {
         
       case 'cosecha':
       case 'cosechas':
-        // Cosechas: finca, bloque y variedad
         if (data['bloque_nombre'] != null && data['bloque_nombre'].toString().isNotEmpty) {
           campos.add(_construirFilaInfo('Bloque:', data['bloque_nombre'].toString()));
         }
@@ -248,140 +395,28 @@ class PDFService {
 
   static pw.Widget _construirFilaInfo(String etiqueta, String valor) {
     return pw.Padding(
-      padding: pw.EdgeInsets.symmetric(vertical: 2),
+      padding: pw.EdgeInsets.symmetric(vertical: 3),
       child: pw.Row(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
           pw.SizedBox(
-            width: 120,
+            width: 140,
             child: pw.Text(
               etiqueta,
-              style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+              style: pw.TextStyle(
+                fontWeight: pw.FontWeight.bold,
+                color: COLOR_GRIS_OSCURO,
+                fontSize: 11,
+              ),
             ),
           ),
           pw.Expanded(
-            child: pw.Text(valor),
-          ),
-        ],
-      ),
-    );
-  }
-
-  static pw.Widget _construirResumenCumplimiento(Map<String, dynamic> data, PdfColor colorTema) {
-    final double porcentaje = (data['porcentaje_cumplimiento'] ?? 0.0).toDouble();
-    final PdfColor colorCumplimiento = _obtenerColorCumplimientoSuave(porcentaje);
-    
-    return pw.Container(
-      padding: pw.EdgeInsets.all(20),
-      decoration: pw.BoxDecoration(
-        color: PdfColors.white,
-        border: pw.Border.all(color: PdfColor.fromHex('#e1e5e9'), width: 1),
-        borderRadius: pw.BorderRadius.circular(8),
-      ),
-      child: pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-        crossAxisAlignment: pw.CrossAxisAlignment.center,
-        children: [
-          // Información textual
-          pw.Expanded(
-            flex: 2,
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text(
-                  'PORCENTAJE DE CUMPLIMIENTO',
-                  style: pw.TextStyle(
-                    fontSize: 14,
-                    fontWeight: pw.FontWeight.bold,
-                    color: PdfColors.grey800,
-                  ),
-                ),
-                pw.SizedBox(height: 8),
-                pw.Text(
-                  _obtenerDescripcionCumplimiento(porcentaje),
-                  style: pw.TextStyle(
-                    fontSize: 11,
-                    color: PdfColors.grey600,
-                    fontWeight: pw.FontWeight.normal,
-                  ),
-                ),
-                pw.SizedBox(height: 12),
-                // pw.Container(
-                //   padding: pw.EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                //   decoration: pw.BoxDecoration(
-                //     color: PdfColors.white,
-                //     borderRadius: pw.BorderRadius.circular(16),
-                //     border: pw.Border.all(color: colorCumplimiento, width: 2),
-                //   ),
-                //   child: pw.Text(
-                //     '${porcentaje.toStringAsFixed(1)}%',
-                //     style: pw.TextStyle(
-                //       fontSize: 16,
-                //       fontWeight: pw.FontWeight.bold,
-                //       color: colorCumplimiento,
-                //     ),
-                //   ),
-                // ),
-              ],
-            ),
-          ),
-          
-          pw.SizedBox(width: 20),
-          
-          // Gráfico circular simplificado usando círculos concéntricos
-          pw.Container(
-            width: 100,
-            height: 100,
-            child: pw.Stack(
-              children: [
-                // Círculo de fondo completo
-                pw.Container(
-                  width: 100,
-                  height: 100,
-                  decoration: pw.BoxDecoration(
-                    shape: pw.BoxShape.circle,
-                    color: PdfColor.fromHex('#f1f3f4'),
-                  ),
-                ),
-                
-                // Círculo interior blanco para crear el "donut"
-                pw.Positioned(
-                  left: 15,
-                  top: 15,
-                  child: pw.Container(
-                    width: 70,
-                    height: 70,
-                    decoration: pw.BoxDecoration(
-                      shape: pw.BoxShape.circle,
-                      color: PdfColors.white,
-                    ),
-                  ),
-                ),
-                
-                // Segmentos de progreso usando múltiples arcos simulados
-                ..._construirSegmentosProgreso(porcentaje, colorCumplimiento),
-                
-                // Porcentaje en el centro
-                pw.Positioned.fill(
-                  child: pw.Center(
-                    child: pw.Column(
-                      mainAxisAlignment: pw.MainAxisAlignment.center,
-                      children: [
-                        pw.Text(
-                          '${porcentaje.toStringAsFixed(0)}%',
-                          style: pw.TextStyle(
-                            fontSize: 18,
-                            fontWeight: pw.FontWeight.bold,
-                            color: colorCumplimiento,
-                          ),
-                        ),
-                        pw.SizedBox(height: 2),
-                        
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+            child: pw.Text(
+              valor,
+              style: pw.TextStyle(
+                color: COLOR_NEGRO,
+                fontSize: 11,
+              ),
             ),
           ),
         ],
@@ -389,71 +424,176 @@ class PDFService {
     );
   }
 
-  // Método para construir segmentos de progreso simulando un arco
-  static List<pw.Widget> _construirSegmentosProgreso(double porcentaje, PdfColor color) {
-    List<pw.Widget> segmentos = [];
-    
-    // Crear múltiples segmentos pequeños para simular un arco
-    int totalSegmentos = 20; // Dividir en 20 segmentos para suavidad
-    int segmentosCompletos = ((porcentaje / 100) * totalSegmentos).floor();
-    
-    double radio = 40; // Radio del círculo para los segmentos
-
-    for (int i = 0; i < segmentosCompletos; i++) {
-      // Calcular posición de cada segmento alrededor del círculo
-      double angulo = (i / totalSegmentos) * 2 * 3.14159 - (3.14159 / 2); // Comenzar desde arriba
-      double x = 50 + radio * 0.707 * cos(angulo); // Posición X aproximada
-      double y = 50 + radio * 0.707 * sin(angulo); // Posición Y aproximada
-      
-      segmentos.add(
-        pw.Positioned(
-          left: x - 2,
-          top: y - 2,
-          child: pw.Container(
-            width: 4,
-            height: 8,
-            decoration: pw.BoxDecoration(
-              color: color,
-              borderRadius: pw.BorderRadius.circular(2),
+  static pw.Widget _construirResumenCumplimiento(Map<String, dynamic> data) {
+  final double porcentaje = (data['porcentaje_cumplimiento'] ?? 0.0).toDouble();
+  final PdfColor colorCumplimiento = _obtenerColorCumplimiento(porcentaje);
+  
+  return pw.Container(
+    padding: pw.EdgeInsets.all(20),
+    decoration: pw.BoxDecoration(
+      color: COLOR_GRIS_MUY_CLARO,
+      border: pw.Border.all(color: COLOR_GRIS_CLARO, width: 1),
+      borderRadius: pw.BorderRadius.circular(8),
+    ),
+    child: pw.Row(
+      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: pw.CrossAxisAlignment.center,
+      children: [
+        // Información textual
+        pw.Expanded(
+          flex: 2,
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                'PORCENTAJE DE CUMPLIMIENTO',
+                style: pw.TextStyle(
+                  fontSize: 16,
+                  fontWeight: pw.FontWeight.bold,
+                  color: COLOR_NEGRO,
+                ),
+              ),
+              pw.SizedBox(height: 4),
+              pw.Container(
+                height: 3,
+                width: 80,
+                color: COLOR_ROJO_PRINCIPAL,
+              ),
+              pw.SizedBox(height: 12),
+              pw.Text(
+                _obtenerDescripcionCumplimiento(porcentaje),
+                style: pw.TextStyle(
+                  fontSize: 12,
+                  color: COLOR_GRIS_OSCURO,
+                ),
+              ),
+              pw.SizedBox(height: 8),
+              pw.Text(
+                _obtenerCategoriaCumplimiento(porcentaje),
+                style: pw.TextStyle(
+                  fontSize: 10,
+                  color: COLOR_GRIS_MEDIO,
+                  fontWeight: pw.FontWeight.normal,
+                ),
+              ),
+            ],
+          ),
+        ),
+        
+        pw.SizedBox(width: 30),
+        
+        // Gráfico circular de progreso mejorado (NUEVO)
+        _construirGraficoCircularProgreso(porcentaje, colorCumplimiento),
+      ],
+    ),
+  );
+}
+static pw.Widget _construirGraficoCircularProgreso(double porcentaje, PdfColor colorCumplimiento) {
+  return pw.Container(
+    width: 120,
+    height: 120,
+    child: pw.Stack(
+      children: [
+        // Círculo de fondo completo
+        pw.Container(
+          width: 120,
+          height: 120,
+          decoration: pw.BoxDecoration(
+            shape: pw.BoxShape.circle,
+            border: pw.Border.all(
+              color: COLOR_GRIS_CLARO,
+              width: 8,
             ),
           ),
         ),
-      );
-    }
-    
-    return segmentos;
-  }
+        
+        // Círculo de progreso (usando ClipPath para el arco)
+        if (porcentaje > 0)
+          pw.Transform.rotate(
+            angle: -3.14159 / 2, // Rotar para comenzar desde arriba
+            child: pw.Container(
+              width: 120,
+              height: 120,
+              child: pw.CircularProgressIndicator(
+                value: porcentaje / 100,
+                strokeWidth: 8,
+                color: colorCumplimiento,
+                backgroundColor: PdfColor.fromInt(0x00000000),
+              ),
+            ),
+          ),
+        
+        // Círculo interior con texto
+        pw.Positioned(
+          left: 20,
+          top: 20,
+          child: pw.Container(
+            width: 80,
+            height: 80,
+            decoration: pw.BoxDecoration(
+              shape: pw.BoxShape.circle,
+              color: PdfColors.white,
+              border: pw.Border.all(color: COLOR_GRIS_CLARO, width: 1),
+            ),
+            child: pw.Center(
+              child: pw.Column(
+                mainAxisAlignment: pw.MainAxisAlignment.center,
+                children: [
+                  pw.Text(
+                    '${porcentaje.toStringAsFixed(0)}%',
+                    style: pw.TextStyle(
+                      fontSize: 24,
+                      fontWeight: pw.FontWeight.bold,
+                      color: colorCumplimiento,
+                    ),
+                  ),
+                  pw.SizedBox(height: 2),
+                  pw.Text(
+                    _obtenerNivelTexto(porcentaje),
+                    style: pw.TextStyle(
+                      fontSize: 12,
+                      fontWeight: pw.FontWeight.bold,
+                      color: COLOR_GRIS_MEDIO,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
 
-  // Versión alternativa más simple usando barras radiales
-  static List<pw.Widget> _construirBarrasRadiales(double porcentaje, PdfColor color) {
+  static List<pw.Widget> _construirBarrasProgreso(double porcentaje, PdfColor color) {
     List<pw.Widget> barras = [];
     
-    // Crear 8 barras principales (cada 45 grados)
-    int totalBarras = 8;
+    // 12 barras alrededor del círculo
+    int totalBarras = 12;
     int barrasActivas = ((porcentaje / 100) * totalBarras).round();
     
-    List<Map<String, dynamic>> posiciones = [
-      {'left': 48.0, 'top': 10.0}, // 12:00
-      {'left': 70.0, 'top': 20.0}, // 1:30
-      {'left': 80.0, 'top': 48.0}, // 3:00
-      {'left': 70.0, 'top': 70.0}, // 4:30
-      {'left': 48.0, 'top': 80.0}, // 6:00
-      {'left': 20.0, 'top': 70.0}, // 7:30
-      {'left': 10.0, 'top': 48.0}, // 9:00
-      {'left': 20.0, 'top': 20.0}, // 10:30
-    ];
-    
-    for (int i = 0; i < barrasActivas && i < posiciones.length; i++) {
+    for (int i = 0; i < totalBarras; i++) {
+      double angulo = (i / totalBarras) * 2 * 3.14159 - (3.14159 / 2); // Comenzar desde arriba
+      double radio = 50;
+      double x = 60 + radio * cos(angulo);
+      double y = 60 + radio * sin(angulo);
+      
+      bool esActiva = i < barrasActivas;
+      
       barras.add(
         pw.Positioned(
-          left: posiciones[i]['left'],
-          top: posiciones[i]['top'],
-          child: pw.Container(
-            width: 4,
-            height: 12,
-            decoration: pw.BoxDecoration(
-              color: color,
-              borderRadius: pw.BorderRadius.circular(2),
+          left: x - 3,
+          top: y - 6,
+          child: pw.Transform.rotate(
+            angle: angulo + (3.14159 / 2), // Rotar para que apunte al centro
+            child: pw.Container(
+              width: 6,
+              height: 12,
+              decoration: pw.BoxDecoration(
+                color: esActiva ? color : COLOR_GRIS_CLARO,
+                borderRadius: pw.BorderRadius.circular(3),
+              ),
             ),
           ),
         ),
@@ -463,69 +603,22 @@ class PDFService {
     return barras;
   }
 
-  // Colores más contrastantes para mejor visibilidad
-  static PdfColor _obtenerColorCumplimientoSuave(double porcentaje) {
-    if (porcentaje >= 80) return PdfColor.fromHex('#198754'); // Verde más oscuro
-    if (porcentaje >= 60) return PdfColor.fromHex('#fd7e14'); // Naranja
-    return PdfColor.fromHex('#dc3545'); // Rojo
-  }
-
-  // Métodos auxiliares para categorización
-  static String _obtenerCategoriaCumplimiento(double porcentaje) {
-    if (porcentaje >= 95) return 'Excelencia Operacional';
-    if (porcentaje >= 85) return 'Alto Rendimiento';
-    if (porcentaje >= 70) return 'Rendimiento Satisfactorio';
-    if (porcentaje >= 50) return 'Necesita Mejoras';
-    return 'Requiere Atención Inmediata';
-  }
-
-  static pw.IconData _obtenerIconoCumplimiento(double porcentaje) {
-    if (porcentaje >= 90) return pw.IconData(0xe86c); // check_circle
-    if (porcentaje >= 70) return pw.IconData(0xe002); // check
-    if (porcentaje >= 50) return pw.IconData(0xe002); // warning
-    return pw.IconData(0xe001); // error
-  }
-
-  static String _obtenerEstadoTexto(double porcentaje) {
-    if (porcentaje >= 90) return 'ÓPTIMO';
-    if (porcentaje >= 70) return 'BUENO';
-    if (porcentaje >= 50) return 'REGULAR';
-    return 'CRÍTICO';
-  }
-
-  static String _obtenerNivelTexto(double porcentaje) {
-    if (porcentaje >= 95) return 'A+';
-    if (porcentaje >= 85) return 'A';
-    if (porcentaje >= 70) return 'B';
-    if (porcentaje >= 50) return 'C';
-    return 'D';
-  }
-
-  static String _obtenerCalificacionTexto(double porcentaje) {
-    if (porcentaje >= 90) return '★★★★★';
-    if (porcentaje >= 80) return '★★★★☆';
-    if (porcentaje >= 70) return '★★★☆☆';
-    if (porcentaje >= 50) return '★★☆☆☆';
-    return '★☆☆☆☆';
-  }
-
-  static PdfColor _obtenerColorEstado(double porcentaje) {
-    if (porcentaje >= 90) return PdfColors.green700;
-    if (porcentaje >= 70) return PdfColors.blue700;
-    if (porcentaje >= 50) return PdfColors.orange700;
-    return PdfColors.red700;
-  }
-
-  static pw.Widget _construirItemsRelevantes(Map<String, dynamic> data, String checklistType, PdfColor colorTema) {
+  static pw.Widget _construirItemsRelevantes(Map<String, dynamic> data, String checklistType) {
     final List<Map<String, dynamic>> items = _extraerItemsRelevantes(data, checklistType);
     
     if (items.isEmpty) {
       return pw.Container(
         padding: pw.EdgeInsets.all(20),
-        child: pw.Text(
-          'No se encontraron items con observaciones, fotos o respuestas negativas.',
-          style: pw.TextStyle(fontSize: 12, color: PdfColors.grey600),
-          textAlign: pw.TextAlign.center,
+        decoration: pw.BoxDecoration(
+          color: COLOR_GRIS_MUY_CLARO,
+          borderRadius: pw.BorderRadius.circular(8),
+        ),
+        child: pw.Center(
+          child: pw.Text(
+            'No se encontraron items con observaciones, fotos o respuestas negativas.',
+            style: pw.TextStyle(fontSize: 12, color: COLOR_GRIS_MEDIO),
+            textAlign: pw.TextAlign.center,
+          ),
         ),
       );
     }
@@ -533,22 +626,42 @@ class PDFService {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        pw.Text(
-          'RESULTADOS DEL CHECKLIST',
-          style: pw.TextStyle(
-            fontSize: 14,
-            fontWeight: pw.FontWeight.bold,
-            color: colorTema,
-          ),
+        pw.Row(
+          children: [
+            pw.Text(
+              'RESULTADOS DEL CHECKLIST',
+              style: pw.TextStyle(
+                fontSize: 16,
+                fontWeight: pw.FontWeight.bold,
+                color: COLOR_NEGRO,
+              ),
+            ),
+            pw.SizedBox(width: 10),
+            pw.Container(
+              padding: pw.EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: pw.BoxDecoration(
+                color: COLOR_ROJO_PRINCIPAL,
+                borderRadius: pw.BorderRadius.circular(12),
+              ),
+              child: pw.Text(
+                '${items.length} items',
+                style: pw.TextStyle(
+                  color: PdfColors.white,
+                  fontSize: 10,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
         ),
-        pw.SizedBox(height: 10),
+        pw.SizedBox(height: 12),
         
         // Tabla de items
         pw.Table(
-          border: pw.TableBorder.all(color: PdfColors.grey400),
+          border: pw.TableBorder.all(color: COLOR_GRIS_CLARO),
           columnWidths: {
             0: pw.FixedColumnWidth(50),
-            1: pw.FixedColumnWidth(60),
+            1: pw.FixedColumnWidth(70),
             2: pw.FixedColumnWidth(80),
             3: pw.FlexColumnWidth(2),
             4: pw.FixedColumnWidth(60),
@@ -556,7 +669,7 @@ class PDFService {
           children: [
             // Header de la tabla
             pw.TableRow(
-              decoration: pw.BoxDecoration(color: PdfColor.fromHex('#f0f0f0')),
+              decoration: pw.BoxDecoration(color: COLOR_GRIS_MUY_CLARO),
               children: [
                 _construirCeldaHeader('Item'),
                 _construirCeldaHeader('Respuesta'),
@@ -582,6 +695,7 @@ class PDFService {
         style: pw.TextStyle(
           fontWeight: pw.FontWeight.bold,
           fontSize: 10,
+          color: COLOR_NEGRO,
         ),
         textAlign: pw.TextAlign.center,
       ),
@@ -595,7 +709,7 @@ class PDFService {
           padding: pw.EdgeInsets.all(6),
           child: pw.Text(
             item['numero'].toString(),
-            style: pw.TextStyle(fontSize: 9),
+            style: pw.TextStyle(fontSize: 9, color: COLOR_NEGRO),
             textAlign: pw.TextAlign.center,
           ),
         ),
@@ -622,7 +736,7 @@ class PDFService {
           padding: pw.EdgeInsets.all(6),
           child: pw.Text(
             item['valor_numerico']?.toString() ?? '-',
-            style: pw.TextStyle(fontSize: 9),
+            style: pw.TextStyle(fontSize: 9, color: COLOR_NEGRO),
             textAlign: pw.TextAlign.center,
           ),
         ),
@@ -630,7 +744,7 @@ class PDFService {
           padding: pw.EdgeInsets.all(6),
           child: pw.Text(
             item['observaciones'] ?? '-',
-            style: pw.TextStyle(fontSize: 8),
+            style: pw.TextStyle(fontSize: 8, color: COLOR_GRIS_OSCURO),
             maxLines: 3,
             overflow: pw.TextOverflow.clip,
           ),
@@ -642,7 +756,7 @@ class PDFService {
             style: pw.TextStyle(
               fontSize: 8,
               fontWeight: pw.FontWeight.bold,
-              color: item['tiene_foto'] ? PdfColors.green : PdfColors.grey,
+              color: item['tiene_foto'] ? COLOR_RESPUESTA_SI : COLOR_GRIS_MEDIO,
             ),
             textAlign: pw.TextAlign.center,
           ),
@@ -651,7 +765,7 @@ class PDFService {
     );
   }
 
-  static pw.Widget _construirSeccionFotografias(List<Map<String, dynamic>> itemsConFotos, PdfColor colorTema) {
+  static pw.Widget _construirSeccionFotografias(List<Map<String, dynamic>> itemsConFotos) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
@@ -660,52 +774,76 @@ class PDFService {
           style: pw.TextStyle(
             fontSize: 16,
             fontWeight: pw.FontWeight.bold,
-            color: colorTema,
+            color: COLOR_NEGRO,
           ),
+        ),
+        pw.SizedBox(height: 4),
+        pw.Container(
+          height: 3,
+          width: 80,
+          color: COLOR_ROJO_PRINCIPAL,
         ),
         pw.SizedBox(height: 15),
         
-        ...itemsConFotos.map((item) => _construirSeccionFoto(item, colorTema)).toList(),
+        ...itemsConFotos.map((item) => _construirSeccionFoto(item)).toList(),
       ],
     );
   }
 
-  static pw.Widget _construirSeccionFoto(Map<String, dynamic> item, PdfColor colorTema) {
+  static pw.Widget _construirSeccionFoto(Map<String, dynamic> item) {
     try {
       final Uint8List imageBytes = base64Decode(item['foto_base64']);
       
       return pw.Container(
         margin: pw.EdgeInsets.only(bottom: 20),
-        padding: pw.EdgeInsets.all(10),
+        padding: pw.EdgeInsets.all(12),
         decoration: pw.BoxDecoration(
-          border: pw.Border.all(color: colorTema, width: 1),
+          border: pw.Border.all(color: COLOR_GRIS_CLARO, width: 1),
           borderRadius: pw.BorderRadius.circular(8),
+          color: PdfColors.white,
         ),
         child: pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
-            pw.Text(
-              'Item ${item['numero']}',
-              style: pw.TextStyle(
-                fontSize: 12,
-                fontWeight: pw.FontWeight.bold,
-                color: colorTema,
-              ),
+            pw.Row(
+              children: [
+                pw.Container(
+                  padding: pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: pw.BoxDecoration(
+                    color: COLOR_NEGRO,
+                    borderRadius: pw.BorderRadius.circular(4),
+                  ),
+                  child: pw.Text(
+                    'Item ${item['numero']}',
+                    style: pw.TextStyle(
+                      fontSize: 12,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColors.white,
+                    ),
+                  ),
+                ),
+              ],
             ),
             if (item['observaciones'] != null && item['observaciones'].isNotEmpty) ...[
-              pw.SizedBox(height: 5),
+              pw.SizedBox(height: 8),
               pw.Text(
                 'Observaciones: ${item['observaciones']}',
-                style: pw.TextStyle(fontSize: 10),
+                style: pw.TextStyle(fontSize: 10, color: COLOR_GRIS_OSCURO),
               ),
             ],
             pw.SizedBox(height: 10),
             pw.Center(
-              child: pw.Image(
-                pw.MemoryImage(imageBytes),
-                width: 300,
-                height: 200,
-                fit: pw.BoxFit.contain,
+              child: pw.Container(
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(color: COLOR_GRIS_CLARO, width: 1),
+                  borderRadius: pw.BorderRadius.circular(4),
+                ),
+                child: pw.Image(
+                  pw.MemoryImage(imageBytes),
+                  width: 300,
+                  height: 200,
+                  fit: pw.BoxFit.contain,
+                ),
               ),
             ),
           ],
@@ -714,24 +852,36 @@ class PDFService {
     } catch (e) {
       return pw.Container(
         margin: pw.EdgeInsets.only(bottom: 20),
-        padding: pw.EdgeInsets.all(10),
+        padding: pw.EdgeInsets.all(12),
         decoration: pw.BoxDecoration(
-          border: pw.Border.all(color: PdfColors.red, width: 1),
+          border: pw.Border.all(color: COLOR_ROJO_PRINCIPAL, width: 1),
           borderRadius: pw.BorderRadius.circular(8),
+          color: COLOR_ROJO_CLARO,
         ),
         child: pw.Column(
           children: [
-            pw.Text(
-              'Item ${item['numero']} - Error al cargar imagen',
-              style: pw.TextStyle(
-                fontSize: 12,
-                fontWeight: pw.FontWeight.bold,
-                color: PdfColors.red,
-              ),
+            pw.Row(
+              children: [
+                pw.Icon(
+                  pw.IconData(0xe002), // warning icon
+                  color: COLOR_ROJO_PRINCIPAL,
+                  size: 16,
+                ),
+                pw.SizedBox(width: 8),
+                pw.Text(
+                  'Item ${item['numero']} - Error al cargar imagen',
+                  style: pw.TextStyle(
+                    fontSize: 12,
+                    fontWeight: pw.FontWeight.bold,
+                    color: COLOR_ROJO_PRINCIPAL,
+                  ),
+                ),
+              ],
             ),
+            pw.SizedBox(height: 4),
             pw.Text(
               'La imagen no pudo ser procesada correctamente.',
-              style: pw.TextStyle(fontSize: 10, color: PdfColors.grey600),
+              style: pw.TextStyle(fontSize: 10, color: COLOR_GRIS_OSCURO),
             ),
           ],
         ),
@@ -823,62 +973,77 @@ class PDFService {
     }
   }
 
-  static PdfColor _obtenerColorTema(String checklistType) {
-    switch (checklistType.toLowerCase()) {
-      case 'fertirriego':
-        return PdfColors.blue700;
-      case 'bodega':
-        return PdfColors.orange700;
-      case 'aplicaciones':
-        return PdfColors.green700;
-      case 'cosecha':
-      case 'cosechas':
-        return PdfColors.purple700;
-      default:
-        return PdfColors.red700;
-    }
-  }
+  // ==================== MÉTODOS DE COLORES ====================
 
+  /// Obtiene el color del cumplimiento basado en el porcentaje
   static PdfColor _obtenerColorCumplimiento(double porcentaje) {
-    if (porcentaje >= 80) return PdfColors.green;
-    if (porcentaje >= 60) return PdfColors.orange;
-    return PdfColors.red;
+    if (porcentaje >= 90) return COLOR_CUMPLIMIENTO_EXCELENTE;
+    if (porcentaje >= 70) return COLOR_CUMPLIMIENTO_BUENO;
+    if (porcentaje >= 50) return COLOR_CUMPLIMIENTO_REGULAR;
+    return COLOR_CUMPLIMIENTO_MALO;
   }
 
-  static String _obtenerDescripcionCumplimiento(double porcentaje) {
-    if (porcentaje >= 90) return 'Excelente cumplimiento';
-    if (porcentaje >= 80) return 'Buen cumplimiento';
-    if (porcentaje >= 60) return 'Cumplimiento regular';
-    if (porcentaje >= 40) return 'Cumplimiento bajo';
-    return 'Cumplimiento deficiente';
-  }
-
+  /// Obtiene el color de la respuesta (SÍ, NO, N/A)
   static PdfColor _obtenerColorRespuesta(String? respuesta) {
-    if (respuesta == null) return PdfColors.grey;
+    if (respuesta == null) return COLOR_GRIS_MEDIO;
     switch (respuesta.toLowerCase()) {
       case 'si':
-        return PdfColors.green;
+      case 'sí':
+        return COLOR_RESPUESTA_SI;
       case 'no':
-        return PdfColors.red;
+        return COLOR_RESPUESTA_NO;
       case 'na':
-        return PdfColors.orange;
+      case 'n/a':
+        return COLOR_RESPUESTA_NA;
       default:
-        return PdfColors.grey;
+        return COLOR_GRIS_MEDIO;
     }
   }
 
+  /// Obtiene el color de fondo de la respuesta
   static PdfColor _obtenerColorFondoRespuesta(String? respuesta) {
-    if (respuesta == null) return PdfColor.fromHex('#f5f5f5');
+    if (respuesta == null) return COLOR_GRIS_MUY_CLARO;
     switch (respuesta.toLowerCase()) {
       case 'si':
-        return PdfColor.fromHex('#e8f5e8'); // Verde claro
+      case 'sí':
+        return COLOR_RESPUESTA_SI_FONDO;
       case 'no':
-        return PdfColor.fromHex('#ffeaea'); // Rojo claro
+        return COLOR_RESPUESTA_NO_FONDO;
       case 'na':
-        return PdfColor.fromHex('#fff3e0'); // Naranja claro
+      case 'n/a':
+        return COLOR_RESPUESTA_NA_FONDO;
       default:
-        return PdfColor.fromHex('#f5f5f5'); // Gris claro
+        return COLOR_GRIS_MUY_CLARO;
     }
+  }
+
+  /// Obtiene la descripción textual del cumplimiento
+  static String _obtenerDescripcionCumplimiento(double porcentaje) {
+    if (porcentaje >= 95) return 'Cumplimiento excepcional - Excelencia operacional';
+    if (porcentaje >= 85) return 'Cumplimiento excelente - Alto rendimiento';
+    if (porcentaje >= 70) return 'Cumplimiento satisfactorio - Buen desempeño';
+    if (porcentaje >= 50) return 'Cumplimiento regular - Requiere atención';
+    if (porcentaje >= 25) return 'Cumplimiento bajo - Necesita mejoras urgentes';
+    return 'Cumplimiento crítico - Atención inmediata requerida';
+  }
+
+  /// Obtiene la categoría del cumplimiento
+  static String _obtenerCategoriaCumplimiento(double porcentaje) {
+    if (porcentaje >= 95) return 'Excelencia Operacional';
+    if (porcentaje >= 85) return 'Alto Rendimiento';
+    if (porcentaje >= 70) return 'Desempeño Satisfactorio';
+    if (porcentaje >= 50) return 'Necesita Mejoras';
+    if (porcentaje >= 25) return 'Requiere Atención';
+    return 'Situación Crítica';
+  }
+
+  /// Obtiene el nivel textual (A+, A, B, C, D)
+  static String _obtenerNivelTexto(double porcentaje) {
+    if (porcentaje >= 95) return 'A+';
+    if (porcentaje >= 85) return 'A';
+    if (porcentaje >= 70) return 'B';
+    if (porcentaje >= 50) return 'C';
+    return 'D';
   }
 
   // ==================== MÉTODOS DE VALIDACIÓN ====================
@@ -904,5 +1069,52 @@ class PDFService {
       'items_con_no': itemsConNo.toString(),
       'porcentaje_cumplimiento': (data['porcentaje_cumplimiento'] ?? 0.0).toStringAsFixed(1),
     };
+  }
+
+  // ==================== MÉTODOS AUXILIARES DE DISEÑO ====================
+
+  /// Crea un separador visual con la línea roja característica
+  static pw.Widget _crearSeparador({double width = 60}) {
+    return pw.Container(
+      height: 3,
+      width: width,
+      color: COLOR_ROJO_PRINCIPAL,
+    );
+  }
+
+  /// Crea un badge o etiqueta con el estilo de la marca
+  static pw.Widget _crearBadge(String texto, {PdfColor? colorFondo, PdfColor? colorTexto}) {
+    return pw.Container(
+      padding: pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: pw.BoxDecoration(
+        color: colorFondo ?? COLOR_NEGRO,
+        borderRadius: pw.BorderRadius.circular(12),
+      ),
+      child: pw.Text(
+        texto,
+        style: pw.TextStyle(
+          color: colorTexto ?? PdfColors.white,
+          fontSize: 10,
+          fontWeight: pw.FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  /// Crea un contenedor con el estilo de tarjeta estándar
+  static pw.Widget _crearTarjeta({
+    required pw.Widget child,
+    pw.EdgeInsets? padding,
+    PdfColor? colorBorde,
+  }) {
+    return pw.Container(
+      padding: padding ?? pw.EdgeInsets.all(16),
+      decoration: pw.BoxDecoration(
+        color: PdfColors.white,
+        border: pw.Border.all(color: colorBorde ?? COLOR_GRIS_CLARO, width: 1),
+        borderRadius: pw.BorderRadius.circular(8),
+      ),
+      child: child,
+    );
   }
 }
