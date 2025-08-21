@@ -8,16 +8,29 @@ class EmailService {
   static const int _smtpPort = 587;
   static const String _senderEmail = 'reportes.kontrollers@tessacorporation.com';
   static const String _password = 'Kontrollers2025\$\$**';
+  static const String _defaultDomain = '@tessacorporation.com';
   
-  /// Envía un correo con el reporte PDF adjunto
+  /// Envía un correo con el reporte PDF adjunto a múltiples destinatarios
   static Future<Map<String, dynamic>> enviarReporteChecklist({
-    required String destinatario,
+    required List<String> destinatarios, // Cambiado a lista
     required String checklistType,
     required int recordId,
     required Uint8List pdfBytes,
     String? observaciones,
+    String? usuarioCreador, // NUEVO: Nombre del usuario que creó el checklist
   }) async {
     try {
+      // Validar y procesar destinatarios
+      List<String> destinatariosProcesados = _procesarDestinatarios(destinatarios);
+      
+      if (destinatariosProcesados.isEmpty) {
+        return {
+          'exito': false,
+          'mensaje': 'No hay destinatarios válidos',
+          'error': 'Lista de destinatarios vacía después del procesamiento',
+        };
+      }
+
       // Configurar servidor SMTP
       final smtpServer = SmtpServer(
         _smtpServer,
@@ -33,16 +46,16 @@ class EmailService {
       final String cuerpoMensaje = _generarCuerpoMensaje(
         checklistType, 
         recordId, 
-        observaciones
+        observaciones,
+        usuarioCreador // Pasar el usuario creador
       );
       
       // Crear mensaje con PDF adjunto usando StreamAttachment
       final message = Message()
         ..from = Address(_senderEmail, 'Sistema Kontrollers - Reportes')
-        ..recipients.add(Address(destinatario))
         ..subject = asunto
         ..text = cuerpoMensaje
-        ..html = _generarCuerpoHTML(checklistType, recordId, observaciones)
+        ..html = _generarCuerpoHTML(checklistType, recordId, observaciones, usuarioCreador)
         ..attachments = [
           StreamAttachment(
             Stream.fromIterable([pdfBytes]),
@@ -51,6 +64,11 @@ class EmailService {
           ),
         ];
 
+      // Agregar destinatarios
+      for (String destinatario in destinatariosProcesados) {
+        message.recipients.add(Address(destinatario));
+      }
+
       // Enviar correo
       final sendReport = await send(message, smtpServer);
       
@@ -58,7 +76,8 @@ class EmailService {
       
       return {
         'exito': true,
-        'mensaje': 'Reporte enviado exitosamente a $destinatario',
+        'mensaje': 'Reporte enviado exitosamente a ${destinatariosProcesados.length} destinatario(s)',
+        'destinatarios': destinatariosProcesados,
         'detalles': sendReport.toString(),
       };
     } catch (e) {
@@ -71,14 +90,25 @@ class EmailService {
     }
   }
 
-  /// Envía un correo simple sin adjuntos
+  /// Envía un correo simple sin adjuntos a múltiples destinatarios
   static Future<Map<String, dynamic>> enviarCorreoSimple({
-    required String destinatario,
+    required List<String> destinatarios, // Cambiado a lista
     required String asunto,
     required String cuerpoMensaje,
     String? cuerpoHTML,
   }) async {
     try {
+      // Validar y procesar destinatarios
+      List<String> destinatariosProcesados = _procesarDestinatarios(destinatarios);
+      
+      if (destinatariosProcesados.isEmpty) {
+        return {
+          'exito': false,
+          'mensaje': 'No hay destinatarios válidos',
+          'error': 'Lista de destinatarios vacía después del procesamiento',
+        };
+      }
+
       final smtpServer = SmtpServer(
         _smtpServer,
         port: _smtpPort,
@@ -90,9 +120,13 @@ class EmailService {
 
       final message = Message()
         ..from = Address(_senderEmail, 'Sistema Kontrollers')
-        ..recipients.add(Address(destinatario))
         ..subject = asunto
         ..text = cuerpoMensaje;
+
+      // Agregar destinatarios
+      for (String destinatario in destinatariosProcesados) {
+        message.recipients.add(Address(destinatario));
+      }
 
       if (cuerpoHTML != null) {
         message.html = cuerpoHTML;
@@ -102,7 +136,8 @@ class EmailService {
       
       return {
         'exito': true,
-        'mensaje': 'Correo enviado exitosamente',
+        'mensaje': 'Correo enviado exitosamente a ${destinatariosProcesados.length} destinatario(s)',
+        'destinatarios': destinatariosProcesados,
         'detalles': sendReport.toString(),
       };
     } catch (e) {
@@ -116,35 +151,94 @@ class EmailService {
 
   // ==================== MÉTODOS PRIVADOS ====================
 
+  /// Procesa lista de destinatarios agregando dominio automáticamente
+  static List<String> _procesarDestinatarios(List<String> destinatarios) {
+    List<String> destinatariosProcesados = [];
+    
+    for (String destinatario in destinatarios) {
+      String emailProcesado = procesarEmail(destinatario.trim());
+      if (emailProcesado.isNotEmpty && validarEmail(emailProcesado)) {
+        destinatariosProcesados.add(emailProcesado);
+      }
+    }
+    
+    return destinatariosProcesados;
+  }
+
+  /// Procesa un email individual agregando el dominio si es necesario
+  static String procesarEmail(String email) {
+    if (email.trim().isEmpty) return '';
+    
+    String emailLimpio = email.trim().toLowerCase();
+    
+    // Si ya contiene @, validar que sea del dominio correcto o completo
+    if (emailLimpio.contains('@')) {
+      // Si termina con @ solamente, agregar el dominio
+      if (emailLimpio.endsWith('@')) {
+        return emailLimpio + 'tessacorporation.com';
+      }
+      // Si ya tiene un dominio completo, devolver tal como está
+      return emailLimpio;
+    } else {
+      // Si no contiene @, es solo el usuario, agregar dominio completo
+      return emailLimpio + _defaultDomain;
+    }
+  }
+
+  /// Obtener sugerencias de autocompletado para un texto dado
+  static List<String> obtenerSugerenciasAutocompletado(String texto) {
+    String textoLimpio = texto.trim().toLowerCase();
+    
+    if (textoLimpio.isEmpty) return [];
+    
+    // Si ya contiene @ y el dominio completo, no sugerir nada
+    if (textoLimpio.contains('@tessacorporation.com')) {
+      return [];
+    }
+    
+    // Si contiene @ pero no el dominio completo
+    if (textoLimpio.contains('@')) {
+      if (textoLimpio.endsWith('@')) {
+        return ['${textoLimpio}tessacorporation.com'];
+      }
+      // Si tiene un dominio parcial que coincide con tessacorporation.com
+      String dominioParcial = textoLimpio.split('@')[1];
+      String dominioCompleto = 'tessacorporation.com';
+      
+      if (dominioCompleto.startsWith(dominioParcial)) {
+        String usuario = textoLimpio.split('@')[0];
+        return ['$usuario@$dominioCompleto'];
+      }
+      return [];
+    }
+    
+    // Si no contiene @, sugerir el autocompletado completo
+    return ['$textoLimpio$_defaultDomain'];
+  }
+
   static String _generarAsunto(String checklistType, int recordId) {
     final String tipoChecklist = _obtenerNombreChecklist(checklistType);
     final String fecha = DateTime.now().toString().substring(0, 10);
     
-    return 'Reporte de $tipoChecklist - ID: $recordId - $fecha';
+    return 'Reporte de $tipoChecklist - $fecha';
   }
 
-  static String _generarCuerpoMensaje(String checklistType, int recordId, String? observaciones) {
+  static String _generarCuerpoMensaje(String checklistType, int recordId, String? observaciones, String? usuarioCreador) {
     final String tipoChecklist = _obtenerNombreChecklist(checklistType);
     final String fecha = DateTime.now().toString().substring(0, 19);
+    
+    // AQUÍ ESTÁ EL CAMBIO: Usar el usuario que creó el checklist, no el que envía el correo
+    final String kontrollerQueHizoReporte = usuarioCreador ?? 'Usuario no especificado';
     
     String mensaje = '''
 Estimado/a usuario/a,
 
-Se adjunta el reporte detallado del checklist de $tipoChecklist correspondiente al registro ID: $recordId.
+Se adjunta el reporte detallado del checklist de $tipoChecklist correspondiente al Kontroller: $kontrollerQueHizoReporte.
 
 INFORMACIÓN DEL REPORTE:
-- Tipo de Checklist: $tipoChecklist
-- ID del Registro: $recordId
+- Checklist: $tipoChecklist
 - Fecha de Generación: $fecha
-- Generado por: Sistema Kontrollers
-
-El archivo PDF adjunto contiene:
-✓ Información general del checklist
-✓ Detalles de todos los items completados
-✓ Valores numéricos registrados
-✓ Observaciones de campo
-✓ Fotografías adjuntas (si las hay)
-✓ Porcentaje de cumplimiento
+- Generado por: $kontrollerQueHizoReporte
 ''';
 
     if (observaciones != null && observaciones.isNotEmpty) {
@@ -164,12 +258,15 @@ Tessa Corporation
     return mensaje;
   }
 
-  static String _generarCuerpoHTML(String checklistType, int recordId, String? observaciones) {
+  static String _generarCuerpoHTML(String checklistType, int recordId, String? observaciones, String? usuarioCreador) {
     final String tipoChecklist = _obtenerNombreChecklist(checklistType);
     final String fecha = DateTime.now().toString().substring(0, 19);
     final String colorTema = _obtenerColorTema(checklistType);
+    
+    // AQUÍ ESTÁ EL CAMBIO: Usar el usuario que creó el checklist
+    final String kontrollerQueHizoReporte = usuarioCreador ?? 'Usuario no especificado';
 
-    return '''
+    String htmlContent = '''
 <!DOCTYPE html>
 <html>
 <head>
@@ -189,7 +286,6 @@ Tessa Corporation
 </head>
 <body>
     <div class="header">
-        <div class="logo">📊 Sistema Kontrollers</div>
         <div>Reporte de Checklist - $tipoChecklist</div>
     </div>
 
@@ -198,23 +294,10 @@ Tessa Corporation
         
         <div class="info-box">
             <strong>Detalles del Registro:</strong><br>
-            • <span class="highlight">Tipo de Checklist:</span> $tipoChecklist<br>
-            • <span class="highlight">ID del Registro:</span> $recordId<br>
+            • <span class="highlight">Checklist:</span> $tipoChecklist<br>
             • <span class="highlight">Fecha de Generación:</span> $fecha<br>
-            • <span class="highlight">Generado por:</span> Sistema Kontrollers
+            • <span class="highlight">Generado por:</span> $kontrollerQueHizoReporte
         </div>
-
-        <h3>📄 Contenido del Reporte PDF</h3>
-        <p>El archivo adjunto incluye la siguiente información detallada:</p>
-        
-        <ul>
-            <li>✅ <strong>Información general</strong> del checklist</li>
-            <li>📝 <strong>Detalles completos</strong> de todos los items</li>
-            <li>🔢 <strong>Valores numéricos</strong> registrados</li>
-            <li>💬 <strong>Observaciones</strong> de campo</li>
-            <li>📸 <strong>Fotografías adjuntas</strong> (si las hay)</li>
-            <li>📊 <strong>Porcentaje de cumplimiento</strong> general</li>
-        </ul>
 
         <div class="attachment-note">
             <strong>📎 Archivo Adjunto:</strong> ${_generarNombrePDF(checklistType, recordId)}
@@ -222,7 +305,7 @@ Tessa Corporation
 ''';
 
     if (observaciones != null && observaciones.isNotEmpty) {
-      return '''$_generarCuerpoHTML
+      htmlContent += '''
         <div class="info-box">
             <strong>💭 Observaciones Adicionales:</strong><br>
             ${observaciones.replaceAll('\n', '<br>')}
@@ -230,7 +313,7 @@ Tessa Corporation
 ''';
     }
 
-    return '''$_generarCuerpoHTML
+    htmlContent += '''
     </div>
 
     <div class="footer">
@@ -240,6 +323,8 @@ Tessa Corporation
 </body>
 </html>
 ''';
+
+    return htmlContent;
   }
 
   static String _generarNombrePDF(String checklistType, int recordId) {
@@ -284,17 +369,42 @@ Tessa Corporation
     return RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(email);
   }
 
+  /// Validar lista de emails
+  static Map<String, List<String>> validarEmails(List<String> emails) {
+    Map<String, List<String>> resultado = {
+      'validos': [],
+      'invalidos': [],
+    };
+
+    for (String email in emails) {
+      String emailProcesado = procesarEmail(email.trim());
+      if (emailProcesado.isNotEmpty && validarEmail(emailProcesado)) {
+        resultado['validos']!.add(emailProcesado);
+      } else {
+        resultado['invalidos']!.add(email.trim());
+      }
+    }
+
+    return resultado;
+  }
+
   static Map<String, String> validarParametrosEnvio({
-    required String destinatario,
+    required List<String> destinatarios, // Cambiado a lista
     required String checklistType,
     required int recordId,
   }) {
     Map<String, String> errores = {};
 
-    if (destinatario.trim().isEmpty) {
-      errores['destinatario'] = 'El destinatario es obligatorio';
-    } else if (!validarEmail(destinatario)) {
-      errores['destinatario'] = 'Formato de email inválido';
+    if (destinatarios.isEmpty) {
+      errores['destinatarios'] = 'Debe especificar al menos un destinatario';
+    } else {
+      Map<String, List<String>> validacion = validarEmails(destinatarios);
+      if (validacion['validos']!.isEmpty) {
+        errores['destinatarios'] = 'No hay destinatarios válidos en la lista';
+      }
+      if (validacion['invalidos']!.isNotEmpty) {
+        errores['destinatarios_invalidos'] = 'Emails inválidos: ${validacion['invalidos']!.join(', ')}';
+      }
     }
 
     if (checklistType.trim().isEmpty) {
@@ -306,5 +416,34 @@ Tessa Corporation
     }
 
     return errores;
+  }
+
+  // ==================== MÉTODOS DE UTILIDAD PARA AUTOCOMPLETADO ====================
+
+  /// Obtener lista de usuarios comunes del dominio (para autocompletado)
+  static List<String> obtenerUsuariosComunes() {
+    return [
+      'admin',
+      'supervisor',
+      'reportes',
+      'gerencia',
+      'sistemas',
+      'operaciones',
+      'calidad',
+      'rrhh',
+      'contabilidad',
+      'ventas',
+    ];
+  }
+
+  /// Filtrar usuarios comunes basado en texto de entrada
+  static List<String> filtrarUsuariosComunes(String texto) {
+    if (texto.trim().isEmpty) return obtenerUsuariosComunes().map((u) => u + _defaultDomain).toList();
+    
+    String textoBusqueda = texto.trim().toLowerCase();
+    return obtenerUsuariosComunes()
+        .where((usuario) => usuario.toLowerCase().contains(textoBusqueda))
+        .map((usuario) => usuario + _defaultDomain)
+        .toList();
   }
 }

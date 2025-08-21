@@ -7,6 +7,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
 import '../services/pdf_service.dart';
 import '../services/email_service.dart';
+import '../widget/multi_email_field.dart'; // Importar el nuevo widget
 
 class ShareDialog extends StatefulWidget {
   final Map<String, dynamic> recordData;
@@ -23,16 +24,15 @@ class ShareDialog extends StatefulWidget {
 
 class _ShareDialogState extends State<ShareDialog> {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
   final _observacionesController = TextEditingController();
   
   bool _isGeneratingPDF = false;
   bool _isSendingEmail = false;
   Uint8List? _pdfBytes;
+  List<String> _destinatarios = []; // Lista de destinatarios
 
   @override
   void dispose() {
-    _emailController.dispose();
     _observacionesController.dispose();
     super.dispose();
   }
@@ -46,7 +46,7 @@ class _ShareDialogState extends State<ShareDialog> {
       child: Container(
         constraints: BoxConstraints(
           maxWidth: 500,
-          maxHeight: MediaQuery.of(context).size.height * 0.8,
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -316,12 +316,26 @@ class _ShareDialogState extends State<ShareDialog> {
                 child: Icon(Icons.email, color: Colors.orange, size: 20),
               ),
               SizedBox(width: 12),
-              Text(
-                'Enviar por Correo Electrónico',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.orange[700],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Enviar por Correo Electrónico',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.orange[700],
+                      ),
+                    ),
+                    Text(
+                      'Puedes agregar múltiples destinatarios',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.orange[600],
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -329,29 +343,26 @@ class _ShareDialogState extends State<ShareDialog> {
           
           SizedBox(height: 16),
           
-          // Campo de email
-          TextFormField(
-            controller: _emailController,
-            decoration: InputDecoration(
-              labelText: 'Destinatario *',
-              hintText: 'ejemplo@correo.com',
-              border: OutlineInputBorder(),
-              prefixIcon: Icon(Icons.email_outlined),
-              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            ),
-            keyboardType: TextInputType.emailAddress,
-            validator: (value) {
-              if (value == null || value.trim().isEmpty) {
-                return 'Ingrese el destinatario';
-              }
-              if (!EmailService.validarEmail(value.trim())) {
-                return 'Formato de email inválido';
+          // Campo de emails múltiples con autocompletado
+          MultiEmailField(
+            labelText: 'Destinatarios *',
+            hintText: 'ej: hernan.iturralde',
+            initialEmails: _destinatarios,
+            onEmailsChanged: (emails) {
+              setState(() {
+                _destinatarios = emails;
+              });
+            },
+            validator: (emails) {
+              if (emails.isEmpty) {
+                return 'Debe agregar al menos un destinatario';
               }
               return null;
             },
+            maxEmails: 10,
           ),
           
-          SizedBox(height: 12),
+          SizedBox(height: 16),
           
           // Campo de observaciones adicionales
           TextFormField(
@@ -359,7 +370,9 @@ class _ShareDialogState extends State<ShareDialog> {
             decoration: InputDecoration(
               labelText: 'Observaciones adicionales (opcional)',
               hintText: 'Comentarios o notas para incluir en el correo...',
-              border: OutlineInputBorder(),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
               prefixIcon: Icon(Icons.note_outlined),
               contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               alignLabelWithHint: true,
@@ -374,7 +387,9 @@ class _ShareDialogState extends State<ShareDialog> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: (_isSendingEmail || _isGeneratingPDF) ? null : _sendByEmail,
+              onPressed: (_isSendingEmail || _isGeneratingPDF || _destinatarios.isEmpty) 
+                  ? null 
+                  : _sendByEmail,
               icon: _isSendingEmail
                   ? SizedBox(
                       width: 16,
@@ -385,7 +400,11 @@ class _ShareDialogState extends State<ShareDialog> {
                       ),
                     )
                   : Icon(Icons.send),
-              label: Text(_isSendingEmail ? 'Enviando...' : 'Enviar por Correo'),
+              label: Text(_isSendingEmail 
+                  ? 'Enviando...' 
+                  : _destinatarios.isEmpty
+                      ? 'Agrega destinatarios'
+                      : 'Enviar a ${_destinatarios.length} destinatario${_destinatarios.length > 1 ? 's' : ''}'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.orange,
                 foregroundColor: Colors.white,
@@ -393,6 +412,35 @@ class _ShareDialogState extends State<ShareDialog> {
               ),
             ),
           ),
+
+          // Información sobre el envío múltiple
+          if (_destinatarios.length > 1)
+            Padding(
+              padding: EdgeInsets.only(top: 12),
+              child: Container(
+                padding: EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue[200]!),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, size: 16, color: Colors.blue[600]),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Se enviará el mismo reporte a todos los destinatarios en un solo correo.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.blue[700],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -434,8 +482,10 @@ class _ShareDialogState extends State<ShareDialog> {
     }
   }
 
-  Future<void> _sendByEmail() async {
-    if (!_formKey.currentState!.validate()) {
+   Future<void> _sendByEmail() async {
+    // Validar que haya destinatarios
+    if (_destinatarios.isEmpty) {
+      _showErrorMessage('Debe agregar al menos un destinatario');
       return;
     }
 
@@ -452,19 +502,26 @@ class _ShareDialogState extends State<ShareDialog> {
         );
       }
 
-      // Enviar por correo
+      // ✅ CAMBIO AQUÍ: Obtener el nombre del usuario que creó el checklist
+      String? usuarioQueCreoElChecklist = widget.recordData['usuario_nombre'];
+
+      // Enviar por correo a múltiples destinatarios
       final result = await EmailService.enviarReporteChecklist(
-        destinatario: _emailController.text.trim(),
+        destinatarios: _destinatarios,
         checklistType: widget.checklistType,
         recordId: widget.recordData['id'],
         pdfBytes: _pdfBytes!,
         observaciones: _observacionesController.text.trim().isNotEmpty 
             ? _observacionesController.text.trim() 
             : null,
+        usuarioCreador: usuarioQueCreoElChecklist, // ✅ Pasar el usuario que creó el checklist
       );
 
       if (result['exito']) {
-        _showSuccessMessage('Correo enviado exitosamente a ${_emailController.text.trim()}');
+        List<String> destinatariosEnviados = result['destinatarios'] ?? _destinatarios;
+        _showSuccessMessage(
+          'Correo enviado exitosamente a ${destinatariosEnviados.length} destinatario${destinatariosEnviados.length > 1 ? 's' : ''}'
+        );
         Navigator.of(context).pop();
       } else {
         _showErrorMessage('Error al enviar correo: ${result['mensaje']}');
@@ -486,128 +543,104 @@ class _ShareDialogState extends State<ShareDialog> {
   }
 
   Future<Map<String, dynamic>> _saveFile(Uint8List pdfBytes) async {
-  try {
-    // 1. Solicitar permisos
-    bool hasPermission = await _requestPermissions();
-    if (!hasPermission) {
+    try {
+      bool hasPermission = await _requestPermissions();
+      if (!hasPermission) {
+        return {
+          'success': false,
+          'error': 'Permisos de almacenamiento denegados',
+          'action': 'permissions'
+        };
+      }
+
+      Directory? downloadDir;
+      
+      if (Platform.isAndroid) {
+        downloadDir = Directory('/storage/emulated/0/Download');
+        
+        if (!await downloadDir.exists()) {
+          downloadDir = Directory('/sdcard/Download');
+        }
+        
+        if (!await downloadDir.exists()) {
+          final externalDir = await getExternalStorageDirectory();
+          if (externalDir != null) {
+            String publicDownload = externalDir.path
+                .replaceAll('/Android/data/${await _getPackageName()}/files', '/Download');
+            downloadDir = Directory(publicDownload);
+          }
+        }
+        
+        if (!await downloadDir.exists()) {
+          final externalDir = await getExternalStorageDirectory();
+          downloadDir = Directory('${externalDir!.path}/Downloads');
+          await downloadDir.create(recursive: true);
+        }
+        
+      } else {
+        downloadDir = await getApplicationDocumentsDirectory();
+      }
+
+      if (downloadDir == null || !await downloadDir.exists()) {
+        throw Exception('No se pudo acceder al directorio de descargas');
+      }
+
+      final String fileName = _generateFileName();
+      final File file = File('${downloadDir.path}/$fileName');
+      
+      await file.writeAsBytes(pdfBytes);
+      
+      if (await file.exists()) {
+        final int fileSize = await file.length();
+        
+        return {
+          'success': true,
+          'path': file.path,
+          'fileName': fileName,
+          'directory': downloadDir.path,
+          'size': fileSize,
+        };
+      } else {
+        throw Exception('El archivo no se pudo crear');
+      }
+
+    } catch (e) {
       return {
         'success': false,
-        'error': 'Permisos de almacenamiento denegados',
-        'action': 'permissions'
+        'error': e.toString(),
       };
     }
-
-    Directory? downloadDir;
-    
-    if (Platform.isAndroid) {
-      // ANDROID: Intentar acceso a carpeta Descargas pública
-      
-      // Opción 1: Carpeta Descargas estándar de Android
-      downloadDir = Directory('/storage/emulated/0/Download');
-      
-      if (!await downloadDir.exists()) {
-        // Opción 2: Carpeta alternativa
-        downloadDir = Directory('/sdcard/Download');
-      }
-      
-      if (!await downloadDir.exists()) {
-        // Opción 3: Usar External Storage + Download
-        final externalDir = await getExternalStorageDirectory();
-        if (externalDir != null) {
-          // Navegar hacia la carpeta pública
-          String publicDownload = externalDir.path
-              .replaceAll('/Android/data/${await _getPackageName()}/files', '/Download');
-          downloadDir = Directory(publicDownload);
-        }
-      }
-      
-      if (!await downloadDir.exists()) {
-        // Opción 4: Crear carpeta en External Storage
-        final externalDir = await getExternalStorageDirectory();
-        downloadDir = Directory('${externalDir!.path}/Downloads');
-        await downloadDir.create(recursive: true);
-      }
-      
-    } else {
-      // iOS: Usar directorio de documentos
-      downloadDir = await getApplicationDocumentsDirectory();
-    }
-
-    if (downloadDir == null || !await downloadDir.exists()) {
-      throw Exception('No se pudo acceder al directorio de descargas');
-    }
-
-    // 2. Crear archivo
-    final String fileName = _generateFileName();
-    final File file = File('${downloadDir.path}/$fileName');
-    
-    print('🔍 Intentando guardar en: ${file.path}');
-    
-    // 3. Escribir archivo
-    await file.writeAsBytes(pdfBytes);
-    
-    // 4. Verificar que se guardó
-    if (await file.exists()) {
-      final int fileSize = await file.length();
-      
-      print('✅ Archivo guardado exitosamente:');
-      print('   📁 Ruta: ${file.path}');
-      print('   📏 Tamaño: ${fileSize} bytes');
-      print('   📱 Directorio: ${downloadDir.path}');
-      
-      return {
-        'success': true,
-        'path': file.path,
-        'fileName': fileName,
-        'directory': downloadDir.path,
-        'size': fileSize,
-      };
-    } else {
-      throw Exception('El archivo no se pudo crear');
-    }
-
-  } catch (e) {
-    print('❌ Error al guardar archivo: $e');
-    return {
-      'success': false,
-      'error': e.toString(),
-    };
   }
-}
-Future<bool> _requestPermissions() async {
-  try {
-    if (Platform.isAndroid) {
-      // Solicitar permiso de almacenamiento
-      var status = await Permission.storage.status;
-      
-      if (!status.isGranted) {
-        status = await Permission.storage.request();
-      }
-      
-      // Si sigue denegado, intentar con manageExternalStorage
-      if (!status.isGranted) {
-        var manageStatus = await Permission.manageExternalStorage.status;
-        if (!manageStatus.isGranted) {
-          manageStatus = await Permission.manageExternalStorage.request();
-        }
-        return manageStatus.isGranted;
-      }
-      
-      return status.isGranted;
-    }
-    
-    return true; // iOS
-  } catch (e) {
-    print('Error solicitando permisos: $e');
-    return false;
-  }
-}
 
-// Obtener nombre del paquete
-Future<String> _getPackageName() async {
-  // Para Flutter, usualmente es el applicationId del build.gradle
-  return 'com.tessa.kontrollers_v2'; // Ajusta según tu package name
-}
+  Future<bool> _requestPermissions() async {
+    try {
+      if (Platform.isAndroid) {
+        var status = await Permission.storage.status;
+        
+        if (!status.isGranted) {
+          status = await Permission.storage.request();
+        }
+        
+        if (!status.isGranted) {
+          var manageStatus = await Permission.manageExternalStorage.status;
+          if (!manageStatus.isGranted) {
+            manageStatus = await Permission.manageExternalStorage.request();
+          }
+          return manageStatus.isGranted;
+        }
+        
+        return status.isGranted;
+      }
+      
+      return true; // iOS
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<String> _getPackageName() async {
+    return 'com.tessa.kontrollers_v2';
+  }
 
   String _generateFileName() {
     final String fecha = DateTime.now().toString().substring(0, 10).replaceAll('-', '');
@@ -643,7 +676,13 @@ Future<String> _getPackageName() async {
   void _showSuccessMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message),
+        content: Row(
+          children: [
+            Icon(Icons.check_circle, color: Colors.white, size: 20),
+            SizedBox(width: 8),
+            Expanded(child: Text(message)),
+          ],
+        ),
         backgroundColor: Colors.green,
         duration: Duration(seconds: 4),
         action: SnackBarAction(
@@ -658,7 +697,13 @@ Future<String> _getPackageName() async {
   void _showErrorMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message),
+        content: Row(
+          children: [
+            Icon(Icons.error_outline, color: Colors.white, size: 20),
+            SizedBox(width: 8),
+            Expanded(child: Text(message)),
+          ],
+        ),
         backgroundColor: Colors.red,
         duration: Duration(seconds: 4),
         action: SnackBarAction(
@@ -714,27 +759,4 @@ Future<String> _getPackageName() async {
         return widget.checklistType;
     }
   }
-
-void _showShareDialog() {
-  if (widget.recordData == null) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('No se pueden compartir los datos. Intenta recargar el registro.'),
-        backgroundColor: Colors.red,
-      ),
-    );
-    return;
-  }
-
-  showDialog(
-    context: context,
-    barrierDismissible: false,
-    builder: (BuildContext context) {
-      return ShareDialog(
-        recordData: widget.recordData,
-        checklistType: widget.checklistType,
-      );
-    },
-  );
-}
 }
