@@ -221,7 +221,7 @@ class EmailService {
     final String tipoChecklist = _obtenerNombreChecklist(checklistType);
     final String fecha = DateTime.now().toString().substring(0, 10);
     
-    return 'Reporte de $tipoChecklist - ID: $recordId - $fecha';
+    return 'Reporte de $tipoChecklist - $fecha';
   }
 
   static String _generarCuerpoMensaje(String checklistType, int recordId, String? observaciones, String? usuarioCreador) {

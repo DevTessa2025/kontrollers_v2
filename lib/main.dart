@@ -223,10 +223,10 @@ class _SplashScreenState extends State<SplashScreen> {
                 color: Colors.white,
                 shape: BoxShape.circle,
               ),
-              child: Icon(
-                Icons.agriculture,
-                size: 80,
-                color: Colors.red[700],
+              child: Image.asset( 
+                'assets/images/Tessa_logo.jpg',
+                width: 100,
+                height: 100,
               ),
             ),
             

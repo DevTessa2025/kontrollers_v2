@@ -189,13 +189,13 @@ class _LoginScreenState extends State<LoginScreen> {
                   Container(
                     padding: EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      color: Colors.red[700],
+                      color: const Color.fromARGB(255, 0, 0, 0),
                       shape: BoxShape.circle,
                     ),
-                    child: Icon(
-                      Icons.agriculture,
-                      size: 60,
-                      color: Colors.white,
+                    child: Image.asset( 
+                      'assets/images/Tessa_logo.jpg',
+                      width: 100,
+                      height: 100,
                     ),
                   ),
                   SizedBox(height: 32),

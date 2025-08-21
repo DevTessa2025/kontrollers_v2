@@ -1323,13 +1323,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             Container(
                               padding: EdgeInsets.all(isTablet ? 16 : 12),
                               decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.2),
+                                color: const Color.fromARGB(255, 0, 0, 0),
                                 borderRadius: BorderRadius.circular(16),
                               ),
-                              child: Icon(
-                                Icons.agriculture,
-                                color: Colors.white,
-                                size: isTablet ? 32 : 28,
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.asset(
+                                  'assets/images/Tessa_logo.jpg',
+                                  width: isTablet ? 32 : 28,
+                                  height: isTablet ? 32 : 28,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    // Fallback to the original icon if image fails to load
+                                    return Icon(
+                                      Icons.agriculture,
+                                      color: Colors.white,
+                                      size: isTablet ? 32 : 28,
+                                    );
+                                  },
+                                ),
                               ),
                             ),
                             SizedBox(width: 16),
