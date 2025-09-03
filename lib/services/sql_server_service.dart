@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'package:kontrollers_v2/services/checklist_fertirriego_storage_service.dart';
+import 'package:kontrollers_v2/services/PhysicalDeviceOptimizer.dart';
 import 'package:mssql_connection/mssql_connection.dart';
 
 class SqlServerService {
@@ -11,107 +12,93 @@ class SqlServerService {
   static const String _username = 'sa';
   static const String _password = '\$DataWareHouse\$';
 
-  // Configuración de timeouts
-  static const int _connectionTimeout = 15;  // Reducido de 30 a 15 segundos
-  static const int _maxRetries = 2;          // Reducido de 3 a 2 reintentos
+  // Configuración de timeouts optimizada para dispositivos físicos
+  static const int _connectionTimeout = 30;  // Aumentado para dispositivos físicos
+  static const int _maxRetries = 3;          // Aumentado para mayor robustez
   
   // ==================== CONEXIÓN BÁSICA ====================
   
   static Future<MssqlConnection?> _getConnection() async {
-    try {
-      print('Conectando a SQL Server...');
-      
-      MssqlConnection connection = MssqlConnection.getInstance();
-      
-      bool isConnected = (await connection.connect(
-        ip: _server,
-        port: _port,
-        databaseName: _database,
-        username: _username,
-        password: _password,
-        server: _server,
-        database: _database,
-        timeoutInSeconds: _connectionTimeout,
-      ).timeout(
-        Duration(seconds: _connectionTimeout + 5),
-        onTimeout: () {
-          print('Timeout de conexión después de ${_connectionTimeout + 5} segundos');
-          return false;
-        },
-      ));
-      
-      if (isConnected) {
-        print('Conexión exitosa a SQL Server');
-        return connection;
-      } else {
-        print('No se pudo conectar a SQL Server');
-        return null;
-      }
-    } catch (e) {
-      print('Error conectando a SQL Server: $e');
-      return null;
-    }
+    return await PhysicalDeviceOptimizer.executeOptimizedOperation(
+      () async {
+        print('Conectando a SQL Server...');
+        
+        MssqlConnection connection = MssqlConnection.getInstance();
+        
+        // Usar timeout optimizado según el tipo de dispositivo
+        int timeoutSeconds = PhysicalDeviceOptimizer.getConnectionTimeout().inSeconds;
+        
+        bool isConnected = (await connection.connect(
+          ip: _server,
+          port: _port,
+          databaseName: _database,
+          username: _username,
+          password: _password,
+          server: _server,
+          database: _database,
+          timeoutInSeconds: timeoutSeconds,
+        ));
+        
+        if (isConnected) {
+          print('Conexión exitosa a SQL Server (timeout: ${timeoutSeconds}s)');
+          return connection;
+        } else {
+          print('No se pudo conectar a SQL Server');
+          return null;
+        }
+      },
+      operationName: 'SQL Server Connection',
+    );
   }
 
   // ==================== EJECUCIÓN DE QUERIES ====================
   
   static Future<String> executeQuery(String query, {int maxRetries = 2}) async {
-    for (int attempt = 1; attempt <= maxRetries; attempt++) {
-      MssqlConnection? connection;
-      
-      try {
-        print('Ejecutando query - Intento $attempt/$maxRetries');
-        print('Query: ${query.substring(0, query.length.clamp(0, 100))}...');
+    return await PhysicalDeviceOptimizer.executeOptimizedOperation(
+      () async {
+        MssqlConnection? connection;
         
-        connection = await _getConnection();
-        if (connection == null) {
-          throw Exception('No se pudo conectar a SQL Server');
-        }
+        try {
+          print('Ejecutando query optimizada');
+          print('Query: ${query.substring(0, query.length.clamp(0, 100))}...');
+          
+          connection = await _getConnection();
+          if (connection == null) {
+            throw Exception('No se pudo conectar a SQL Server');
+          }
 
-        // Determinar tipo de consulta y ejecutar
-        String upperCaseQuery = query.trim().toUpperCase();
-        String result;
-        
-        if (upperCaseQuery.startsWith('SELECT')) {
-          result = (await connection.getData(query).timeout(
-            Duration(seconds: 30), // Timeout para SELECT
-            onTimeout: () => throw TimeoutException('SELECT timeout', Duration(seconds: 30)),
-          ));
-        } else {
-          result = (await connection.writeData(query).timeout(
-            Duration(seconds: 20), // Timeout para INSERT/UPDATE/DELETE
-            onTimeout: () => throw TimeoutException('WRITE timeout', Duration(seconds: 20)),
-          ));
-        }
-        
-        print('Query ejecutada exitosamente en intento $attempt');
-        return result;
-        
-      } catch (e) {
-        print('Error en intento $attempt: $e');
-        
-        // Si es el último intento, lanzar la excepción
-        if (attempt == maxRetries) {
-          print('Query falló después de $maxRetries intentos');
-          rethrow;
-        }
-        
-        // Esperar antes del siguiente intento
-        await Future.delayed(Duration(seconds: attempt));
-        
-      } finally {
-        // Siempre cerrar la conexión
-        if (connection != null) {
-          try {
-            await connection.disconnect();
-          } catch (e) {
-            print('Error cerrando conexión: $e');
+          // Determinar tipo de consulta y ejecutar
+          String upperCaseQuery = query.trim().toUpperCase();
+          String result;
+          
+          if (upperCaseQuery.startsWith('SELECT')) {
+            result = (await connection.getData(query).timeout(
+              PhysicalDeviceOptimizer.getConnectionTimeout(),
+              onTimeout: () => throw TimeoutException('SELECT timeout', PhysicalDeviceOptimizer.getConnectionTimeout()),
+            ));
+          } else {
+            result = (await connection.writeData(query).timeout(
+              PhysicalDeviceOptimizer.getConnectionTimeout(),
+              onTimeout: () => throw TimeoutException('WRITE timeout', PhysicalDeviceOptimizer.getConnectionTimeout()),
+            ));
+          }
+          
+          print('Query ejecutada exitosamente');
+          return result;
+          
+        } finally {
+          // Siempre cerrar la conexión
+          if (connection != null) {
+            try {
+              await connection.disconnect();
+            } catch (e) {
+              print('Error cerrando conexión: $e');
+            }
           }
         }
-      }
-    }
-    
-    throw Exception('Error inesperado en executeQuery');
+      },
+      operationName: 'SQL Query Execution',
+    );
   }
 
   // ==================== MÉTODOS ESPECÍFICOS ====================

@@ -83,6 +83,9 @@ class PDFService {
     
     print('🎨 Generando PDF para $tipoChecklist con nueva paleta de colores...');
     
+    // Obtener items con fotos
+    final List<Map<String, dynamic>> itemsConFotos = _obtenerItemsConFotos(recordData, checklistType);
+    
     // Página principal con información general
     pdf.addPage(
       pw.MultiPage(
@@ -95,26 +98,13 @@ class PDFService {
           pw.SizedBox(height: 20),
           _construirResumenCumplimiento(recordData),
           pw.SizedBox(height: 20),
-          _construirItemsRelevantes(recordData, checklistType),
+          // Mostrar items con fotos en lugar de items relevantes
+          if (itemsConFotos.isNotEmpty) ...[
+            _construirSeccionFotografias(itemsConFotos),
+          ],
         ],
       ),
     );
-
-    // Página adicional para fotos si existen
-    final List<Map<String, dynamic>> itemsConFotos = _obtenerItemsConFotos(recordData, checklistType);
-    if (itemsConFotos.isNotEmpty) {
-      pdf.addPage(
-        pw.MultiPage(
-          pageFormat: PdfPageFormat.a4,
-          margin: pw.EdgeInsets.all(20),
-          header: (context) => _construirHeaderFotos(tipoChecklist, bannerImage),
-          footer: (context) => _construirFooter(context),
-          build: (context) => [
-            _construirSeccionFotografias(itemsConFotos),
-          ],
-        ),
-      );
-    }
 
     print('✅ PDF generado exitosamente con nueva paleta de colores');
     return pdf.save();

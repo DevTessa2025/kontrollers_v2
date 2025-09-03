@@ -9,10 +9,10 @@ import 'auth_service.dart';
 
 class RobustConnectionManager {
   static const int MAX_RETRIES = 5;
-  static const Duration BASE_TIMEOUT = Duration(seconds: 10);
-  static const Duration MAX_TIMEOUT = Duration(seconds: 45);
-  static const Duration INITIAL_RETRY_DELAY = Duration(seconds: 2);
-  static const Duration MAX_RETRY_DELAY = Duration(seconds: 15);
+  static const Duration BASE_TIMEOUT = Duration(seconds: 20);  // Aumentado para dispositivos físicos
+  static const Duration MAX_TIMEOUT = Duration(seconds: 90);   // Aumentado para mayor tolerancia
+  static const Duration INITIAL_RETRY_DELAY = Duration(seconds: 3);  // Aumentado delay inicial
+  static const Duration MAX_RETRY_DELAY = Duration(seconds: 20);     // Aumentado delay máximo
   
   static int _consecutiveFailures = 0;
   static DateTime? _lastFailureTime;
@@ -114,7 +114,7 @@ class RobustConnectionManager {
           socket = await Socket.connect(
             '181.198.42.194', 
             5010,
-            timeout: Duration(seconds: 10),
+            timeout: Duration(seconds: 20),  // Aumentado para dispositivos físicos
           );
           print('Puerto 5010 está abierto en el servidor');
           await socket.close();

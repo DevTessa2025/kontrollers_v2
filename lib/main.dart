@@ -4,8 +4,12 @@ import 'services/auth_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/checklist_fertirriego_screen.dart';
+import 'services/PhysicalDeviceOptimizer.dart';
 
-void main() {
+void main() async {
+  // Inicializar el optimizador para dispositivos físicos
+  await PhysicalDeviceOptimizer.initialize();
+  
   runApp(MyApp());
 }
 

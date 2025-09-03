@@ -98,6 +98,26 @@ class DatabaseHelper {
     
     // Crear tabla de metadatos
     await _createMetadataTables(db);
+
+    await db.execute('''
+      CREATE TABLE check_cortes(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fecha TEXT,
+        finca_nombre TEXT,
+        supervisor TEXT,
+        cuadrantes_json TEXT NOT NULL,
+        items_json TEXT NOT NULL,
+        porcentaje_cumplimiento REAL DEFAULT 0,
+        total_evaluaciones INTEGER DEFAULT 0,
+        total_conformes INTEGER DEFAULT 0,
+        total_no_conformes INTEGER DEFAULT 0,
+        fecha_creacion TEXT NOT NULL,
+        fecha_actualizacion TEXT,
+        fecha_envio TEXT,
+        enviado INTEGER DEFAULT 0,
+        activo INTEGER DEFAULT 1
+      )
+    ''');
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -151,6 +171,25 @@ class DatabaseHelper {
           PRIMARY KEY (nombre, finca, bloque)
         )
       ''');
+      await db.execute('''
+        CREATE TABLE check_cortes(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          fecha TEXT,
+          finca_nombre TEXT,
+          supervisor TEXT,
+          cuadrantes_json TEXT NOT NULL,
+          items_json TEXT NOT NULL,
+          porcentaje_cumplimiento REAL DEFAULT 0,
+          total_evaluaciones INTEGER DEFAULT 0,
+          total_conformes INTEGER DEFAULT 0,
+          total_no_conformes INTEGER DEFAULT 0,
+          fecha_creacion TEXT NOT NULL,
+          fecha_actualizacion TEXT,
+          fecha_envio TEXT,
+          enviado INTEGER DEFAULT 0,
+          activo INTEGER DEFAULT 1
+        )
+      ''');
     }
     
     if (oldVersion < 4) {
@@ -163,6 +202,7 @@ class DatabaseHelper {
       await _createPerformanceIndexes(db);
       await _createMetadataTables(db);
     }
+    
   }
 
   // ==================== MÉTODOS EXISTENTES ====================

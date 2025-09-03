@@ -8,12 +8,15 @@ import '../services/auth_service.dart';
 import '../services/dropdown_service.dart';
 import '../services/cosecha_dropdown_service.dart';
 import '../database/database_helper.dart';
+import '../services/NetworkDiagnosticService.dart';
 import 'login_screen.dart';
 import 'checklist_bodega_screen.dart';
 import 'checklist_cosecha_screen.dart';
 import '../services/aplicaciones_dropdown_service.dart';
 import '../services/admin_service.dart';
 import 'admin_screen.dart';
+import 'checklist_cortes_screen.dart';
+import '../services/checklist_cortes_storage_service.dart';
 
 class HomeScreen extends StatefulWidget {
   @override
@@ -35,6 +38,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Map<String, int> _cosechaDbStats = {};
   Map<String, dynamic> _validationInfo = {};
   Map<String, int> _aplicacionesDbStats = {};
+  Map<String, dynamic> _cortesDbStats = {};
+  bool _isSyncingCortes = false;
   
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
@@ -373,6 +378,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     print('=== DIAGNÓSTICO DEL SISTEMA ===');
     
     try {
+      // Ejecutar diagnóstico de red completo
+      await NetworkDiagnosticService.runDiagnosticAndLog();
+      
       DatabaseHelper dbHelper = DatabaseHelper();
       
       // Verificar estadísticas de todas las bases de datos
@@ -430,15 +438,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       // Cargar estadísticas de aplicaciones
       Map<String, int> aplicacionesStats = await dbHelper.getAplicacionesDatabaseStats();
       
+      // Cargar estadísticas de cortes
+      Map<String, dynamic> cortesStats = await ChecklistCortesStorageService.getStatistics();
+      
       if(mounted) {
         setState(() {
           _dbStats = stats;
           _cosechaDbStats = cosechaStats;
           _aplicacionesDbStats = aplicacionesStats;
+          _cortesDbStats = cortesStats;
         });
       }
       
-      print('Estadísticas cargadas - General: $stats, Cosecha: $cosechaStats, Aplicaciones: $aplicacionesStats');
+      print('Estadísticas cargadas - General: $stats, Cosecha: $cosechaStats, Aplicaciones: $aplicacionesStats, Cortes: $cortesStats');
     } catch (e) {
       print('Error cargando estadísticas de base de datos: $e');
     }
@@ -561,6 +573,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           MaterialPageRoute(builder: (context) => ChecklistFertiriegoScreen()),
         );
         break;
+      case 'Cortes del Día':
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => ChecklistCortesScreen()),
+        );
+        break;
       default:
         Fluttertoast.showToast(
           msg: 'Módulo $moduleName - En desarrollo',
@@ -652,7 +670,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           
           SizedBox(height: isTablet ? 32 : 24),
           
-          if (!_hasDataInBodega() && !_hasDataInCosecha() && !_hasDataInAplicaciones())
+          if (!_hasDataInBodega() && !_hasDataInCosecha() && !_hasDataInAplicaciones() && !_hasDataInCortes())
             _buildEmptyState(isTablet)
           else ...[
             // Si hay datos en al menos un módulo, se muestran todos
@@ -704,6 +722,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               isSyncing: _isSyncingAplicaciones,
               onSync: () => _syncAplicacionesData(),
               isEnabled: _hasDataInAplicaciones(),
+            ),
+            
+            SizedBox(height: isTablet ? 24 : 20),
+            
+            _buildModuleSection(
+              title: 'MÓDULO CORTES DEL DÍA',
+              icon: Icons.content_cut_rounded,
+              color: Colors.purple,
+              isTablet: isTablet,
+              items: [
+                _buildDataItem('Total Evaluaciones', _cortesDbStats['totalChecklists'] ?? 0, Icons.checklist_rounded),
+                _buildDataItem('Promedio Cumplimiento', (_cortesDbStats['promedioCumplimiento'] ?? 0.0).round(), Icons.trending_up_rounded),
+                _buildDataItem('Pendientes Sync', _cortesDbStats['pendientes'] ?? 0, Icons.sync_problem_rounded),
+              ],
+              isSyncing: _isSyncingCortes,
+              onSync: () => _syncCortesData(),
+              isEnabled: _hasDataInCortes(),
+              onDiagnose: () => _diagnoseCortesSync(), // Botón de diagnóstico
+              onGenerateTest: () => _generateTestCortesData(), // Botón para generar datos de prueba
             ),
           ],
           
@@ -759,6 +796,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
            (_aplicacionesDbStats['bloques'] ?? 0) > 0 &&
            (_aplicacionesDbStats['bombas'] ?? 0) > 0;
   }
+
+  // Métodos para verificar datos de cortes
+  bool _hasDataInCortes() {
+    int totalCortes = (_cortesDbStats['totalChecklists'] ?? 0);
+    return totalCortes > 0;
+  }
+
+  bool _isCortesModuleActive() {
+    return _hasDataInCortes(); // Cortes solo necesita tener registros
+  }
   // ** FIN DE NUEVAS FUNCIONES **
 
   // Widget para cada sección de módulo (actualizado)
@@ -771,6 +818,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     required bool isSyncing,
     required VoidCallback onSync,
     required bool isEnabled,
+    VoidCallback? onDiagnose, // Botón de diagnóstico opcional
+    VoidCallback? onGenerateTest, // Botón para generar datos de prueba opcional
   }) {
     return AnimatedContainer(
       duration: Duration(milliseconds: 300),
@@ -855,45 +904,117 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ],
                 ),
               ),
-              // Botón de sincronización individual
-              Container(
-                height: isTablet ? 36 : 32,
-                child: ElevatedButton.icon(
-                  onPressed: isSyncing ? null : onSync,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: isEnabled ? color: Colors.grey[400],
-                    foregroundColor: Colors.white,
-                    padding: EdgeInsets.symmetric(
-                      horizontal: isTablet ? 16 : 12,
-                      vertical: isTablet ? 8 : 6,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    elevation: isEnabled ? 2 : 1,
-                  ),
-                  icon: isSyncing 
-                      ? SizedBox(
-                          width: isTablet ? 16 : 14,
-                          height: isTablet ? 16 : 14,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
+                             // Botones de sincronización y diagnóstico
+               Row(
+                 mainAxisSize: MainAxisSize.min,
+                 children: [
+                                       // Botón de diagnóstico (si está disponible)
+                    if (onDiagnose != null) ...[
+                      Container(
+                        height: isTablet ? 36 : 32,
+                        margin: EdgeInsets.only(right: 8),
+                        child: ElevatedButton.icon(
+                          onPressed: onDiagnose,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue[600],
+                            foregroundColor: Colors.white,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: isTablet ? 12 : 8,
+                              vertical: isTablet ? 8 : 6,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            elevation: 2,
                           ),
-                        )
-                      : Icon(
-                          Icons.sync_rounded,
-                          size: isTablet ? 16 : 14,
+                          icon: Icon(
+                            Icons.bug_report_rounded,
+                            size: isTablet ? 16 : 14,
+                          ),
+                          label: Text(
+                            'Diag',
+                            style: TextStyle(
+                              fontSize: isTablet ? 12 : 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ),
-                  label: Text(
-                    'Sync',
-                    style: TextStyle(
-                      fontSize: isTablet ? 12 : 11,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
+                      ),
+                    ],
+                    // Botón para generar datos de prueba (si está disponible)
+                    if (onGenerateTest != null) ...[
+                      Container(
+                        height: isTablet ? 36 : 32,
+                        margin: EdgeInsets.only(right: 8),
+                        child: ElevatedButton.icon(
+                          onPressed: onGenerateTest,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green[600],
+                            foregroundColor: Colors.white,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: isTablet ? 12 : 8,
+                              vertical: isTablet ? 8 : 6,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            elevation: 2,
+                          ),
+                          icon: Icon(
+                            Icons.add_circle_outline_rounded,
+                            size: isTablet ? 16 : 14,
+                          ),
+                          label: Text(
+                            'Test',
+                            style: TextStyle(
+                              fontSize: isTablet ? 12 : 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                   // Botón de sincronización individual
+                   Container(
+                     height: isTablet ? 36 : 32,
+                     child: ElevatedButton.icon(
+                       onPressed: isSyncing ? null : onSync,
+                       style: ElevatedButton.styleFrom(
+                         backgroundColor: isEnabled ? color: Colors.grey[400],
+                         foregroundColor: Colors.white,
+                         padding: EdgeInsets.symmetric(
+                           horizontal: isTablet ? 16 : 12,
+                           vertical: isTablet ? 8 : 6,
+                         ),
+                         shape: RoundedRectangleBorder(
+                           borderRadius: BorderRadius.circular(20),
+                         ),
+                         elevation: isEnabled ? 2 : 1,
+                       ),
+                       icon: isSyncing 
+                           ? SizedBox(
+                               width: isTablet ? 16 : 14,
+                               height: isTablet ? 16 : 14,
+                               child: CircularProgressIndicator(
+                                 strokeWidth: 2,
+                                 color: Colors.white,
+                               ),
+                             )
+                           : Icon(
+                               Icons.sync_rounded,
+                               size: isTablet ? 16 : 14,
+                             ),
+                       label: Text(
+                         'Sync',
+                         style: TextStyle(
+                           fontSize: isTablet ? 12 : 11,
+                           fontWeight: FontWeight.w600,
+                         ),
+                       ),
+                     ),
+                   ),
+                 ],
+               ),
             ],
           ),
           
@@ -1062,7 +1183,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   // Botón de sincronización general mejorado
   Widget _buildGeneralSyncButton(bool isTablet) {
-    bool isAnySyncing = _isSyncing || _isSyncingBodega || _isSyncingCosecha || _isSyncingAplicaciones;
+         bool isAnySyncing = _isSyncing || _isSyncingBodega || _isSyncingCosecha || _isSyncingAplicaciones || _isSyncingCortes;
     
     return Container(
       width: double.infinity,
@@ -1277,6 +1398,137 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       textColor: Colors.white,
       toastLength: Toast.LENGTH_LONG,
     );
+  }
+
+  // Método de sincronización para cortes
+  Future<void> _syncCortesData() async {
+    if (_isSyncingCortes) return;
+
+    setState(() {
+      _isSyncingCortes = true;
+    });
+
+    try {
+      Map<String, dynamic> result = await ChecklistCortesStorageService.syncChecklistsToServer();
+      
+      // Mostrar diagnóstico detallado si hay problemas
+      if (!result['success'] && result['diagnosis'] != null) {
+        Map<String, dynamic> diagnosis = result['diagnosis'];
+        String diagnosisMessage = 'Diagnóstico:\n';
+        diagnosisMessage += '• Tabla existe: ${diagnosis['table_exists']}\n';
+        diagnosisMessage += '• Total registros: ${diagnosis['total_records']}\n';
+        diagnosisMessage += '• Pendientes sync: ${diagnosis['pending_sync']}\n';
+        diagnosisMessage += '• Conectado: ${diagnosis['has_internet']}\n';
+        diagnosisMessage += '• Autenticado: ${diagnosis['is_authenticated']}\n';
+        diagnosisMessage += '• Problemas: ${diagnosis['issues'].join(', ')}';
+        
+        Fluttertoast.showToast(
+          msg: diagnosisMessage,
+          backgroundColor: Colors.orange[600],
+          textColor: Colors.white,
+          toastLength: Toast.LENGTH_LONG,
+        );
+      } else {
+        Fluttertoast.showToast(
+          msg: result['message'] ?? 'Sincronización completada',
+          backgroundColor: result['success'] ? Colors.green[600] : Colors.orange[600],
+          textColor: Colors.white,
+        );
+      }
+
+      if (result['success']) {
+        await _loadDatabaseStats();
+      }
+    } catch (e) {
+      Fluttertoast.showToast(
+        msg: 'Error en sincronización: $e',
+        backgroundColor: Colors.red[600],
+        textColor: Colors.white,
+      );
+    } finally {
+      setState(() {
+        _isSyncingCortes = false;
+      });
+    }
+  }
+
+  // Método para generar datos de prueba de cortes
+  Future<void> _generateTestCortesData() async {
+    try {
+      setState(() {
+        _isSyncingCortes = true;
+      });
+      
+      Map<String, dynamic> result = await ChecklistCortesStorageService.generateTestData();
+      
+      if (result['success']) {
+        Fluttertoast.showToast(
+          msg: result['message'],
+          backgroundColor: Colors.green[600],
+          textColor: Colors.white,
+        );
+        
+        // Recargar estadísticas para actualizar la UI
+        await _loadDatabaseStats();
+      } else {
+        Fluttertoast.showToast(
+          msg: 'Error generando datos: ${result['message']}',
+          backgroundColor: Colors.red[600],
+          textColor: Colors.white,
+        );
+      }
+    } catch (e) {
+      Fluttertoast.showToast(
+        msg: 'Error: $e',
+        backgroundColor: Colors.red[600],
+        textColor: Colors.white,
+      );
+    } finally {
+      setState(() {
+        _isSyncingCortes = false;
+      });
+    }
+  }
+
+  // Método de diagnóstico para cortes
+  Future<void> _diagnoseCortesSync() async {
+    try {
+      Map<String, dynamic> diagnosis = await ChecklistCortesStorageService.diagnoseSyncIssues();
+      
+      String message = 'Diagnóstico de Cortes:\n';
+      message += '• Tabla existe: ${diagnosis['table_exists']}\n';
+      message += '• Total registros: ${diagnosis['total_records']}\n';
+      message += '• Pendientes sync: ${diagnosis['pending_sync']}\n';
+      message += '• Conectado: ${diagnosis['has_internet']}\n';
+      message += '• Autenticado: ${diagnosis['is_authenticated']}\n';
+      message += '• Puede sincronizar: ${diagnosis['can_sync']}\n';
+      
+      if (diagnosis['issues'] != null && (diagnosis['issues'] as List).isNotEmpty) {
+        message += '• Problemas: ${diagnosis['issues'].join(', ')}';
+      }
+      
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('Diagnóstico de Sincronización'),
+          content: SingleChildScrollView(
+            child: Text(message),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text('Cerrar'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      Fluttertoast.showToast(
+        msg: 'Error en diagnóstico: $e',
+        backgroundColor: Colors.red[600],
+        textColor: Colors.white,
+      );
+    }
   }
 
   @override
@@ -1672,6 +1924,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         'color': Colors.red[500]!,
         'description': 'Sistema de\nriego',
         'active': true,
+        'isComingSoon': false,
+      },
+      {
+        'title': 'Cortes del Día',
+        'icon': Icons.content_cut,
+        'color': Colors.purple[600]!,
+        'description': 'Control de\ncortes',
+        'active': _isCortesModuleActive(),
         'isComingSoon': false,
       },
     ];
