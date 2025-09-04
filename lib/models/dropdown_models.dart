@@ -254,3 +254,50 @@ class Bomba {
   @override
   int get hashCode => nombre.hashCode;
 }
+
+class Usuario {
+  final int id;
+  final String username;
+  final String nombre;
+  final String? email;
+  final bool activo;
+
+  Usuario({
+    required this.id,
+    required this.username,
+    required this.nombre,
+    this.email,
+    this.activo = true,
+  });
+
+  factory Usuario.fromJson(Map<String, dynamic> json) {
+    return Usuario(
+      id: json['id'],
+      username: json['username'],
+      nombre: json['nombre'],
+      email: json['email'],
+      activo: json['activo'] == 1 || json['activo'] == true,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'username': username,
+      'nombre': nombre,
+      'email': email,
+      'activo': activo,
+    };
+  }
+
+  @override
+  String toString() => nombre;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Usuario && runtimeType == other.runtimeType && id == other.id;
+
+  @override
+  int get hashCode => id.hashCode;
+}

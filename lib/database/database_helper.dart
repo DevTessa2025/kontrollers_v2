@@ -118,6 +118,28 @@ class DatabaseHelper {
         activo INTEGER DEFAULT 1
       )
     ''');
+    await db.execute('''
+      CREATE TABLE check_labores_permanentes(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fecha TEXT,
+        finca_nombre TEXT,
+        up TEXT,
+        semana TEXT,
+        kontroller TEXT,
+        cuadrantes_json TEXT NOT NULL,
+        items_json TEXT NOT NULL,
+        porcentaje_cumplimiento REAL DEFAULT 0,
+        total_evaluaciones INTEGER DEFAULT 0,
+        total_conformes INTEGER DEFAULT 0,
+        total_no_conformes INTEGER DEFAULT 0,
+        observaciones_generales TEXT,
+        fecha_creacion TEXT NOT NULL,
+        fecha_actualizacion TEXT,
+        fecha_envio TEXT,
+        enviado INTEGER DEFAULT 0,
+        activo INTEGER DEFAULT 1
+      )
+    ''');
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -183,6 +205,28 @@ class DatabaseHelper {
           total_evaluaciones INTEGER DEFAULT 0,
           total_conformes INTEGER DEFAULT 0,
           total_no_conformes INTEGER DEFAULT 0,
+          fecha_creacion TEXT NOT NULL,
+          fecha_actualizacion TEXT,
+          fecha_envio TEXT,
+          enviado INTEGER DEFAULT 0,
+          activo INTEGER DEFAULT 1
+        )
+      ''');
+      await db.execute('''
+        CREATE TABLE check_labores_permanentes(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          fecha TEXT,
+          finca_nombre TEXT,
+          up TEXT,
+          semana TEXT,
+          kontroller TEXT,
+          cuadrantes_json TEXT NOT NULL,
+          items_json TEXT NOT NULL,
+          porcentaje_cumplimiento REAL DEFAULT 0,
+          total_evaluaciones INTEGER DEFAULT 0,
+          total_conformes INTEGER DEFAULT 0,
+          total_no_conformes INTEGER DEFAULT 0,
+          observaciones_generales TEXT,
           fecha_creacion TEXT NOT NULL,
           fecha_actualizacion TEXT,
           fecha_envio TEXT,

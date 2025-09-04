@@ -17,6 +17,8 @@ import '../services/admin_service.dart';
 import 'admin_screen.dart';
 import 'checklist_cortes_screen.dart';
 import '../services/checklist_cortes_storage_service.dart';
+import 'checklist_labores_permanentes_screen.dart';
+import '../services/checklist_labores_permanentes_storage_service.dart';
 
 class HomeScreen extends StatefulWidget {
   @override
@@ -40,6 +42,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Map<String, int> _aplicacionesDbStats = {};
   Map<String, dynamic> _cortesDbStats = {};
   bool _isSyncingCortes = false;
+  Map<String, dynamic> _laboresPermanentesDbStats = {};
+  bool _isSyncingLaboresPermanentes = false;
+  bool _isSyncingUsuarios = false;
   
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
@@ -441,16 +446,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       // Cargar estadísticas de cortes
       Map<String, dynamic> cortesStats = await ChecklistCortesStorageService.getStatistics();
       
+      // Cargar estadísticas de labores permanentes
+      Map<String, dynamic> laboresPermanentesStats = await ChecklistLaboresPermanentesStorageService.getStatistics();
+      
       if(mounted) {
         setState(() {
           _dbStats = stats;
           _cosechaDbStats = cosechaStats;
           _aplicacionesDbStats = aplicacionesStats;
           _cortesDbStats = cortesStats;
+          _laboresPermanentesDbStats = laboresPermanentesStats;
         });
       }
       
-      print('Estadísticas cargadas - General: $stats, Cosecha: $cosechaStats, Aplicaciones: $aplicacionesStats, Cortes: $cortesStats');
+      print('Estadísticas cargadas - General: $stats, Cosecha: $cosechaStats, Aplicaciones: $aplicacionesStats, Cortes: $cortesStats, Labores Permanentes: $laboresPermanentesStats');
     } catch (e) {
       print('Error cargando estadísticas de base de datos: $e');
     }
@@ -577,6 +586,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         Navigator.push(
           context,
           MaterialPageRoute(builder: (context) => ChecklistCortesScreen()),
+        );
+        break;
+      case 'Labores Permanentes':
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => ChecklistLaboresPermanentesScreen()),
         );
         break;
       default:
@@ -742,6 +757,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               onDiagnose: () => _diagnoseCortesSync(), // Botón de diagnóstico
               onGenerateTest: () => _generateTestCortesData(), // Botón para generar datos de prueba
             ),
+            
+            SizedBox(height: isTablet ? 24 : 20),
+            
+            _buildModuleSection(
+              title: 'MÓDULO LABORES PERMANENTES',
+              icon: Icons.agriculture_rounded,
+              color: Colors.deepPurple,
+              isTablet: isTablet,
+              items: [
+                _buildDataItem('Total Evaluaciones', _laboresPermanentesDbStats['totalChecklists'] ?? 0, Icons.checklist_rounded),
+                _buildDataItem('Promedio Cumplimiento', (_laboresPermanentesDbStats['promedioCumplimiento'] ?? 0.0).round(), Icons.trending_up_rounded),
+                _buildDataItem('Kontrollers Activos', _laboresPermanentesDbStats['kontrollersActivos'] ?? 0, Icons.person_outline_rounded),
+                _buildDataItem('Pendientes Sync', _laboresPermanentesDbStats['pendientes'] ?? 0, Icons.sync_problem_rounded),
+              ],
+              isSyncing: _isSyncingLaboresPermanentes,
+              onSync: () => _syncLaboresPermanentesData(),
+              isEnabled: _hasDataInLaboresPermanentes(),
+            ),
           ],
           
           SizedBox(height: isTablet ? 32 : 24),
@@ -804,7 +837,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   bool _isCortesModuleActive() {
-    return _hasDataInCortes(); // Cortes solo necesita tener registros
+    // Cortes está activo si tiene datos O si tiene las fincas y variedades base sincronizadas
+    return _hasDataInCortes() || _isCosechaModuleActive();
+  }
+
+  // Métodos para verificar datos de labores permanentes
+  bool _hasDataInLaboresPermanentes() {
+    int totalLabores = (_laboresPermanentesDbStats['totalChecklists'] ?? 0);
+    return totalLabores > 0;
+  }
+
+  bool _isLaboresPermanentesModuleActive() {
+    // Labores permanentes está activo si tiene datos O si tiene las fincas y variedades base sincronizadas
+    return _hasDataInLaboresPermanentes() || _isCosechaModuleActive();
   }
   // ** FIN DE NUEVAS FUNCIONES **
 
@@ -1227,6 +1272,113 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
+  // Botón de sincronización de usuarios
+  Widget _buildUsuariosSyncButton(bool isTablet) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Título de la sección
+        Padding(
+          padding: EdgeInsets.only(bottom: 16),
+          child: Row(
+            children: [
+              Container(
+                width: 4,
+                height: isTablet ? 32 : 28,
+                decoration: BoxDecoration(
+                  color: Colors.blue[700],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              SizedBox(width: 12),
+              Text(
+                'Sincronización de Usuarios',
+                style: TextStyle(
+                  fontSize: isTablet ? 24 : 20,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey[800],
+                ),
+              ),
+            ],
+          ),
+        ),
+        
+        // Botón principal
+        Container(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: _isSyncingUsuarios ? null : _syncUsuarios,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue[700],
+              foregroundColor: Colors.white,
+              padding: EdgeInsets.symmetric(
+                vertical: isTablet ? 18 : 16,
+                horizontal: isTablet ? 24 : 20,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              elevation: 4,
+              shadowColor: Colors.blue.withOpacity(0.3),
+            ),
+            icon: _isSyncingUsuarios 
+                ? SizedBox(
+                    width: isTablet ? 24 : 20,
+                    height: isTablet ? 24 : 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : Icon(
+                    Icons.people_rounded,
+                    size: isTablet ? 24 : 20,
+                  ),
+            label: Text(
+              _isSyncingUsuarios ? 'SINCRONIZANDO USUARIOS...' : 'SINCRONIZAR USUARIOS',
+              style: TextStyle(
+                fontSize: isTablet ? 15 : 13,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ),
+        ),
+        
+        // Texto descriptivo
+        SizedBox(height: 12),
+        Container(
+          padding: EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.blue[50],
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.blue[200]!),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.info_outline,
+                color: Colors.blue[700],
+                size: isTablet ? 20 : 18,
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Sincroniza la lista de usuarios disponibles para los checklists. Esto actualiza la información de kontrollers, supervisores y otros usuarios del sistema.',
+                  style: TextStyle(
+                    color: Colors.blue[800],
+                    fontSize: isTablet ? 14 : 12,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   // Métodos de sincronización individual - CORREGIDO
   Future<void> _syncBodegaData() async {
     if (!await AuthService.hasInternetConnection()) {
@@ -1448,6 +1600,96 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     } finally {
       setState(() {
         _isSyncingCortes = false;
+      });
+    }
+  }
+
+  // Método de sincronización para labores permanentes
+  Future<void> _syncLaboresPermanentesData() async {
+    if (_isSyncingLaboresPermanentes) return;
+
+    setState(() {
+      _isSyncingLaboresPermanentes = true;
+    });
+
+    try {
+      Map<String, dynamic> result = await ChecklistLaboresPermanentesStorageService.syncChecklistsToServer();
+      
+      Fluttertoast.showToast(
+        msg: result['message'] ?? 'Sincronización completada',
+        backgroundColor: result['success'] ? Colors.green[600] : Colors.orange[600],
+        textColor: Colors.white,
+      );
+
+      if (result['success']) {
+        await _loadDatabaseStats();
+      }
+    } catch (e) {
+      Fluttertoast.showToast(
+        msg: 'Error en sincronización: $e',
+        backgroundColor: Colors.red[600],
+        textColor: Colors.white,
+      );
+    } finally {
+      setState(() {
+        _isSyncingLaboresPermanentes = false;
+      });
+    }
+  }
+
+  // Método para sincronizar usuarios
+  Future<void> _syncUsuarios() async {
+    if (_isSyncingUsuarios) return;
+
+    setState(() {
+      _isSyncingUsuarios = true;
+    });
+
+    try {
+      // Verificar conexión
+      if (!await AuthService.hasInternetConnection()) {
+        Fluttertoast.showToast(
+          msg: 'Sin conexión a internet. Verifique su conectividad.',
+          backgroundColor: Colors.orange[600],
+          textColor: Colors.white,
+        );
+        return;
+      }
+
+      Fluttertoast.showToast(
+        msg: 'Sincronizando usuarios...',
+        backgroundColor: Colors.blue[600],
+        textColor: Colors.white,
+      );
+
+      // Sincronizar usuarios usando el servicio de autenticación
+      Map<String, dynamic> result = await AuthService.syncData();
+      
+      if (result['success']) {
+        Fluttertoast.showToast(
+          msg: 'Usuarios sincronizados exitosamente: ${result['usersSynced']} usuarios',
+          backgroundColor: Colors.green[600],
+          textColor: Colors.white,
+        );
+        
+        // Recargar estadísticas para actualizar la UI
+        await _loadDatabaseStats();
+      } else {
+        Fluttertoast.showToast(
+          msg: 'Error sincronizando usuarios: ${result['message']}',
+          backgroundColor: Colors.orange[600],
+          textColor: Colors.white,
+        );
+      }
+    } catch (e) {
+      Fluttertoast.showToast(
+        msg: 'Error en sincronización: $e',
+        backgroundColor: Colors.red[600],
+        textColor: Colors.white,
+      );
+    } finally {
+      setState(() {
+        _isSyncingUsuarios = false;
       });
     }
   }
@@ -1734,6 +1976,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       _buildDatabaseInfo(isTablet),
                       
                       SizedBox(height: isTablet ? 32 : 24),
+                      
+                      // Botón de sincronización de usuarios
+                      _buildUsuariosSyncButton(isTablet),
+                      
+                      SizedBox(height: isTablet ? 32 : 24),
                     ],
                   ),
                 ),
@@ -1932,6 +2179,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         'color': Colors.purple[600]!,
         'description': 'Control de\ncortes',
         'active': _isCortesModuleActive(),
+        'isComingSoon': false,
+      },
+      {
+        'title': 'Labores Permanentes',
+        'icon': Icons.agriculture,
+        'color': Colors.deepPurple[600]!,
+        'description': 'Control de\nlabores culturales',
+        'active': _isLaboresPermanentesModuleActive(),
         'isComingSoon': false,
       },
     ];

@@ -205,6 +205,70 @@ class DropdownService {
     }
   }
 
+  // ==================== USUARIOS ====================
+  
+  // Obtener usuarios activos (offline first)
+  static Future<List<Usuario>> getUsuarios() async {
+    try {
+      // Primero intentar obtener datos locales
+      DatabaseHelper dbHelper = DatabaseHelper();
+      List<Map<String, dynamic>> localData = await dbHelper.getAllUsers();
+      
+      // Si hay datos locales, usarlos
+      if (localData.isNotEmpty) {
+        print('Usuarios cargados desde SQLite: ${localData.length}');
+        return localData.map((item) => Usuario.fromJson(item)).toList();
+      }
+
+      // Si no hay datos locales y hay conexión, intentar obtener del servidor
+      if (await AuthService.hasInternetConnection()) {
+        print('No hay usuarios locales, obteniendo del servidor...');
+        return await _getUsuariosFromServer();
+      }
+
+      // Sin datos locales ni conexión
+      print('Sin usuarios locales ni conexión');
+      return [];
+      
+    } catch (e) {
+      print('Error obteniendo usuarios: $e');
+      return [];
+    }
+  }
+
+  // Obtener usuarios del servidor y guardar localmente
+  static Future<List<Usuario>> _getUsuariosFromServer() async {
+    try {
+      String query = '''
+        SELECT id, username, nombre, email, activo 
+        FROM usuarios_app 
+        WHERE activo = 1 
+        ORDER BY nombre
+      ''';
+
+      String result = await RobustSqlServerService.executeQueryRobust(
+        query, 
+        operationName: 'Get Usuarios'
+      );
+      List<Map<String, dynamic>> data = SqlServerService.processQueryResult(result);
+      
+      // Guardar en SQLite
+      if (data.isNotEmpty) {
+        DatabaseHelper dbHelper = DatabaseHelper();
+        for (Map<String, dynamic> usuario in data) {
+          usuario['fecha_actualizacion'] = DateTime.now().toIso8601String();
+          await dbHelper.insertOrUpdateUser(usuario);
+        }
+        print('${data.length} usuarios sincronizados desde servidor');
+      }
+      
+      return data.map((item) => Usuario.fromJson(item)).toList();
+    } catch (e) {
+      print('Error obteniendo usuarios del servidor: $e');
+      return [];
+    }
+  }
+
   // ==================== MÉTODOS PRINCIPALES ====================
 
   // Obtener todos los datos necesarios para el checklist
@@ -223,6 +287,7 @@ class DropdownService {
         getSupervisores(),
         getPesadores(),
         getFincas(),
+        getUsuarios(),
       ];
 
       List<dynamic> results = await Future.wait(futures);
@@ -231,6 +296,7 @@ class DropdownService {
         'supervisores': results[0] as List<Supervisor>,
         'pesadores': results[1] as List<Pesador>,
         'fincas': results[2] as List<Finca>,
+        'usuarios': results[3] as List<Usuario>,
       };
     } catch (e) {
       print('Error obteniendo datos de dropdown: $e');
@@ -252,6 +318,7 @@ class DropdownService {
         _getSupervisoresFromServer(),
         _getPesadoresFromServer(),
         _getFincasFromServer(),
+        _getUsuariosFromServer(),
       ];
 
       List<dynamic> results = await Future.wait(futures);
@@ -261,6 +328,7 @@ class DropdownService {
         'supervisores': results[0] as List<Supervisor>,
         'pesadores': results[1] as List<Pesador>,
         'fincas': results[2] as List<Finca>,
+        'usuarios': results[3] as List<Usuario>,
       };
     } catch (e) {
       print('Error en sincronización forzada: $e');
