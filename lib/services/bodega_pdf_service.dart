@@ -8,8 +8,6 @@ import 'package:image/image.dart' as img;
 
 class BodegaPDFService {
   static const int _MAX_TOTAL_PAGES = 40;
-  static const int _IMAGES_PER_PAGE = 4;
-  static const int _IMAGES_PER_DOC = 24;
 
   // Colores de la paleta
   static const PdfColor COLOR_NEGRO = PdfColors.black;
@@ -52,8 +50,6 @@ class BodegaPDFService {
 
     // Obtener items relevantes para bodega
     final List<Map<String, dynamic>> itemsRelevantes = _extraerItemsRelevantesBodega(data);
-    final List<Map<String, dynamic>> itemsConFotos = itemsRelevantes.where((item) => item['tiene_foto'] == true).toList();
-    final List<String> limitedImages = itemsConFotos.map((item) => item['foto_base64'] as String).take(_IMAGES_PER_DOC).toList();
 
     // Página principal
     pdf.addPage(
@@ -74,15 +70,9 @@ class BodegaPDFService {
           widgets.add(_construirResumenCumplimiento(data));
           widgets.add(pw.SizedBox(height: 20));
 
-          // Items relevantes
+          // Items relevantes (ahora incluyen sus imágenes)
           if (itemsRelevantes.isNotEmpty) {
             widgets.add(_construirSeccionItemsRelevantes(itemsRelevantes));
-            widgets.add(pw.SizedBox(height: 20));
-          }
-
-          // Fotografías si hay
-          if (limitedImages.isNotEmpty) {
-            widgets.add(_construirSeccionFotografias(limitedImages));
           }
 
           return widgets;
@@ -90,19 +80,7 @@ class BodegaPDFService {
       ),
     );
 
-    // Páginas adicionales para imágenes si es necesario
-    if (limitedImages.length > _IMAGES_PER_PAGE) {
-      for (int i = _IMAGES_PER_PAGE; i < limitedImages.length; i += _IMAGES_PER_PAGE) {
-        final batch = limitedImages.sublist(i, (i + _IMAGES_PER_PAGE).clamp(0, limitedImages.length));
-        pdf.addPage(
-          pw.MultiPage(
-            pageFormat: PdfPageFormat.a4,
-            margin: const pw.EdgeInsets.all(20),
-            build: (context) => [_construirGridImagenes(batch)],
-          ),
-        );
-      }
-    }
+    // Las imágenes ahora se muestran junto a cada item, no en páginas separadas
 
     print('[PDF][BODEGA] PDF generado exitosamente');
     return pdf.save();
@@ -151,8 +129,6 @@ class BodegaPDFService {
           pw.Container(height: 2, width: 60, color: COLOR_ROJO_PRINCIPAL),
           pw.SizedBox(height: 12),
           _construirFila('Finca', data['finca_nombre'] ?? 'N/A'),
-          _construirFila('Bloque', data['bloque_nombre'] ?? 'N/A'),
-          _construirFila('Variedad', data['variedad_nombre'] ?? 'N/A'),
           _construirFila('Usuario', data['usuario_nombre'] ?? 'N/A'),
           _construirFila('Fecha', _formatearFecha(data['fecha_creacion'])),
         ],
@@ -165,19 +141,25 @@ class BodegaPDFService {
     int conformes = 0;
     int noConformes = 0;
 
+    print('[PDF][BODEGA] Calculando porcentaje de cumplimiento...');
+    
     for (int i in ITEMS_BODEGA) {
-      final respuesta = data['item_$i']?.toString().toUpperCase();
+      // Usar el mismo formato que el servicio general
+      final respuesta = data['item_${i}_respuesta']?.toString();
+      print('[PDF][BODEGA] Item $i: respuesta=$respuesta');
+      
       if (respuesta != null && respuesta.isNotEmpty) {
         totalItems++;
-        if (respuesta == 'SÍ' || respuesta == 'SI') {
+        if (respuesta.toLowerCase() == 'sí' || respuesta.toLowerCase() == 'si') {
           conformes++;
-        } else if (respuesta == 'NO') {
+        } else if (respuesta.toLowerCase() == 'no') {
           noConformes++;
         }
       }
     }
 
     final porcentaje = totalItems > 0 ? (conformes / totalItems * 100).round() : 0;
+    print('[PDF][BODEGA] Total items: $totalItems, Conformes: $conformes, No conformes: $noConformes, Porcentaje: $porcentaje%');
 
     return pw.Container(
       padding: const pw.EdgeInsets.all(16),
@@ -257,8 +239,11 @@ class BodegaPDFService {
   }
 
   static pw.Widget _construirItemRelevante(Map<String, dynamic> item) {
+    // Obtener la descripción del item basada en el número
+    String descripcionItem = _obtenerDescripcionItemBodega(item['numero']);
+    
     return pw.Container(
-      margin: const pw.EdgeInsets.only(bottom: 8),
+      margin: const pw.EdgeInsets.only(bottom: 12),
       padding: const pw.EdgeInsets.all(12),
       decoration: pw.BoxDecoration(
         border: pw.Border.all(color: COLOR_GRIS_CLARO),
@@ -268,69 +253,27 @@ class BodegaPDFService {
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          pw.Text('Item ${item['numero']}', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: COLOR_NEGRO)),
+          pw.Text('Item ${item['numero']}: $descripcionItem', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: COLOR_NEGRO)),
+          if (item['respuesta'] != null && item['respuesta'].toString().isNotEmpty) ...[
+            pw.SizedBox(height: 4),
+            pw.Text('Respuesta: ${item['respuesta']}', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: COLOR_GRIS_OSCURO)),
+          ],
           if ((item['observaciones'] ?? '').toString().isNotEmpty) ...[
             pw.SizedBox(height: 4),
             pw.Text('Observaciones: ${item['observaciones']}', style: const pw.TextStyle(fontSize: 12)),
           ],
-          if (item['tiene_foto'] == true) ...[
+          // Mostrar la imagen directamente aquí si existe
+          if (item['tiene_foto'] == true && item['foto_base64'] != null && item['foto_base64'].toString().isNotEmpty) ...[
+            pw.SizedBox(height: 8),
+            pw.Text('Fotografía adjunta:', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: COLOR_RESPUESTA_SI)),
             pw.SizedBox(height: 4),
-            pw.Text('📷 Incluye fotografía', style: pw.TextStyle(fontSize: 12, color: COLOR_RESPUESTA_SI)),
+            _construirImagenItem(item['foto_base64']),
           ],
         ],
       ),
     );
   }
 
-  static pw.Widget _construirSeccionFotografias(List<String> images) {
-    return pw.Container(
-      padding: const pw.EdgeInsets.all(16),
-      decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: COLOR_GRIS_MEDIO, width: 1.5),
-        borderRadius: pw.BorderRadius.circular(8),
-        color: PdfColors.white,
-      ),
-      child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
-          pw.Text('FOTOGRAFÍAS', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: COLOR_NEGRO)),
-          pw.SizedBox(height: 2),
-          pw.Container(height: 2, width: 60, color: COLOR_ROJO_PRINCIPAL),
-          pw.SizedBox(height: 12),
-          _construirGridImagenes(images.take(_IMAGES_PER_PAGE).toList()),
-        ],
-      ),
-    );
-  }
-
-  static pw.Widget _construirGridImagenes(List<String> images) {
-    final children = <pw.Widget>[];
-    for (final img in images) {
-      try {
-        final bytes = _optimizarImagen(img);
-        children.add(
-          pw.Container(
-            decoration: pw.BoxDecoration(border: pw.Border.all(color: COLOR_GRIS_CLARO), borderRadius: pw.BorderRadius.circular(6)),
-            child: pw.ClipRRect(
-              horizontalRadius: 6,
-              verticalRadius: 6,
-              child: pw.Image(pw.MemoryImage(bytes), fit: pw.BoxFit.cover),
-            ),
-          ),
-        );
-      } catch (e) {
-        print('[PDF][BODEGA] Error procesando imagen: $e');
-      }
-    }
-
-    return pw.GridView(
-      crossAxisCount: 2,
-      childAspectRatio: 1,
-      crossAxisSpacing: 10,
-      mainAxisSpacing: 10,
-      children: children,
-    );
-  }
 
   static pw.Widget _construirFila(String label, String value) {
     return pw.Padding(
@@ -345,26 +288,40 @@ class BodegaPDFService {
   static List<Map<String, dynamic>> _extraerItemsRelevantesBodega(Map<String, dynamic> data) {
     final List<Map<String, dynamic>> relevantes = [];
     
+    print('[PDF][BODEGA] Extrayendo items relevantes...');
+    print('[PDF][BODEGA] Items a verificar: $ITEMS_BODEGA');
+    
     for (int i in ITEMS_BODEGA) {
-      final respuesta = data['item_$i']?.toString().toUpperCase();
-      final observaciones = data['observaciones_$i']?.toString() ?? '';
-      final fotoBase64 = data['foto_$i']?.toString() ?? '';
+      String? respuesta = data['item_${i}_respuesta'];
+      int? valorNumerico = data['item_${i}_valor_numerico'];
+      String? observaciones = data['item_${i}_observaciones'];
+      String? fotoBase64 = data['item_${i}_foto_base64'];
       
-      final tieneObservacion = observaciones.isNotEmpty;
-      final tieneFoto = fotoBase64.isNotEmpty;
-      final esNoConforme = respuesta == 'NO';
+      print('[PDF][BODEGA] Item $i: respuesta=$respuesta, obs=${observaciones?.isNotEmpty == true ? "SÍ" : "NO"}, foto=${fotoBase64?.isNotEmpty == true ? "SÍ" : "NO"}');
       
-      if (tieneObservacion || tieneFoto || esNoConforme) {
+      // Solo incluir si:
+      // 1. Tiene observaciones no vacías
+      // 2. Tiene foto
+      // 3. La respuesta es "NO"
+      bool tieneObservaciones = observaciones != null && observaciones.trim().isNotEmpty;
+      bool tieneFoto = fotoBase64 != null && fotoBase64.isNotEmpty;
+      bool esRespuestaNo = respuesta != null && respuesta.toLowerCase() == 'no';
+      
+      if (tieneObservaciones || tieneFoto || esRespuestaNo) {
         relevantes.add({
           'numero': i,
-          'respuesta': respuesta ?? 'N/A',
+          'respuesta': respuesta,
+          'valor_numerico': valorNumerico,
           'observaciones': observaciones,
           'foto_base64': fotoBase64,
           'tiene_foto': tieneFoto,
         });
+        
+        print('[PDF][BODEGA] ✅ Item $i incluido: respuesta=$respuesta, obs=${tieneObservaciones ? "SÍ" : "NO"}, foto=${tieneFoto ? "SÍ" : "NO"}');
       }
     }
     
+    print('[PDF][BODEGA] Total items relevantes encontrados: ${relevantes.length}');
     return relevantes;
   }
 
@@ -396,6 +353,70 @@ class BodegaPDFService {
       return DateFormat('dd/MM/yyyy HH:mm:ss').format(d);
     } catch (_) {
       return fecha.toString();
+    }
+  }
+
+  static String _obtenerDescripcionItemBodega(int numeroItem) {
+    // Mapeo de items de bodega con sus descripciones
+    Map<int, String> descripcionesItems = {
+      1: 'Limpieza general del área',
+      2: 'Organización de productos',
+      3: 'Control de inventario',
+      4: 'Temperatura y humedad adecuadas',
+      5: 'Iluminación correcta',
+      6: 'Ventilación apropiada',
+      7: 'Seguridad del lugar',
+      8: 'Acceso controlado',
+      9: 'Documentación actualizada',
+      10: 'Mantenimiento de equipos',
+      11: 'Control de plagas',
+      12: 'Almacenamiento correcto',
+      13: 'Rotación de productos',
+      14: 'Etiquetado adecuado',
+      15: 'Separación de productos',
+      16: 'Limpieza de estantes',
+      17: 'Control de fechas de vencimiento',
+      18: 'Inspección de productos',
+      19: 'Registro de movimientos',
+      20: 'Cumplimiento de protocolos',
+    };
+    
+    return descripcionesItems[numeroItem] ?? 'Item de bodega $numeroItem';
+  }
+
+  static pw.Widget _construirImagenItem(String fotoBase64) {
+    try {
+      final Uint8List imageBytes = _optimizarImagen(fotoBase64);
+      
+      return pw.Container(
+        decoration: pw.BoxDecoration(
+          border: pw.Border.all(color: COLOR_GRIS_CLARO, width: 1),
+          borderRadius: pw.BorderRadius.circular(4),
+        ),
+        child: pw.Image(
+          pw.MemoryImage(imageBytes),
+          width: 200,
+          height: 150,
+          fit: pw.BoxFit.contain,
+        ),
+      );
+    } catch (e) {
+      return pw.Container(
+        padding: const pw.EdgeInsets.all(8),
+        decoration: pw.BoxDecoration(
+          border: pw.Border.all(color: COLOR_ROJO_PRINCIPAL, width: 1),
+          borderRadius: pw.BorderRadius.circular(4),
+          color: COLOR_ROJO_CLARO,
+        ),
+        child: pw.Text(
+          'Error al cargar imagen',
+          style: pw.TextStyle(
+            fontSize: 10,
+            color: COLOR_ROJO_PRINCIPAL,
+            fontWeight: pw.FontWeight.bold,
+          ),
+        ),
+      );
     }
   }
 }
