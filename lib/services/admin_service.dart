@@ -14,6 +14,9 @@ class AdminService {
     'check_bodega': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20], // 20 items
     'check_aplicaciones': List.generate(30, (index) => index + 1), // 30 items del 1 al 30
     'check_cosecha': List.generate(20, (index) => index + 1), // 20 items del 1 al 20
+    'check_cortes': List.generate(12, (index) => index + 1), // 12 items del 1 al 12
+    'check_labores_permanentes': List.generate(20, (index) => index + 1), // 20 items del 1 al 20
+    'check_labores_temporales': List.generate(20, (index) => index + 1), // 20 items del 1 al 20
   };
   
   // Verificar si el usuario actual es administrador
@@ -360,6 +363,452 @@ class AdminService {
     }
   }
   
+  // ==================== OBTENER REGISTROS DE CORTES ====================
+  
+  static Future<Map<String, dynamic>> getCortesRecords({
+    DateTime? fechaInicio,
+    DateTime? fechaFin,
+    int? usuarioId,
+    String? fincaNombre,
+  }) async {
+    try {
+      String whereClause = "WHERE 1=1";
+      
+      if (fechaInicio != null) {
+        String fechaInicioStr = fechaInicio.toString().substring(0, 19);
+        whereClause += " AND fecha_creacion >= '$fechaInicioStr'";
+      }
+      
+      if (fechaFin != null) {
+        String fechaFinStr = fechaFin.toString().substring(0, 19);
+        whereClause += " AND fecha_creacion <= '$fechaFinStr'";
+      }
+      
+      if (usuarioId != null) {
+        whereClause += " AND usuario_creacion = (SELECT username FROM usuarios_app WHERE id = $usuarioId)";
+      }
+      
+      if (fincaNombre != null && fincaNombre.isNotEmpty) {
+        whereClause += " AND finca_nombre = '$fincaNombre'";
+      }
+      
+      String query = '''
+        SELECT 
+          c.id,
+          c.id as checklist_uuid,
+          c.finca_nombre,
+          c.supervisor as bloque_nombre,
+          c.supervisor as variedad_nombre,
+          c.usuario_creacion as usuario_id,
+          CASE 
+            WHEN u.nombre IS NOT NULL AND u.nombre != '' THEN u.nombre
+            WHEN u.username IS NOT NULL AND u.username != '' THEN u.username
+            ELSE c.usuario_creacion
+          END as usuario_nombre,
+          c.fecha_creacion,
+          c.fecha_modificacion as fecha_envio,
+          c.porcentaje_cumplimiento
+        FROM check_cortes c
+        LEFT JOIN usuarios_app u ON c.usuario_creacion = u.username
+        $whereClause
+        ORDER BY c.fecha_creacion DESC
+      ''';
+      
+      String result = await SqlServerService.executeQuery(query);
+      List<Map<String, dynamic>> records = SqlServerService.processQueryResult(result);
+      
+      // Debug: verificar qué datos están llegando del servidor para cortes
+      print('🔍 DEBUG ADMIN - Consulta ejecutada para cortes');
+      print('🔍 Query: $query');
+      print('🔍 Resultado: $result');
+      if (records.isNotEmpty) {
+        print('🔍 Primer registro: ${records.first}');
+        print('🔍 usuario_nombre del primer registro: ${records.first['usuario_nombre']}');
+        print('🔍 usuario_id del primer registro: ${records.first['usuario_id']}');
+      }
+      
+      // Debug adicional: verificar si el JOIN está funcionando
+      String debugQuery = '''
+        SELECT 
+          c.usuario_creacion,
+          u.username,
+          u.nombre,
+          u.email
+        FROM check_cortes c
+        LEFT JOIN usuarios_app u ON c.usuario_creacion = u.username
+        WHERE c.id = ${records.isNotEmpty ? records.first['id'] : 'NULL'}
+      ''';
+      
+      try {
+        String debugResult = await SqlServerService.executeQuery(debugQuery);
+        List<Map<String, dynamic>> debugRecords = SqlServerService.processQueryResult(debugResult);
+        print('🔍 DEBUG JOIN - Resultado del JOIN: $debugRecords');
+      } catch (e) {
+        print('🔍 DEBUG JOIN - Error en consulta de debug: $e');
+      }
+      
+      String statsQuery = '''
+        SELECT 
+          COUNT(*) as total_registros,
+          AVG(porcentaje_cumplimiento) as promedio_cumplimiento,
+          COUNT(DISTINCT usuario_creacion) as total_usuarios,
+          COUNT(DISTINCT finca_nombre) as total_fincas
+        FROM check_cortes 
+        $whereClause
+      ''';
+      
+      String statsResult = await SqlServerService.executeQuery(statsQuery);
+      List<Map<String, dynamic>> stats = SqlServerService.processQueryResult(statsResult);
+      
+      return {
+        'success': true,
+        'records': records,
+        'statistics': stats.isNotEmpty ? stats.first : {},
+        'total_count': records.length
+      };
+      
+    } catch (e) {
+      print('Error obteniendo registros de cortes: $e');
+      return {
+        'success': false,
+        'error': e.toString(),
+        'records': [],
+        'statistics': {},
+        'total_count': 0
+      };
+    }
+  }
+  
+  // ==================== OBTENER REGISTROS DE LABORES PERMANENTES ====================
+  
+  static Future<Map<String, dynamic>> getLaboresPermanentesRecords({
+    DateTime? fechaInicio,
+    DateTime? fechaFin,
+    int? usuarioId,
+    String? fincaNombre,
+  }) async {
+    print('🔍 DEBUG ADMIN - INICIANDO getLaboresPermanentesRecords');
+    try {
+      String whereClause = "WHERE 1=1";
+      
+      if (fechaInicio != null) {
+        String fechaInicioStr = fechaInicio.toString().substring(0, 19);
+        whereClause += " AND fecha_creacion >= '$fechaInicioStr'";
+      }
+      
+      if (fechaFin != null) {
+        String fechaFinStr = fechaFin.toString().substring(0, 19);
+        whereClause += " AND fecha_creacion <= '$fechaFinStr'";
+      }
+      
+      if (usuarioId != null) {
+        whereClause += " AND usuario_creacion = (SELECT username FROM usuarios_app WHERE id = $usuarioId)";
+      }
+      
+      if (fincaNombre != null && fincaNombre.isNotEmpty) {
+        whereClause += " AND finca_nombre = '$fincaNombre'";
+      }
+      
+      String query = '''
+        SELECT 
+          l.id,
+          l.id as checklist_uuid,
+          l.finca_nombre,
+          l.up_unidad_productiva as bloque_nombre,
+          l.up_unidad_productiva as variedad_nombre,
+          l.usuario_creacion as usuario_id,
+          CASE 
+            WHEN l.kontroller IS NOT NULL AND l.kontroller != '' THEN l.kontroller
+            ELSE l.usuario_creacion
+          END as usuario_nombre,
+          l.fecha_creacion,
+          l.fecha_modificacion as fecha_envio,
+          l.porcentaje_cumplimiento
+        FROM check_labores_permanentes l
+        $whereClause
+        ORDER BY l.fecha_creacion DESC
+      ''';
+      
+      String result = await SqlServerService.executeQuery(query);
+      List<Map<String, dynamic>> records = SqlServerService.processQueryResult(result);
+      
+      // Debug: verificar qué datos están llegando del servidor para labores permanentes
+      print('🔍 DEBUG ADMIN - Consulta ejecutada para labores permanentes');
+      print('🔍 Query: $query');
+      print('🔍 Resultado: $result');
+      if (records.isNotEmpty) {
+        print('🔍 Primer registro: ${records.first}');
+        print('🔍 usuario_nombre del primer registro: ${records.first['usuario_nombre']}');
+        print('🔍 usuario_id del primer registro: ${records.first['usuario_id']}');
+      }
+      
+      // Debug adicional: verificar la columna kontroller
+      String debugQuery = '''
+        SELECT 
+          l.usuario_creacion,
+          l.kontroller,
+          l.id,
+          CASE 
+            WHEN l.kontroller IS NOT NULL AND l.kontroller != '' THEN l.kontroller
+            ELSE l.usuario_creacion
+          END as usuario_nombre_calculado
+        FROM check_labores_permanentes l
+        WHERE l.id = ${records.isNotEmpty ? records.first['id'] : 'NULL'}
+      ''';
+      
+      try {
+        String debugResult = await SqlServerService.executeQuery(debugQuery);
+        List<Map<String, dynamic>> debugRecords = SqlServerService.processQueryResult(debugResult);
+        print('🔍 DEBUG KONTROLLER - Resultado de la consulta: $debugRecords');
+        if (debugRecords.isNotEmpty) {
+          print('🔍 DEBUG KONTROLLER - usuario_creacion: ${debugRecords.first['usuario_creacion']}');
+          print('🔍 DEBUG KONTROLLER - kontroller: ${debugRecords.first['kontroller']}');
+          print('🔍 DEBUG KONTROLLER - usuario_nombre_calculado: ${debugRecords.first['usuario_nombre_calculado']}');
+        }
+      } catch (e) {
+        print('🔍 DEBUG KONTROLLER - Error en consulta de debug: $e');
+      }
+      
+      String statsQuery = '''
+        SELECT 
+          COUNT(*) as total_registros,
+          AVG(porcentaje_cumplimiento) as promedio_cumplimiento,
+          COUNT(DISTINCT usuario_creacion) as total_usuarios,
+          COUNT(DISTINCT finca_nombre) as total_fincas
+        FROM check_labores_permanentes 
+        $whereClause
+      ''';
+      
+      String statsResult = await SqlServerService.executeQuery(statsQuery);
+      List<Map<String, dynamic>> stats = SqlServerService.processQueryResult(statsResult);
+      
+      return {
+        'success': true,
+        'records': records,
+        'statistics': stats.isNotEmpty ? stats.first : {},
+        'total_count': records.length
+      };
+      
+    } catch (e) {
+      print('Error obteniendo registros de labores permanentes: $e');
+      return {
+        'success': false,
+        'error': e.toString(),
+        'records': [],
+        'statistics': {},
+        'total_count': 0
+      };
+    }
+  }
+  
+  // ==================== OBTENER REGISTROS DE LABORES TEMPORALES ====================
+  
+  static Future<Map<String, dynamic>> getLaboresTemporalesRecords({
+    DateTime? fechaInicio,
+    DateTime? fechaFin,
+    int? usuarioId,
+    String? fincaNombre,
+  }) async {
+    print('🔍 DEBUG ADMIN - INICIANDO getLaboresTemporalesRecords');
+    try {
+      String whereClause = "WHERE 1=1";
+      
+      if (fechaInicio != null) {
+        String fechaInicioStr = fechaInicio.toString().substring(0, 19);
+        whereClause += " AND fecha_creacion >= '$fechaInicioStr'";
+      }
+      
+      if (fechaFin != null) {
+        String fechaFinStr = fechaFin.toString().substring(0, 19);
+        whereClause += " AND fecha_creacion <= '$fechaFinStr'";
+      }
+      
+      if (usuarioId != null) {
+        whereClause += " AND usuario_creacion = (SELECT username FROM usuarios_app WHERE id = $usuarioId)";
+      }
+      
+      if (fincaNombre != null && fincaNombre.isNotEmpty) {
+        whereClause += " AND finca_nombre = '$fincaNombre'";
+      }
+      
+      String query = '''
+        SELECT 
+          l.id,
+          l.id as checklist_uuid,
+          l.finca_nombre,
+          l.up_unidad_productiva as bloque_nombre,
+          l.up_unidad_productiva as variedad_nombre,
+          l.usuario_creacion as usuario_id,
+          CASE 
+            WHEN l.kontroller IS NOT NULL AND l.kontroller != '' THEN l.kontroller
+            ELSE l.usuario_creacion
+          END as usuario_nombre,
+          l.fecha_creacion,
+          l.fecha_modificacion as fecha_envio,
+          l.porcentaje_cumplimiento
+        FROM check_labores_temporales l
+        $whereClause
+        ORDER BY l.fecha_creacion DESC
+      ''';
+      
+      String result = await SqlServerService.executeQuery(query);
+      List<Map<String, dynamic>> records = SqlServerService.processQueryResult(result);
+      
+      // Debug: verificar qué datos están llegando del servidor para labores temporales
+      print('🔍 DEBUG ADMIN - Consulta ejecutada para labores temporales');
+      print('🔍 Query: $query');
+      print('🔍 Resultado: $result');
+      if (records.isNotEmpty) {
+        print('🔍 Primer registro: ${records.first}');
+        print('🔍 usuario_nombre del primer registro: ${records.first['usuario_nombre']}');
+        print('🔍 usuario_id del primer registro: ${records.first['usuario_id']}');
+        
+        // Debug adicional: verificar la columna kontroller directamente
+        String debugQuery = '''
+          SELECT 
+            l.usuario_creacion,
+            l.kontroller,
+            l.id,
+            CASE 
+              WHEN l.kontroller IS NOT NULL AND l.kontroller != '' THEN l.kontroller
+              ELSE l.usuario_creacion
+            END as usuario_nombre_calculado
+          FROM check_labores_temporales l
+          WHERE l.id = ${records.first['id']}
+        ''';
+        
+        try {
+          String debugResult = await SqlServerService.executeQuery(debugQuery);
+          List<Map<String, dynamic>> debugRecords = SqlServerService.processQueryResult(debugResult);
+          print('🔍 DEBUG KONTROLLER - Resultado de la consulta: $debugRecords');
+          if (debugRecords.isNotEmpty) {
+            print('🔍 DEBUG KONTROLLER - usuario_creacion: ${debugRecords.first['usuario_creacion']}');
+            print('🔍 DEBUG KONTROLLER - kontroller: ${debugRecords.first['kontroller']}');
+            print('🔍 DEBUG KONTROLLER - usuario_nombre_calculado: ${debugRecords.first['usuario_nombre_calculado']}');
+          }
+        } catch (e) {
+          print('🔍 DEBUG KONTROLLER - Error en consulta de debug: $e');
+        }
+      }
+      
+      String statsQuery = '''
+        SELECT 
+          COUNT(*) as total_registros,
+          AVG(porcentaje_cumplimiento) as promedio_cumplimiento,
+          COUNT(DISTINCT usuario_creacion) as total_usuarios,
+          COUNT(DISTINCT finca_nombre) as total_fincas
+        FROM check_labores_temporales 
+        $whereClause
+      ''';
+      
+      String statsResult = await SqlServerService.executeQuery(statsQuery);
+      List<Map<String, dynamic>> stats = SqlServerService.processQueryResult(statsResult);
+      
+      return {
+        'success': true,
+        'records': records,
+        'statistics': stats.isNotEmpty ? stats.first : {},
+        'total_count': records.length
+      };
+      
+    } catch (e) {
+      print('Error obteniendo registros de labores temporales: $e');
+      return {
+        'success': false,
+        'error': e.toString(),
+        'records': [],
+        'statistics': {},
+        'total_count': 0
+      };
+    }
+  }
+
+  // ==================== OBTENER REGISTROS DE OBSERVACIONES ADICIONALES ====================
+  
+  static Future<Map<String, dynamic>> getObservacionesAdicionalesRecords({
+    DateTime? fechaInicio,
+    DateTime? fechaFin,
+    int? usuarioId,
+    String? fincaNombre,
+  }) async {
+    try {
+      String whereClause = "WHERE activo = 1";
+      
+      if (fechaInicio != null) {
+        String fechaInicioStr = fechaInicio.toString().substring(0, 19);
+        whereClause += " AND fecha_creacion >= '$fechaInicioStr'";
+      }
+      
+      if (fechaFin != null) {
+        String fechaFinStr = fechaFin.toString().substring(0, 19);
+        whereClause += " AND fecha_creacion <= '$fechaFinStr'";
+      }
+      
+      if (usuarioId != null) {
+        whereClause += " AND usuario_creacion = (SELECT username FROM usuarios_app WHERE id = $usuarioId)";
+      }
+      
+      if (fincaNombre != null && fincaNombre.isNotEmpty) {
+        whereClause += " AND finca_nombre = '$fincaNombre'";
+      }
+      
+      String query = '''
+        SELECT 
+          id,
+          id as checklist_uuid,
+          finca_nombre,
+          bloque_nombre,
+          variedad_nombre,
+          usuario_creacion as usuario_id,
+          usuario_nombre,
+          fecha_creacion,
+          fecha_envio,
+          tipo,
+          observacion,
+          imagenes_json,
+          blanco_biologico,
+          incidencia,
+          severidad,
+          tercio
+        FROM observaciones_adicionales
+        $whereClause
+        ORDER BY fecha_creacion DESC
+      ''';
+      
+      String result = await SqlServerService.executeQuery(query);
+      List<Map<String, dynamic>> records = SqlServerService.processQueryResult(result);
+      
+      String statsQuery = '''
+        SELECT 
+          COUNT(*) as total_registros,
+          COUNT(DISTINCT usuario_creacion) as total_usuarios,
+          COUNT(DISTINCT finca_nombre) as total_fincas
+        FROM observaciones_adicionales
+        $whereClause
+      ''';
+      
+      String statsResult = await SqlServerService.executeQuery(statsQuery);
+      List<Map<String, dynamic>> stats = SqlServerService.processQueryResult(statsResult);
+      
+      return {
+        'success': true,
+        'records': records,
+        'statistics': stats.isNotEmpty ? stats.first : {},
+        'total_count': records.length
+      };
+      
+    } catch (e) {
+      print('Error obteniendo registros de observaciones adicionales: $e');
+      return {
+        'success': false,
+        'error': e.toString(),
+        'records': [],
+        'statistics': {},
+        'total_count': 0
+      };
+    }
+  }
+  
   // ==================== OBTENER LISTA DE USUARIOS ====================
   
   static Future<List<Map<String, dynamic>>> getAllUsers() async {
@@ -401,6 +850,8 @@ class AdminService {
           SELECT finca_nombre FROM check_aplicaciones WHERE finca_nombre IS NOT NULL
           UNION
           SELECT finca_nombre FROM check_cosecha WHERE finca_nombre IS NOT NULL
+          UNION
+          SELECT finca_nombre FROM observaciones_adicionales WHERE finca_nombre IS NOT NULL
         ) AS fincas
         WHERE finca_nombre != ''
         ORDER BY finca_nombre
@@ -422,7 +873,7 @@ class AdminService {
   static Future<Map<String, dynamic>?> getRecordDetail(String tableName, int recordId) async {
     try {
       // Validar nombre de tabla para evitar inyección SQL
-      List<String> validTables = ['check_fertirriego', 'check_bodega', 'check_aplicaciones', 'check_cosecha'];
+      List<String> validTables = ['check_fertirriego', 'check_bodega', 'check_aplicaciones', 'check_cosecha', 'check_cortes', 'check_labores_permanentes', 'check_labores_temporales', 'observaciones_adicionales'];
       if (!validTables.contains(tableName)) {
         throw Exception('Tabla no válida: $tableName');
       }
@@ -474,31 +925,87 @@ class AdminService {
   // ==================== CONSTRUIR QUERY ESPECÍFICO POR TABLA ====================
   
   static String _buildSpecificQuery(String tableName, int recordId, List<String> camposItems) {
-    // Campos base comunes
-    List<String> camposBase = [
-      'id', 'checklist_uuid', 'finca_nombre', 
-      'usuario_id', 'usuario_nombre', 'fecha_creacion', 
-      'fecha_envio', 'porcentaje_cumplimiento'
-    ];
+    // Campos base comunes - mapeados según la estructura de cada tabla
+    List<String> camposBase = [];
     
     // Campos específicos por tipo
     switch (tableName) {
       case 'check_fertirriego':
-        camposBase.add('bloque_nombre');
+        camposBase = [
+          'id', 'checklist_uuid', 'finca_nombre', 
+          'usuario_id', 'usuario_nombre', 'fecha_creacion', 
+          'fecha_envio', 'porcentaje_cumplimiento', 'bloque_nombre'
+        ];
         break;
       case 'check_bodega':
-        camposBase.addAll(['supervisor_nombre', 'pesador_nombre']);
+        camposBase = [
+          'id', 'checklist_uuid', 'finca_nombre', 
+          'usuario_id', 'usuario_nombre', 'fecha_creacion', 
+          'fecha_envio', 'porcentaje_cumplimiento', 
+          'supervisor_nombre', 'pesador_nombre'
+        ];
         break;
       case 'check_aplicaciones':
-        camposBase.addAll(['bloque_nombre', 'bomba_nombre']);
+        camposBase = [
+          'id', 'checklist_uuid', 'finca_nombre', 
+          'usuario_id', 'usuario_nombre', 'fecha_creacion', 
+          'fecha_envio', 'porcentaje_cumplimiento', 
+          'bloque_nombre', 'bomba_nombre'
+        ];
         break;
       case 'check_cosecha':
-        camposBase.addAll(['bloque_nombre', 'variedad_nombre']);
+        camposBase = [
+          'id', 'checklist_uuid', 'finca_nombre', 
+          'usuario_id', 'usuario_nombre', 'fecha_creacion', 
+          'fecha_envio', 'porcentaje_cumplimiento', 
+          'bloque_nombre', 'variedad_nombre'
+        ];
+        break;
+      case 'check_cortes':
+        camposBase = [
+          'id', 'id as checklist_uuid', 'finca_nombre', 
+          'usuario_creacion as usuario_id', 'usuario_creacion as usuario_nombre', 
+          'fecha_creacion', 'fecha_modificacion as fecha_envio', 
+          'porcentaje_cumplimiento', 'supervisor as bloque_nombre',
+          'cuadrantes_json', 'items_json'
+        ];
+        break;
+      case 'check_labores_permanentes':
+        camposBase = [
+          'id', 'id as checklist_uuid', 'finca_nombre', 
+          'usuario_creacion as usuario_id', 'usuario_creacion as usuario_nombre', 
+          'fecha_creacion', 'fecha_modificacion as fecha_envio', 
+          'porcentaje_cumplimiento', 'up_unidad_productiva as bloque_nombre',
+          'cuadrantes_json', 'items_json', 'observaciones_generales'
+        ];
+        break;
+      case 'check_labores_temporales':
+        camposBase = [
+          'id', 'id as checklist_uuid', 'finca_nombre', 
+          'usuario_creacion as usuario_id', 'usuario_creacion as usuario_nombre', 
+          'fecha_creacion', 'fecha_modificacion as fecha_envio', 
+          'porcentaje_cumplimiento', 'up_unidad_productiva as bloque_nombre',
+          'cuadrantes_json', 'items_json', 'observaciones_generales'
+        ];
+        break;
+      case 'observaciones_adicionales':
+        camposBase = [
+          'id', 'id as checklist_uuid', 'finca_nombre', 'bloque_nombre', 'variedad_nombre',
+          'usuario_creacion as usuario_id', 'usuario_nombre', 'fecha_creacion', 'fecha_envio',
+          'tipo', 'observacion', 'imagenes_json',
+          'blanco_biologico', 'incidencia', 'severidad', 'tercio'
+        ];
         break;
     }
     
-    // Combinar campos base con campos de items
-    List<String> todosCampos = [...camposBase, ...camposItems];
+    // Para las nuevas tablas (cortes, labores), no usar campos de items individuales
+    // ya que los datos están en JSON. Para las tablas originales, sí usar campos de items.
+    List<String> todosCampos;
+    if (['check_cortes', 'check_labores_permanentes', 'check_labores_temporales', 'observaciones_adicionales'].contains(tableName)) {
+      todosCampos = camposBase; // Solo campos base, sin campos de items individuales
+    } else {
+      todosCampos = [...camposBase, ...camposItems]; // Campos base + campos de items individuales
+    }
     
     return '''
       SELECT ${todosCampos.join(', ')}

@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:kontrollers_v2/services/RobustConnectionManager.dart';
 
 import '../models/dropdown_models.dart';
@@ -462,6 +461,15 @@ class DropdownService {
         print('Fincas sincronizadas: ${fincas.length}');
       } catch (e) {
         errors.add('Fincas: $e');
+      }
+
+      // Sincronizar usuarios
+      try {
+        List<Usuario> usuarios = await _getUsuariosFromServer();
+        totalSynced += usuarios.length;
+        print('Usuarios sincronizados: ${usuarios.length}');
+      } catch (e) {
+        errors.add('Usuarios: $e');
       }
 
       if (errors.isEmpty) {

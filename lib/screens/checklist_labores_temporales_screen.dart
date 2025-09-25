@@ -2,29 +2,29 @@ import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import '../data/checklist_data_labores_permanentes.dart';
+import '../data/checklist_data_labores_temporales.dart';
 import '../models/dropdown_models.dart';
 import '../services/cosecha_dropdown_service.dart';
 import '../services/dropdown_service.dart';
-import '../services/checklist_labores_permanentes_storage_service.dart';
+import '../services/checklist_labores_temporales_storage_service.dart';
 import '../services/auth_service.dart';
-import 'checklist_labores_permanentes_records_screen.dart';
+import 'checklist_labores_temporales_records_screen.dart';
 
-class ChecklistLaboresPermanentesScreen extends StatefulWidget {
-  final ChecklistLaboresPermanentes? checklistToEdit;
+class ChecklistLaboresTemporalesScreen extends StatefulWidget {
+  final ChecklistLaboresTemporales? checklistToEdit;
   final int? recordId;
 
-  ChecklistLaboresPermanentesScreen({
+  ChecklistLaboresTemporalesScreen({
     this.checklistToEdit,
     this.recordId,
   });
 
   @override
-  _ChecklistLaboresPermanentesScreenState createState() => _ChecklistLaboresPermanentesScreenState();
+  _ChecklistLaboresTemporalesScreenState createState() => _ChecklistLaboresTemporalesScreenState();
 }
 
-class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPermanentesScreen> {
-  late ChecklistLaboresPermanentes checklist;
+class _ChecklistLaboresTemporalesScreenState extends State<ChecklistLaboresTemporalesScreen> {
+  late ChecklistLaboresTemporales checklist;
   
   // Datos para los dropdowns
   List<Finca> fincas = [];
@@ -40,7 +40,7 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
   DateTime selectedDate = DateTime.now();
   
   // Estructura: supervisor_bloque_cuadrante -> {supervisor, bloque, variedad, cuadrante, paradas}
-  // paradas: parada (1-5) -> {resultados por item (1-16)}
+  // paradas: parada (1-5) -> {resultados por item (1-5)}
   Map<String, Map<String, dynamic>> matrizLabores = {};
   
   // Controladores para agregar nuevas filas
@@ -61,24 +61,13 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
   bool _isLoadingVariedades = false;
   bool _isEditMode = false;
 
-  // Lista de labores permanentes (16 items actualizados)
-  final List<String> laboresPermanentes = [
-    "Desyeme conforme",
-    "Descabece conforme", 
-    "Deshooting conforme",
-    "Rectificación de tocones conforme",
-    "Deschupone conforme",
-    "Deshierbe conforme",
-    "Encanaste y peinado conforme",
-    "Escarificado conforme",
-    "Escobillado conforme",
-    "Limpieza de hojas secas",
-    "Mangueras de goteo descubiertas",
-    "Presencia de charcos de agua",
-    "Tutoreo y tensado de alambres",
-    "Drenchado",
-    "Erradicación de velloso",
-    "Pinch (tallos > 7mm)",
+  // Lista de labores temporales (5 items)
+  final List<String> laboresTemporales = [
+    "Alzado de hombros",
+    "Hormonado",
+    "Paloteo",
+    "Incorporación de materia orgánica",
+    "Limpieza de agrobacterium",
   ];
 
   @override
@@ -167,7 +156,7 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
   }
   
   void _resetChecklist() {
-    checklist = ChecklistDataLaboresPermanentes.getChecklistLaboresPermanentes();
+    checklist = ChecklistDataLaboresTemporales.getChecklistLaboresTemporales();
     selectedDate = DateTime.now();
     matrizLabores.clear();
     
@@ -192,7 +181,7 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
       for (int parada = 1; parada <= 5; parada++) {
         paradas[parada] = {};
         // Inicializar todos los items como null
-        for (int itemId = 1; itemId <= laboresPermanentes.length; itemId++) {
+        for (int itemId = 1; itemId <= laboresTemporales.length; itemId++) {
           paradas[parada]![itemId] = null;
         }
       }
@@ -488,7 +477,7 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
     String supervisor = _supervisorController.text.trim();
     String cuadrante = _cuadranteController.text.trim();
 
-    // Crear clave única (debe coincidir con CuadranteLaboresInfo.claveUnica)
+    // Crear clave única (debe coincidir con CuadranteLaboresTemporalesInfo.claveUnica)
     String clave = '${supervisor}_${_selectedBloqueForm?.nombre ?? ''}_${cuadrante}';
 
     // Verificar si ya existe esta combinación
@@ -507,7 +496,7 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
       for (int parada = 1; parada <= 5; parada++) {
         paradas[parada] = {};
         // Inicializar todos los items (1-12) como null
-        for (int itemId = 1; itemId <= laboresPermanentes.length; itemId++) {
+        for (int itemId = 1; itemId <= laboresTemporales.length; itemId++) {
           paradas[parada]![itemId] = null;
         }
       }
@@ -1244,7 +1233,7 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
 
   Widget _buildParadaCell(String clave, int parada, Map<int, Map<int, String?>> paradas) {
     Map<int, String?> itemsEvaluados = paradas[parada] ?? {};
-    int totalItems = laboresPermanentes.length;
+    int totalItems = laboresTemporales.length;
     int itemsConformes = 0;
     
     // Contar items conformes
@@ -1413,7 +1402,7 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
                       return;
                     }
                     
-                                         // Crear nueva clave si cambió supervisor, bloque o cuadrante (debe coincidir con CuadranteLaboresInfo.claveUnica)
+                                         // Crear nueva clave si cambió supervisor, bloque o cuadrante (debe coincidir con CuadranteLaboresTemporalesInfo.claveUnica)
                      String nuevaClave = '${_editSupervisorController.text.trim()}_${_editBloque?.nombre ?? ''}_${_editCuadranteController.text.trim()}';
                     
                     // Si la clave cambió, verificar que no exista
@@ -1485,10 +1474,10 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
                     SizedBox(height: 16),
                     Expanded(
                       child: ListView.builder(
-                        itemCount: laboresPermanentes.length,
+                        itemCount: laboresTemporales.length,
                         itemBuilder: (context, index) {
                           int itemId = index + 1;
-                          String itemNombre = laboresPermanentes[index];
+                          String itemNombre = laboresTemporales[index];
                           String? resultadoActual = matrizLabores[clave]?['paradas']?[parada]?[itemId];
                           bool isConforme = resultadoActual == '1' || resultadoActual?.toLowerCase() == 'c';
                           
@@ -1611,7 +1600,7 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
           child: Wrap(
             spacing: 6,
             runSpacing: 4,
-            children: laboresPermanentes.asMap().entries.map((entry) => 
+            children: laboresTemporales.asMap().entries.map((entry) => 
               Container(
                 padding: EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                 decoration: BoxDecoration(
@@ -1685,7 +1674,7 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => ChecklistLaboresPermanentesRecordsScreen(),
+                    builder: (context) => ChecklistLaboresTemporalesRecordsScreen(),
                   ),
                 );
               },
@@ -1737,14 +1726,14 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
 
     try {
       // Convertir la matriz a la estructura del checklist
-      List<CuadranteLaboresInfo> cuadrantes = [];
-      List<ChecklistLaboresPermanentesItem> items = [];
+      List<CuadranteLaboresTemporalesInfo> cuadrantes = [];
+      List<ChecklistLaboresTemporalesItem> items = [];
       
       // Preparar items de control con resultados existentes
-      for (int itemId = 1; itemId <= laboresPermanentes.length; itemId++) {
-        var item = ChecklistLaboresPermanentesItem(
+      for (int itemId = 1; itemId <= laboresTemporales.length; itemId++) {
+        var item = ChecklistLaboresTemporalesItem(
           id: itemId,
-          proceso: laboresPermanentes[itemId - 1],
+          proceso: laboresTemporales[itemId - 1],
           resultadosPorCuadranteParada: {},
         );
         
@@ -1770,16 +1759,16 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
         String cuadrante = data['cuadrante'] ?? '';
         
         // Agregar cuadrante
-        cuadrantes.add(CuadranteLaboresInfo(
+        cuadrantes.add(CuadranteLaboresTemporalesInfo(
           supervisor: supervisor,
           bloque: bloque,
-          variedad: variedad,
+          variedad: variedad ?? '',
           cuadrante: cuadrante,
         ));
       });
 
       // Crear checklist actualizado
-      checklist = ChecklistLaboresPermanentes(
+      checklist = ChecklistLaboresTemporales(
         id: checklist.id,
         fecha: selectedDate,
         finca: selectedFinca,
@@ -1794,10 +1783,10 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
 
       int? savedId;
       if (_isEditMode) {
-        await ChecklistLaboresPermanentesStorageService.updateChecklist(checklist);
+        await ChecklistLaboresTemporalesStorageService.updateChecklist(checklist);
         savedId = checklist.id;
       } else {
-        savedId = await ChecklistLaboresPermanentesStorageService.saveChecklist(checklist);
+        savedId = await ChecklistLaboresTemporalesStorageService.saveChecklist(checklist);
       }
 
       Fluttertoast.showToast(
@@ -1842,7 +1831,7 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Labores Permanentes'),
+        title: Text('Labores Temporales'),
         backgroundColor: Colors.deepPurple[700],
         foregroundColor: Colors.white,
         elevation: 0,
@@ -1859,7 +1848,7 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('CHECK LIST LABORES CULTURALES PERMANENTE ', 
+                        Text('CHECK LIST LABORES CULTURALES TEMPORALES ', 
                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                         SizedBox(height: 8),
                         
@@ -1869,7 +1858,7 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
                         Text('1. Complete información general (Semana, Kontroller)'),
                         Text('2. Seleccione fecha y finca'),
                         Text('3. Agregue filas: supervisor, bloque, variedad, cuadrante'),
-                        Text('4. Evalúe cada parada (1-5) para cada ítem (1-16)'),
+                        Text('4. Evalúe cada parada (1-5) para cada ítem (1-5)'),
                         Text('5. Use 1 para Conforme, 0 para No Conforme'),
                         Text('6. Agregue observaciones si necesario'),
                         Text('7. Guarde cuando termine'),
@@ -1877,16 +1866,16 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
                         Text('Estructura:', style: TextStyle(fontWeight: FontWeight.bold)),
                         Text('• Cada fila = Supervisor + Bloque + Cuadrante'),
                         Text('• 5 paradas por fila'),
-                        Text('• 16 ítems de control por parada'),
+                        Text('• 5 ítems de control por parada'),
                         Text('• Valores: 1=Conforme, 0=No Conforme'),
                         SizedBox(height: 12),
-                        Text('16 Ítems de Control:', style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text('5 Ítems de Control:', style: TextStyle(fontWeight: FontWeight.bold)),
                         Container(
                           height: 200,
                           child: SingleChildScrollView(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
-                              children: laboresPermanentes.asMap().entries.map((entry) => 
+                              children: laboresTemporales.asMap().entries.map((entry) => 
                                 Text('${entry.key + 1}. ${entry.value}', style: TextStyle(fontSize: 11))
                               ).toList(),
                             ),

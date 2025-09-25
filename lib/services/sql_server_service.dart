@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:kontrollers_v2/services/checklist_fertirriego_storage_service.dart';
 import 'package:kontrollers_v2/services/PhysicalDeviceOptimizer.dart';
 import 'package:mssql_connection/mssql_connection.dart';
+import 'date_helper.dart';
 
 class SqlServerService {
   static const String _server = '181.198.42.194';
@@ -60,7 +61,21 @@ class SqlServerService {
         
         try {
           print('Ejecutando query optimizada');
-          print('Query: ${query.substring(0, query.length.clamp(0, 100))}...');
+          print('Query: ${query.substring(0, query.length.clamp(0, 200))}...');
+          
+          // Debug específico para fechas
+          if (query.toUpperCase().contains('INSERT') && query.contains('fecha_creacion')) {
+            print('🔍 DEBUG FECHA - Query contiene fecha_creacion');
+            // Buscar el patrón de fecha en la query
+            RegExp fechaPattern = RegExp(r"'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})'");
+            Match? match = fechaPattern.firstMatch(query);
+            if (match != null) {
+              print('🔍 DEBUG FECHA - Fecha encontrada en query: ${match.group(1)}');
+            } else {
+              print('🔍 DEBUG FECHA - No se encontró patrón de fecha válido');
+              print('🔍 DEBUG FECHA - Fragmento de query con fecha: ${query.substring(query.indexOf('fecha_creacion') - 20, query.indexOf('fecha_creacion') + 50)}');
+            }
+          }
           
           connection = await _getConnection();
           if (connection == null) {
@@ -198,7 +213,7 @@ class SqlServerService {
     try {
       String insertQuery = _generateFertiriegoInsertQuery(checklistData);
       
-      String result = await executeQuery(insertQuery);
+      await executeQuery(insertQuery);
       
       print('Checklist fertirriego enviado al servidor exitosamente');
       return true;
@@ -220,8 +235,9 @@ class SqlServerService {
       if (dateString == null) return 'GETDATE()';
       try {
         DateTime date = DateTime.parse(dateString);
-        return "'${date.toIso8601String().replaceAll('T', ' ').substring(0, 19)}'";
+        return DateHelper.formatForSqlServer(date);
       } catch (e) {
+        print('🔍 DEBUG FECHA - Error en formatDate: $e');
         return 'GETDATE()';
       }
     }

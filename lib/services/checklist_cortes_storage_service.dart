@@ -4,6 +4,7 @@ import '../data/checklist_data_cortes.dart';
 import '../models/dropdown_models.dart';
 import '../services/sql_server_service.dart';
 import '../services/auth_service.dart';
+import 'date_helper.dart';
 
 class ChecklistCortesStorageService {
   
@@ -231,7 +232,7 @@ class ChecklistCortesStorageService {
         total_conformes, total_no_conformes, usuario_creacion, fecha_creacion
       ) VALUES (
         ${checklist.id},
-        '${checklist.fecha?.toIso8601String()}',
+        ${DateHelper.formatForSqlServer(checklist.fecha)},
         '$escapedFinca',
         '$escapedSupervisor',
         '$escapedCuadrantes',
@@ -241,7 +242,7 @@ class ChecklistCortesStorageService {
         ${metricas['totalConformes']},
         ${metricas['totalNoConformes']},
         '$escapedUser',
-        '${DateTime.now().toIso8601String()}'
+        ${DateHelper.getCurrentDateForSqlServer()}
       )
     ''';
 

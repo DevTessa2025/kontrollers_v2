@@ -6,6 +6,14 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
 import '../services/pdf_service.dart';
+import '../services/observaciones_adicionales_pdf_service.dart';
+import '../services/cortes_pdf_service.dart';
+import '../services/labores_permanentes_pdf_service.dart';
+import '../services/labores_temporales_pdf_service.dart';
+import '../services/fertirriego_pdf_service.dart';
+import '../services/bodega_pdf_service.dart';
+import '../services/aplicaciones_pdf_service.dart';
+import '../services/cosecha_pdf_service.dart';
 import '../services/email_service.dart';
 
 // Clase de tema para mantener la consistencia visual
@@ -140,7 +148,7 @@ class _ShareDialogState extends State<ShareDialog> {
         downloadDir = await getApplicationDocumentsDirectory();
       }
 
-      if (downloadDir == null || !await downloadDir.exists()) {
+      if (!await downloadDir.exists()) {
         throw Exception('No se pudo acceder al directorio de descargas');
       }
 
@@ -435,10 +443,44 @@ class _ShareDialogState extends State<ShareDialog> {
   Future<void> _downloadPDF() async {
     setState(() => _isGeneratingPDF = true);
     try {
-      final pdfBytes = await PDFService.generarReporteChecklist(
-        recordData: widget.recordData,
-        checklistType: widget.checklistType,
-      );
+      Uint8List pdfBytes;
+      
+      // Usar servicios específicos para cada tipo de checklist
+      switch (widget.checklistType.toLowerCase()) {
+        case 'observaciones_adicionales':
+          pdfBytes = await ObservacionesAdicionalesPDFService.generate(data: widget.recordData);
+          break;
+        case 'cortes':
+          pdfBytes = await CortesPDFService.generate(data: widget.recordData);
+          break;
+        case 'labores_permanentes':
+          pdfBytes = await LaboresPermanentesPDFService.generate(data: widget.recordData);
+          break;
+        case 'labores_temporales':
+          pdfBytes = await LaboresTemporalesPDFService.generate(data: widget.recordData);
+          break;
+        case 'fertirriego':
+          pdfBytes = await FertirriegoPDFService.generate(data: widget.recordData);
+          break;
+        case 'bodega':
+          pdfBytes = await BodegaPDFService.generate(data: widget.recordData);
+          break;
+        case 'aplicaciones':
+          pdfBytes = await AplicacionesPDFService.generate(data: widget.recordData);
+          break;
+        case 'cosecha':
+        case 'cosechas':
+          pdfBytes = await CosechaPDFService.generate(data: widget.recordData);
+          break;
+        default:
+          // Fallback al servicio general para tipos no específicos
+          pdfBytes = await PDFService.generarReporteChecklist(
+            recordData: widget.recordData,
+            checklistType: widget.checklistType,
+            obtenerDatosFrescos: true,
+          );
+      }
+      
       final result = await _saveFile(pdfBytes);
       if (mounted) {
         if (result['success']) {
@@ -463,10 +505,43 @@ class _ShareDialogState extends State<ShareDialog> {
 
     setState(() => _isSendingEmail = true);
     try {
-      _pdfBytes ??= await PDFService.generarReporteChecklist(
-        recordData: widget.recordData,
-        checklistType: widget.checklistType,
-      );
+      // Usar servicios específicos para cada tipo de checklist
+      if (_pdfBytes == null) {
+        switch (widget.checklistType.toLowerCase()) {
+          case 'observaciones_adicionales':
+            _pdfBytes = await ObservacionesAdicionalesPDFService.generate(data: widget.recordData);
+            break;
+          case 'cortes':
+            _pdfBytes = await CortesPDFService.generate(data: widget.recordData);
+            break;
+          case 'labores_permanentes':
+            _pdfBytes = await LaboresPermanentesPDFService.generate(data: widget.recordData);
+            break;
+          case 'labores_temporales':
+            _pdfBytes = await LaboresTemporalesPDFService.generate(data: widget.recordData);
+            break;
+          case 'fertirriego':
+            _pdfBytes = await FertirriegoPDFService.generate(data: widget.recordData);
+            break;
+          case 'bodega':
+            _pdfBytes = await BodegaPDFService.generate(data: widget.recordData);
+            break;
+          case 'aplicaciones':
+            _pdfBytes = await AplicacionesPDFService.generate(data: widget.recordData);
+            break;
+          case 'cosecha':
+          case 'cosechas':
+            _pdfBytes = await CosechaPDFService.generate(data: widget.recordData);
+            break;
+          default:
+            // Fallback al servicio general para tipos no específicos
+            _pdfBytes = await PDFService.generarReporteChecklist(
+              recordData: widget.recordData,
+              checklistType: widget.checklistType,
+              obtenerDatosFrescos: true,
+            );
+        }
+      }
 
       final result = await EmailService.enviarReporteChecklist(
         destinatarios: _destinatarios,

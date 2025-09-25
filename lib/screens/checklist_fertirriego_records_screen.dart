@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import '../data/checklist_data_fertirriego.dart';
 import '../services/checklist_fertirriego_storage_service.dart';
@@ -252,9 +251,9 @@ class _ChecklistFertiriegoRecordsScreenState
     String formatDate(String dateString) {
       try {
         DateTime date = DateTime.parse(dateString);
-        return DateFormat("yyyy-MM-dd HH:mm:ss").format(date);
+        return "CONVERT(DATETIME2, '${date.toIso8601String().replaceAll('T', ' ').substring(0, 19)}', 126)";
       } catch (e) {
-        return dateString;
+        return 'GETDATE()';
       }
     }
 
@@ -278,7 +277,7 @@ class _ChecklistFertiriegoRecordsScreenState
       escapeValue(record['bloque_nombre']),
       escapeValue(record['usuario_id']),
       escapeValue(record['usuario_nombre']),
-      escapeValue(formatDate(record['fecha_creacion'])),
+      formatDate(record['fecha_creacion']),
       escapeValue(record['porcentaje_cumplimiento']),
       'GETDATE()'
     ];

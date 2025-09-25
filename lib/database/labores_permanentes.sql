@@ -27,7 +27,7 @@ BEGIN
         -- JSON con información de cuadrantes (supervisor, bloque, variedad, cuadrante)
         [cuadrantes_json] NVARCHAR(MAX) NOT NULL,
         
-        -- JSON con resultados de la matriz de evaluación (12 items x 5 paradas por cuadrante)
+        -- JSON con resultados de la matriz de evaluación (16 items x 5 paradas por cuadrante)
         [items_json] NVARCHAR(MAX) NOT NULL,
         
         -- Métricas calculadas

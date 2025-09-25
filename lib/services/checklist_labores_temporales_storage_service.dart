@@ -1,16 +1,16 @@
 import 'dart:convert';
 import '../database/database_helper.dart';
-import '../data/checklist_data_labores_permanentes.dart';
+import '../data/checklist_data_labores_temporales.dart';
 import '../models/dropdown_models.dart';
 import '../services/sql_server_service.dart';
 import '../services/auth_service.dart';
 import 'date_helper.dart';
 
-class ChecklistLaboresPermanentesStorageService {
+class ChecklistLaboresTemporalesStorageService {
   
   // ==================== OPERACIONES LOCALES (SQLite) ====================
   
-  static Future<int> saveChecklist(ChecklistLaboresPermanentes checklist) async {
+  static Future<int> saveChecklist(ChecklistLaboresTemporales checklist) async {
     final db = await DatabaseHelper().database;
     
     // Calcular métricas antes de guardar
@@ -34,12 +34,12 @@ class ChecklistLaboresPermanentesStorageService {
       'activo': 1,
     };
 
-    print('Guardando checklist labores permanentes: ${checklistMap['finca_nombre']} - ${checklistMap['kontroller']}');
+    print('Guardando checklist labores temporales: ${checklistMap['finca_nombre']} - ${checklistMap['kontroller']}');
     
-    return await db.insert('check_labores_permanentes', checklistMap);
+    return await db.insert('check_labores_temporales', checklistMap);
   }
 
-  static Future<void> updateChecklist(ChecklistLaboresPermanentes checklist) async {
+  static Future<void> updateChecklist(ChecklistLaboresTemporales checklist) async {
     if (checklist.id == null) throw Exception('ID del checklist es requerido para actualizar');
     
     final db = await DatabaseHelper().database;
@@ -63,42 +63,42 @@ class ChecklistLaboresPermanentesStorageService {
       'fecha_actualizacion': DateTime.now().toIso8601String(),
     };
 
-    print('Actualizando checklist labores permanentes ID ${checklist.id}');
+    print('Actualizando checklist labores temporales ID ${checklist.id}');
     
     await db.update(
-      'check_labores_permanentes',
+      'check_labores_temporales',
       checklistMap,
       where: 'id = ?',
       whereArgs: [checklist.id],
     );
   }
 
-  static Future<List<ChecklistLaboresPermanentes>> getAllChecklists() async {
+  static Future<List<ChecklistLaboresTemporales>> getAllChecklists() async {
     final db = await DatabaseHelper().database;
     
     final List<Map<String, dynamic>> maps = await db.query(
-      'check_labores_permanentes',
+      'check_labores_temporales',
       where: 'activo = ?',
       whereArgs: [1],
       orderBy: 'fecha_creacion DESC',
     );
 
-    print('Obtenidos ${maps.length} checklists de labores permanentes desde SQLite');
+    print('Obtenidos ${maps.length} checklists de labores temporales desde SQLite');
     
-    return maps.map((map) => _mapToChecklistLaboresPermanentes(map)).toList();
+    return maps.map((map) => _mapToChecklistLaboresTemporales(map)).toList();
   }
 
-  static Future<ChecklistLaboresPermanentes?> getChecklistById(int id) async {
+  static Future<ChecklistLaboresTemporales?> getChecklistById(int id) async {
     final db = await DatabaseHelper().database;
     
     final List<Map<String, dynamic>> maps = await db.query(
-      'check_labores_permanentes',
+      'check_labores_temporales',
       where: 'id = ? AND activo = ?',
       whereArgs: [id, 1],
     );
 
     if (maps.isNotEmpty) {
-      return _mapToChecklistLaboresPermanentes(maps.first);
+      return _mapToChecklistLaboresTemporales(maps.first);
     }
     return null;
   }
@@ -108,7 +108,7 @@ class ChecklistLaboresPermanentesStorageService {
     
     // Soft delete - marcar como inactivo
     await db.update(
-      'check_labores_permanentes',
+      'check_labores_temporales',
       {
         'activo': 0,
         'fecha_actualizacion': DateTime.now().toIso8601String(),
@@ -117,7 +117,7 @@ class ChecklistLaboresPermanentesStorageService {
       whereArgs: [id],
     );
     
-    print('Checklist labores permanentes con ID $id marcado como eliminado');
+    print('Checklist labores temporales con ID $id marcado como eliminado');
   }
 
   // ==================== SINCRONIZACIÓN CON SERVIDOR ====================
@@ -127,18 +127,18 @@ class ChecklistLaboresPermanentesStorageService {
     
     // Obtener checklists no enviados
     final List<Map<String, dynamic>> unsyncedMaps = await db.query(
-      'check_labores_permanentes',
+      'check_labores_temporales',
       where: 'enviado = ? AND activo = ?',
       whereArgs: [0, 1],
       orderBy: 'fecha_creacion ASC',
     );
 
-    print('Intentando sincronizar ${unsyncedMaps.length} checklists de labores permanentes...');
+    print('Intentando sincronizar ${unsyncedMaps.length} checklists de labores temporales...');
 
     if (unsyncedMaps.isEmpty) {
       return {
         'success': true,
-        'message': 'No hay checklists de labores permanentes pendientes por sincronizar',
+        'message': 'No hay checklists de labores temporales pendientes por sincronizar',
         'synced': 0,
         'failed': 0,
       };
@@ -154,39 +154,39 @@ class ChecklistLaboresPermanentesStorageService {
 
     for (var map in unsyncedMaps) {
       try {
-        ChecklistLaboresPermanentes checklist = _mapToChecklistLaboresPermanentes(map);
+        ChecklistLaboresTemporales checklist = _mapToChecklistLaboresTemporales(map);
         await _sendChecklistToServer(checklist);
         
         // Marcar como enviado
         await db.update(
-          'check_labores_permanentes',
+          'check_labores_temporales',
           {'enviado': 1, 'fecha_envio': DateTime.now().toIso8601String()},
           where: 'id = ?',
           whereArgs: [map['id']],
         );
         
         syncedCount++;
-        print('Checklist labores permanentes ID ${map['id']} sincronizado exitosamente');
+        print('Checklist labores temporales ID ${map['id']} sincronizado exitosamente');
         
       } catch (e) {
         failedCount++;
         errors.add('ID ${map['id']}: $e');
-        print('Error sincronizando checklist labores permanentes ID ${map['id']}: $e');
+        print('Error sincronizando checklist labores temporales ID ${map['id']}: $e');
       }
     }
 
     return {
       'success': failedCount == 0,
       'message': syncedCount > 0 
-          ? '$syncedCount checklists de labores permanentes sincronizados exitosamente'
-          : 'No se pudieron sincronizar los checklists de labores permanentes',
+          ? '$syncedCount checklists de labores temporales sincronizados exitosamente'
+          : 'No se pudieron sincronizar los checklists de labores temporales',
       'synced': syncedCount,
       'failed': failedCount,
       'errors': errors,
     };
   }
 
-  static Future<void> _sendChecklistToServer(ChecklistLaboresPermanentes checklist) async {
+  static Future<void> _sendChecklistToServer(ChecklistLaboresTemporales checklist) async {
     if (checklist.id == null) throw Exception('ID del checklist es requerido');
 
     // Obtener usuario actual desde AuthService
@@ -209,7 +209,7 @@ class ChecklistLaboresPermanentesStorageService {
 
     // Construir query de inserción
     String query = '''
-      INSERT INTO check_labores_permanentes (
+      INSERT INTO check_labores_temporales (
         id_local, fecha, finca_nombre, up_unidad_productiva, semana, kontroller,
         cuadrantes_json, items_json, porcentaje_cumplimiento, total_evaluaciones, 
         total_conformes, total_no_conformes, observaciones_generales, 
@@ -234,7 +234,7 @@ class ChecklistLaboresPermanentesStorageService {
     ''';
 
     await SqlServerService.executeQuery(query);
-    print('Checklist labores permanentes enviado al servidor exitosamente');
+    print('Checklist labores temporales enviado al servidor exitosamente');
   }
 
   // ==================== ESTADÍSTICAS Y REPORTES ====================
@@ -255,7 +255,7 @@ class ChecklistLaboresPermanentesStorageService {
         SUM(COALESCE(total_evaluaciones, 0)) as total_evaluaciones_suma,
         SUM(COALESCE(total_conformes, 0)) as total_conformes_suma,
         SUM(COALESCE(total_no_conformes, 0)) as total_no_conformes_suma
-      FROM check_labores_permanentes
+      FROM check_labores_temporales
       WHERE activo = 1
     ''');
 
@@ -295,7 +295,7 @@ class ChecklistLaboresPermanentesStorageService {
     final db = await DatabaseHelper().database;
     
     final List<Map<String, dynamic>> maps = await db.query(
-      'check_labores_permanentes',
+      'check_labores_temporales',
       where: 'date(fecha) BETWEEN date(?) AND date(?) AND activo = ?',
       whereArgs: [startDate.toIso8601String(), endDate.toIso8601String(), 1],
       orderBy: 'fecha DESC',
@@ -308,7 +308,7 @@ class ChecklistLaboresPermanentesStorageService {
     final db = await DatabaseHelper().database;
     
     final List<Map<String, dynamic>> maps = await db.query(
-      'check_labores_permanentes',
+      'check_labores_temporales',
       where: 'finca_nombre = ? AND activo = ?',
       whereArgs: [fincaNombre, 1],
       orderBy: 'fecha DESC',
@@ -321,7 +321,7 @@ class ChecklistLaboresPermanentesStorageService {
     final db = await DatabaseHelper().database;
     
     final List<Map<String, dynamic>> maps = await db.query(
-      'check_labores_permanentes',
+      'check_labores_temporales',
       where: 'kontroller = ? AND activo = ?',
       whereArgs: [kontroller, 1],
       orderBy: 'fecha DESC',
@@ -344,7 +344,7 @@ class ChecklistLaboresPermanentesStorageService {
         COUNT(DISTINCT finca_nombre) as fincas_evaluadas,
         SUM(COALESCE(total_conformes, 0)) as total_conformes,
         SUM(COALESCE(total_no_conformes, 0)) as total_no_conformes
-      FROM check_labores_permanentes
+      FROM check_labores_temporales
       WHERE activo = 1 AND semana IS NOT NULL AND semana != ''
       GROUP BY semana
       ORDER BY semana DESC
@@ -370,7 +370,7 @@ class ChecklistLaboresPermanentesStorageService {
         COUNT(DISTINCT semana) as semanas_activas,
         SUM(COALESCE(total_conformes, 0)) as total_conformes,
         SUM(COALESCE(total_no_conformes, 0)) as total_no_conformes
-      FROM check_labores_permanentes
+      FROM check_labores_temporales
       WHERE activo = 1 AND kontroller IS NOT NULL AND kontroller != ''
       GROUP BY kontroller
       ORDER BY promedio_cumplimiento DESC
@@ -384,7 +384,7 @@ class ChecklistLaboresPermanentesStorageService {
 
   // ==================== UTILIDADES PRIVADAS ====================
   
-  static Map<String, dynamic> _calcularMetricas(ChecklistLaboresPermanentes checklist) {
+  static Map<String, dynamic> _calcularMetricas(ChecklistLaboresTemporales checklist) {
     int totalEvaluaciones = 0;
     int totalConformes = 0;
     int totalNoConformes = 0;
@@ -413,24 +413,24 @@ class ChecklistLaboresPermanentesStorageService {
     };
   }
   
-  static ChecklistLaboresPermanentes _mapToChecklistLaboresPermanentes(Map<String, dynamic> map) {
+  static ChecklistLaboresTemporales _mapToChecklistLaboresTemporales(Map<String, dynamic> map) {
     // Parsear cuadrantes
-    List<CuadranteLaboresInfo> cuadrantes = [];
+    List<CuadranteLaboresTemporalesInfo> cuadrantes = [];
     if (map['cuadrantes_json'] != null && map['cuadrantes_json'].toString().isNotEmpty) {
       try {
         List<dynamic> cuadrantesData = jsonDecode(map['cuadrantes_json']);
-        cuadrantes = cuadrantesData.map((c) => CuadranteLaboresInfo.fromJson(c)).toList();
+        cuadrantes = cuadrantesData.map((c) => CuadranteLaboresTemporalesInfo.fromJson(c)).toList();
       } catch (e) {
         print('Error parseando cuadrantes JSON: $e');
       }
     }
 
     // Parsear items
-    List<ChecklistLaboresPermanentesItem> items = [];
+    List<ChecklistLaboresTemporalesItem> items = [];
     if (map['items_json'] != null && map['items_json'].toString().isNotEmpty) {
       try {
         List<dynamic> itemsData = jsonDecode(map['items_json']);
-        items = itemsData.map((item) => ChecklistLaboresPermanentesItem.fromJson(item)).toList();
+        items = itemsData.map((item) => ChecklistLaboresTemporalesItem.fromJson(item)).toList();
       } catch (e) {
         print('Error parseando items JSON: $e');
       }
@@ -442,7 +442,7 @@ class ChecklistLaboresPermanentesStorageService {
       finca = Finca(nombre: map['finca_nombre'].toString());
     }
 
-    return ChecklistLaboresPermanentes(
+    return ChecklistLaboresTemporales(
       id: map['id'],
       fecha: map['fecha'] != null ? DateTime.parse(map['fecha']) : null,
       finca: finca,
@@ -466,7 +466,7 @@ class ChecklistLaboresPermanentesStorageService {
     
     // Soft delete de registros antiguos ya sincronizados
     int deletedCount = await db.update(
-      'check_labores_permanentes',
+      'check_labores_temporales',
       {
         'activo': 0,
         'fecha_actualizacion': DateTime.now().toIso8601String(),
@@ -475,34 +475,34 @@ class ChecklistLaboresPermanentesStorageService {
       whereArgs: [cutoffDate.toIso8601String(), 1, 1],
     );
 
-    print('Marcados como eliminados $deletedCount checklists de labores permanentes antiguos (más de $daysToKeep días)');
+    print('Marcados como eliminados $deletedCount checklists de labores temporales antiguos (más de $daysToKeep días)');
   }
 
   static Future<Map<String, dynamic>> exportChecklistsToJson() async {
     final db = await DatabaseHelper().database;
     
     final List<Map<String, dynamic>> maps = await db.query(
-      'check_labores_permanentes',
+      'check_labores_temporales',
       where: 'activo = ?',
       whereArgs: [1],
       orderBy: 'fecha_creacion DESC',
     );
 
-    List<ChecklistLaboresPermanentes> checklists = maps.map((map) => _mapToChecklistLaboresPermanentes(map)).toList();
+    List<ChecklistLaboresTemporales> checklists = maps.map((map) => _mapToChecklistLaboresTemporales(map)).toList();
     Map<String, dynamic> stats = await getStatistics();
     
     Map<String, dynamic> exportData = {
       'export_metadata': {
         'export_date': DateTime.now().toIso8601String(),
         'total_records': checklists.length,
-        'module': 'labores_permanentes',
+        'module': 'labores_temporales',
         'version': '1.0',
       },
       'statistics': stats,
       'checklists': checklists.map((c) => c.toJson()).toList(),
     };
 
-    print('Datos de labores permanentes preparados para exportar: ${checklists.length} registros');
+    print('Datos de labores temporales preparados para exportar: ${checklists.length} registros');
     return exportData;
   }
 }

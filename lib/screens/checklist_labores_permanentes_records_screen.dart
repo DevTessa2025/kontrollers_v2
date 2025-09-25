@@ -13,6 +13,7 @@ class ChecklistLaboresPermanentesRecordsScreen extends StatefulWidget {
 class _ChecklistLaboresPermanentesRecordsScreenState extends State<ChecklistLaboresPermanentesRecordsScreen> {
   List<ChecklistLaboresPermanentes> _checklists = [];
   bool _isLoading = true;
+  bool _isSyncing = false;
   String _searchQuery = '';
   Map<String, dynamic> _statistics = {};
 
@@ -21,6 +22,120 @@ class _ChecklistLaboresPermanentesRecordsScreenState extends State<ChecklistLabo
     super.initState();
     _loadChecklists();
     _loadStatistics();
+  }
+
+  Future<void> _syncToServer() async {
+    setState(() {
+      _isSyncing = true;
+    });
+
+    try {
+      Map<String, dynamic> result = await ChecklistLaboresPermanentesStorageService.syncChecklistsToServer();
+
+      if (result['success']) {
+        Fluttertoast.showToast(
+          msg: result['message'],
+          backgroundColor: Colors.green[600],
+          textColor: Colors.white,
+        );
+
+        await _loadChecklists();
+        await _loadStatistics();
+      } else {
+        Fluttertoast.showToast(
+          msg: result['message'],
+          backgroundColor: Colors.red[600],
+          textColor: Colors.white,
+        );
+      }
+    } catch (e) {
+      Fluttertoast.showToast(
+        msg: 'Error durante la sincronización: $e',
+        backgroundColor: Colors.red[600],
+        textColor: Colors.white,
+      );
+    } finally {
+      setState(() {
+        _isSyncing = false;
+      });
+    }
+  }
+
+  Future<void> _syncIndividualChecklist(ChecklistLaboresPermanentes checklist) async {
+    try {
+      bool confirmed = await showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: Text('Sincronizar Checklist'),
+            content: Text(
+              '¿Está seguro de sincronizar el checklist del ${_formatDate(checklist.fecha)} '
+              'de la finca ${checklist.finca?.nombre ?? 'N/A'}?'
+            ),
+            actions: [
+              TextButton(
+                child: Text('Cancelar'),
+                onPressed: () => Navigator.of(context).pop(false),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple[600]),
+                child: Text('Sincronizar'),
+                onPressed: () => Navigator.of(context).pop(true),
+              ),
+            ],
+          );
+        },
+      ) ?? false;
+
+      if (!confirmed) return;
+
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            content: Row(
+              children: [
+                CircularProgressIndicator(color: Colors.deepPurple[600]),
+                SizedBox(width: 16),
+                Text('Sincronizando...'),
+              ],
+            ),
+          );
+        },
+      );
+
+      Map<String, dynamic> result = await ChecklistLaboresPermanentesStorageService.syncChecklistsToServer();
+
+      Navigator.of(context).pop();
+
+      if (result['success']) {
+        Fluttertoast.showToast(
+          msg: 'Checklist sincronizado exitosamente',
+          backgroundColor: Colors.green[600],
+          textColor: Colors.white,
+        );
+
+        await _loadChecklists();
+        await _loadStatistics();
+      } else {
+        Fluttertoast.showToast(
+          msg: 'Error sincronizando checklist: ${result['message']}',
+          backgroundColor: Colors.red[600],
+          textColor: Colors.white,
+        );
+      }
+    } catch (e) {
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+
+      Fluttertoast.showToast(
+        msg: 'Error durante la sincronización: $e',
+        backgroundColor: Colors.red[600],
+        textColor: Colors.white,
+      );
+    }
   }
 
   Future<void> _loadChecklists() async {
@@ -264,59 +379,89 @@ class _ChecklistLaboresPermanentesRecordsScreenState extends State<ChecklistLabo
   }
 
   Widget _buildSearchBar() {
-    return Row(
+    return Column(
       children: [
-        Expanded(
-          child: Container(
-            padding: EdgeInsets.symmetric(horizontal: 16),
-            decoration: BoxDecoration(
-              color: Colors.grey[100],
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: 'Buscar por finca, kontroller o fecha...',
-                border: InputBorder.none,
-                prefixIcon: Icon(Icons.search, color: Colors.grey[600]),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: Icon(Icons.clear, color: Colors.grey[600]),
-                        onPressed: () {
-                          setState(() {
-                            _searchQuery = '';
-                          });
-                        },
-                      )
-                    : null,
+        Row(
+          children: [
+            Expanded(
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: TextField(
+                  decoration: InputDecoration(
+                    hintText: 'Buscar por finca, kontroller o fecha...',
+                    border: InputBorder.none,
+                    prefixIcon: Icon(Icons.search, color: Colors.grey[600]),
+                    suffixIcon: _searchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: Icon(Icons.clear, color: Colors.grey[600]),
+                            onPressed: () {
+                              setState(() {
+                                _searchQuery = '';
+                              });
+                            },
+                          )
+                        : null,
+                  ),
+                  onChanged: (value) {
+                    setState(() {
+                      _searchQuery = value;
+                    });
+                  },
+                ),
               ),
-              onChanged: (value) {
-                setState(() {
-                  _searchQuery = value;
-                });
+            ),
+            SizedBox(width: 12),
+            ElevatedButton.icon(
+              onPressed: () async {
+                final result = await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ChecklistLaboresPermanentesScreen(),
+                  ),
+                );
+                if (result != null) {
+                  _loadChecklists();
+                  _loadStatistics();
+                }
               },
-            ),
-          ),
-        ),
-        SizedBox(width: 12),
-        ElevatedButton.icon(
-          onPressed: () async {
-            final result = await Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => ChecklistLaboresPermanentesScreen(),
+              icon: Icon(Icons.add, size: 18),
+              label: Text('Nuevo'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.deepPurple[600],
+                foregroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               ),
-            );
-            if (result != null) {
-              _loadChecklists();
-              _loadStatistics();
-            }
-          },
-          icon: Icon(Icons.add, size: 18),
-          label: Text('Nuevo'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.deepPurple[600],
-            foregroundColor: Colors.white,
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            ),
+          ],
+        ),
+        SizedBox(height: 12),
+        Container(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: _isSyncing ? null : _syncToServer,
+            icon: _isSyncing 
+                ? SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                : Icon(Icons.cloud_upload, size: 18),
+            label: Text(_isSyncing ? 'Sincronizando...' : 'Sincronizar con Servidor'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.deepPurple[600],
+              foregroundColor: Colors.white,
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
           ),
         ),
       ],
@@ -509,6 +654,15 @@ class _ChecklistLaboresPermanentesRecordsScreenState extends State<ChecklistLabo
                       foregroundColor: Colors.green[600],
                     ),
                   ),
+                  if (checklist.fechaEnvio == null)
+                    TextButton.icon(
+                      onPressed: () => _syncIndividualChecklist(checklist),
+                      icon: Icon(Icons.cloud_upload, size: 18),
+                      label: Text('Sincronizar'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.orange[600],
+                      ),
+                    ),
                   TextButton.icon(
                     onPressed: () => _deleteChecklist(checklist),
                     icon: Icon(Icons.delete, size: 18),
@@ -586,7 +740,7 @@ class _ChecklistLaboresPermanentesRecordsScreenState extends State<ChecklistLabo
                       Padding(
                         padding: EdgeInsets.only(left: 8, bottom: 4),
                         child: Text(
-                          '• ${cuadrante.supervisor} - ${cuadrante.cuadrante}${cuadrante.bloque != null ? ' (Bl. ${cuadrante.bloque})' : ''}${cuadrante.variedad != null ? ' - ${cuadrante.variedad}' : ''}',
+                          '• ${cuadrante.supervisor} - ${cuadrante.cuadrante}${cuadrante.bloque.isNotEmpty ? ' (Bl. ${cuadrante.bloque})' : ''}${cuadrante.variedad != null ? ' - ${cuadrante.variedad}' : ''}',
                           style: TextStyle(fontSize: 14),
                         ),
                       ),

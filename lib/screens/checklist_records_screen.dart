@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import '../services/checklist_storage_service.dart';
 import '../services/sql_server_service.dart';
+import '../services/date_helper.dart';
 import '../data/checklist_data.dart';
 import 'checklist_bodega_screen.dart';
 
@@ -192,10 +192,21 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
 
     String formatDate(String dateString) {
       try {
+        // Debug del string de entrada
+        DateHelper.debugDateString(dateString);
+        
         DateTime date = DateTime.parse(dateString);
-        return DateFormat("yyyy-MM-dd HH:mm:ss").format(date);
+        
+        // Usar formato más robusto para SQL Server
+        String formatted = "CONVERT(DATETIME2, '${date.toIso8601String().replaceAll('T', ' ').substring(0, 19)}', 126)";
+        
+        print('🔍 DEBUG FECHA - Input: $dateString');
+        print('🔍 DEBUG FECHA - Parsed: $date');
+        print('🔍 DEBUG FECHA - Formatted: $formatted');
+        return formatted;
       } catch (e) {
-        return dateString;
+        print('🔍 DEBUG FECHA - Error parsing date: $e');
+        return 'GETDATE()';
       }
     }
 
@@ -217,7 +228,7 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
       escapeValue(record['pesador_nombre']),
       escapeValue(record['usuario_id']),
       escapeValue(record['usuario_nombre']),
-      escapeValue(formatDate(record['fecha_creacion'])),
+      formatDate(record['fecha_creacion']),
       escapeValue(record['porcentaje_cumplimiento']),
       'GETDATE()'
     ];

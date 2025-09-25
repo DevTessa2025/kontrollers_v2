@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import '../services/checklist_cosecha_storage_service.dart';
 import '../services/sql_server_service.dart';
@@ -193,9 +192,9 @@ class _ChecklistCosechaRecordsScreenState extends State<ChecklistCosechaRecordsS
     String formatDate(String dateString) {
       try {
         DateTime date = DateTime.parse(dateString);
-        return DateFormat("yyyy-MM-dd HH:mm:ss").format(date);
+        return "CONVERT(DATETIME2, '${date.toIso8601String().replaceAll('T', ' ').substring(0, 19)}', 126)";
       } catch (e) {
-        return dateString;
+        return 'GETDATE()';
       }
     }
 
@@ -215,7 +214,7 @@ class _ChecklistCosechaRecordsScreenState extends State<ChecklistCosechaRecordsS
       escapeValue(record['variedad_nombre']),
       escapeValue(record['usuario_id']),
       escapeValue(record['usuario_nombre']),
-      escapeValue(formatDate(record['fecha_creacion'])),
+      formatDate(record['fecha_creacion']),
       escapeValue(record['porcentaje_cumplimiento']),
       'GETDATE()'
     ];

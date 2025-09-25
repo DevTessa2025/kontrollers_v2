@@ -5,10 +5,20 @@ import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/checklist_fertirriego_screen.dart';
 import 'services/PhysicalDeviceOptimizer.dart';
+import 'database/database_helper.dart';
 
 void main() async {
   // Inicializar el optimizador para dispositivos físicos
   await PhysicalDeviceOptimizer.initialize();
+  
+  // Inicializar la base de datos
+  try {
+    DatabaseHelper dbHelper = DatabaseHelper();
+    await dbHelper.database; // Esto creará la base de datos si no existe
+    print('Base de datos inicializada correctamente');
+  } catch (e) {
+    print('Error inicializando base de datos: $e');
+  }
   
   runApp(MyApp());
 }

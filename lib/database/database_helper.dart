@@ -23,7 +23,7 @@ class DatabaseHelper {
     
     return await openDatabase(
       path,
-      version: 5, // Incrementado para incluir índices y métodos faltantes
+      version: 9, // v9: agrega columna fecha_envio en observaciones_adicionales
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -140,6 +140,54 @@ class DatabaseHelper {
         activo INTEGER DEFAULT 1
       )
     ''');
+    await db.execute('''
+      CREATE TABLE check_labores_temporales(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fecha TEXT,
+        finca_nombre TEXT,
+        up TEXT,
+        semana TEXT,
+        kontroller TEXT,
+        cuadrantes_json TEXT NOT NULL,
+        items_json TEXT NOT NULL,
+        porcentaje_cumplimiento REAL DEFAULT 0,
+        total_evaluaciones INTEGER DEFAULT 0,
+        total_conformes INTEGER DEFAULT 0,
+        total_no_conformes INTEGER DEFAULT 0,
+        observaciones_generales TEXT,
+        fecha_creacion TEXT NOT NULL,
+        fecha_actualizacion TEXT,
+        fecha_envio TEXT,
+        enviado INTEGER DEFAULT 0,
+        activo INTEGER DEFAULT 1
+      )
+    ''');
+
+    // Tabla para Observaciones Adicionales
+    await db.execute('''
+      CREATE TABLE observaciones_adicionales(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fecha TEXT,
+        finca_nombre TEXT,
+        bloque_nombre TEXT,
+        variedad_nombre TEXT,
+        tipo TEXT, -- MIPE | CULTIVO | MIRFE
+        observacion TEXT,
+        imagenes_json TEXT, -- arreglo de strings base64
+        usuario_username TEXT,
+        usuario_nombre TEXT,
+        fecha_creacion TEXT NOT NULL,
+        fecha_actualizacion TEXT,
+        fecha_envio TEXT,
+        enviado INTEGER DEFAULT 0,
+        activo INTEGER DEFAULT 1,
+        -- Campos específicos para MIPE
+        blanco_biologico TEXT,
+        incidencia REAL,
+        severidad REAL,
+        tercio TEXT -- Alto | Medio | Bajo
+      )
+    ''');
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -247,6 +295,136 @@ class DatabaseHelper {
       await _createMetadataTables(db);
     }
     
+    if (oldVersion < 6) {
+      // Código de la versión 6 (tabla de labores temporales)
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS check_labores_temporales(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          fecha TEXT,
+          finca_nombre TEXT,
+          up TEXT,
+          semana TEXT,
+          kontroller TEXT,
+          cuadrantes_json TEXT NOT NULL,
+          items_json TEXT NOT NULL,
+          porcentaje_cumplimiento REAL DEFAULT 0,
+          total_evaluaciones INTEGER DEFAULT 0,
+          total_conformes INTEGER DEFAULT 0,
+          total_no_conformes INTEGER DEFAULT 0,
+          observaciones_generales TEXT,
+          fecha_creacion TEXT NOT NULL,
+          fecha_actualizacion TEXT,
+          fecha_envio TEXT,
+          enviado INTEGER DEFAULT 0,
+          activo INTEGER DEFAULT 1
+        )
+      ''');
+    }
+
+    if (oldVersion < 7) {
+      // Código de la versión 7 (tabla de observaciones adicionales)
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS observaciones_adicionales(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          fecha TEXT,
+          finca_nombre TEXT,
+          bloque_nombre TEXT,
+          variedad_nombre TEXT,
+          tipo TEXT,
+          observacion TEXT,
+          imagenes_json TEXT,
+          usuario_username TEXT,
+          usuario_nombre TEXT,
+          fecha_creacion TEXT NOT NULL,
+          fecha_actualizacion TEXT,
+          enviado INTEGER DEFAULT 0,
+          activo INTEGER DEFAULT 1
+        )
+      ''');
+    }
+
+    if (oldVersion < 8) {
+      // Código de la versión 8 (campos MIPE en observaciones adicionales)
+      try {
+        await db.execute('ALTER TABLE observaciones_adicionales ADD COLUMN blanco_biologico TEXT');
+      } catch (e) {
+        print('Columna blanco_biologico ya existe o error: $e');
+      }
+      
+      try {
+        await db.execute('ALTER TABLE observaciones_adicionales ADD COLUMN incidencia REAL');
+      } catch (e) {
+        print('Columna incidencia ya existe o error: $e');
+      }
+      
+      try {
+        await db.execute('ALTER TABLE observaciones_adicionales ADD COLUMN severidad REAL');
+      } catch (e) {
+        print('Columna severidad ya existe o error: $e');
+      }
+      
+      try {
+        await db.execute('ALTER TABLE observaciones_adicionales ADD COLUMN tercio TEXT');
+      } catch (e) {
+        print('Columna tercio ya existe o error: $e');
+      }
+    }
+
+    if (oldVersion < 9) {
+      // v9: agregar columna fecha_envio en observaciones_adicionales
+      try {
+        await db.execute('ALTER TABLE observaciones_adicionales ADD COLUMN fecha_envio TEXT');
+        print('✅ Columna fecha_envio agregada en observaciones_adicionales');
+      } catch (e) {
+        print('Columna fecha_envio ya existe o error: $e');
+      }
+    }
+    
+  }
+
+  // ==================== MÉTODO PARA VERIFICAR COLUMNAS MIPE ====================
+  
+  /// Verifica y agrega las columnas MIPE si no existen
+  static Future<void> ensureMIPEColumns() async {
+    final db = await DatabaseHelper().database;
+    
+    try {
+      // Verificar si las columnas existen
+      final result = await db.rawQuery('PRAGMA table_info(observaciones_adicionales)');
+      final columnNames = result.map((col) => col['name'] as String).toList();
+      
+      print('🔍 Columnas existentes en observaciones_adicionales: $columnNames');
+      
+      // Agregar columnas que no existen
+      if (!columnNames.contains('blanco_biologico')) {
+        await db.execute('ALTER TABLE observaciones_adicionales ADD COLUMN blanco_biologico TEXT');
+        print('✅ Columna blanco_biologico agregada');
+      }
+      
+      if (!columnNames.contains('incidencia')) {
+        await db.execute('ALTER TABLE observaciones_adicionales ADD COLUMN incidencia REAL');
+        print('✅ Columna incidencia agregada');
+      }
+      
+      if (!columnNames.contains('severidad')) {
+        await db.execute('ALTER TABLE observaciones_adicionales ADD COLUMN severidad REAL');
+        print('✅ Columna severidad agregada');
+      }
+      
+      if (!columnNames.contains('tercio')) {
+        await db.execute('ALTER TABLE observaciones_adicionales ADD COLUMN tercio TEXT');
+        print('✅ Columna tercio agregada');
+      }
+
+      // Asegurar también fecha_envio para sincronización
+      if (!columnNames.contains('fecha_envio')) {
+        await db.execute('ALTER TABLE observaciones_adicionales ADD COLUMN fecha_envio TEXT');
+        print('✅ Columna fecha_envio agregada');
+      }
+      
+    } catch (e) {
+      print('❌ Error verificando/agregando columnas MIPE: $e');
+    }
   }
 
   // ==================== MÉTODOS EXISTENTES ====================
@@ -1177,7 +1355,6 @@ Future<List<Map<String, dynamic>>> searchBombas(String finca, String bloque, Str
 
   // Obtener estadísticas completas de la base de datos
   Future<Map<String, dynamic>> getCompleteStats() async {
-    Database db = await database;
     
     try {
       Map<String, dynamic> stats = {};

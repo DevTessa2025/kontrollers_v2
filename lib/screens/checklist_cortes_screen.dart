@@ -89,7 +89,12 @@ class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> {
   }
 
   Future<void> _initializeDateFormatting() async {
-    await initializeDateFormatting('es_ES', null);
+    try {
+      await initializeDateFormatting('es_ES', null);
+    } catch (e) {
+      print('Error inicializando formateo de fechas: $e');
+      // Continuar sin formateo específico si falla
+    }
   }
 
   void _loadExistingChecklist() {
@@ -390,6 +395,12 @@ class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> {
 
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            // Función para verificar si "Corte conforme" está seleccionado
+            bool isCorteConformeSelected = seleccionados[0]; // "Corte conforme" es el primer ítem (índice 0)
+            
+            // Función para verificar si algún otro ítem está seleccionado
+            bool hasOtherItemsSelected = seleccionados.skip(1).any((selected) => selected);
+            
             return AlertDialog(
               title: Text('Muestra $muestra - ${supervisor}'),
               content: Container(
@@ -397,12 +408,37 @@ class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                                         Text(
-                       'Cuadrante: $cuadrante${matrizCortes[supervisor]![cuadrante]!['bloque'] != null ? ' - Bloque: ${matrizCortes[supervisor]![cuadrante]!['bloque']!.nombre}' : ''}',
-                       style: TextStyle(fontWeight: FontWeight.w600),
-                     ),
+                    Text(
+                      'Cuadrante: $cuadrante${matrizCortes[supervisor]![cuadrante]!['bloque'] != null ? ' - Bloque: ${matrizCortes[supervisor]![cuadrante]!['bloque']!.nombre}' : ''}',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
                     SizedBox(height: 16),
                     Text('Seleccione los ítems de control evaluados:'),
+                    SizedBox(height: 8),
+                    Container(
+                      padding: EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.orange[50],
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.orange[300]!),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline, color: Colors.orange[700], size: 16),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Nota: "Corte conforme" es exclusivo con otros ítems',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.orange[700],
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                     SizedBox(height: 8),
                     Container(
                       height: 300,
@@ -412,19 +448,42 @@ class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> {
                             int index = entry.key;
                             String item = entry.value;
                             
+                            // Determinar si este ítem debe estar deshabilitado
+                            bool isDisabled = false;
+                            if (index == 0) {
+                              // "Corte conforme" se deshabilita si hay otros ítems seleccionados
+                              isDisabled = hasOtherItemsSelected;
+                            } else {
+                              // Otros ítems se deshabilitan si "Corte conforme" está seleccionado
+                              isDisabled = isCorteConformeSelected;
+                            }
+                            
                             return CheckboxListTile(
                               title: Text(
                                 '${index + 1}. $item',
-                                style: TextStyle(fontSize: 14),
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: isDisabled ? Colors.grey[500] : null,
+                                ),
                               ),
                               value: seleccionados[index],
-                              onChanged: (bool? value) {
+                              onChanged: isDisabled ? null : (bool? value) {
                                 setDialogState(() {
+                                  if (index == 0 && value == true) {
+                                    // Si se selecciona "Corte conforme", deseleccionar todos los demás
+                                    for (int i = 1; i < seleccionados.length; i++) {
+                                      seleccionados[i] = false;
+                                    }
+                                  } else if (index > 0 && value == true) {
+                                    // Si se selecciona cualquier otro ítem, deseleccionar "Corte conforme"
+                                    seleccionados[0] = false;
+                                  }
                                   seleccionados[index] = value ?? false;
                                 });
                               },
                               dense: true,
                               controlAffinity: ListTileControlAffinity.leading,
+                              activeColor: isDisabled ? Colors.grey[400] : Colors.blue[600],
                             );
                           }).toList(),
                         ),
@@ -638,7 +697,6 @@ class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> {
           initialDate: selectedDate,
           firstDate: DateTime(2020),
           lastDate: DateTime(2030),
-          locale: Locale('es', 'ES'),
         );
         if (pickedDate != null && pickedDate != selectedDate) {
           setState(() {

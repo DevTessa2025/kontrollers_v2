@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:intl/intl.dart';
-import '../data/checklist_data_cortes.dart';
-import '../services/checklist_cortes_storage_service.dart';
-import 'checklist_cortes_screen.dart';
+import '../data/checklist_data_labores_temporales.dart';
+import '../services/checklist_labores_temporales_storage_service.dart';
+import 'checklist_labores_temporales_screen.dart';
 
-class ChecklistCortesRecordsScreen extends StatefulWidget {
+class ChecklistLaboresTemporalesRecordsScreen extends StatefulWidget {
   @override
-  _ChecklistCortesRecordsScreenState createState() => _ChecklistCortesRecordsScreenState();
+  _ChecklistLaboresTemporalesRecordsScreenState createState() => _ChecklistLaboresTemporalesRecordsScreenState();
 }
 
-class _ChecklistCortesRecordsScreenState extends State<ChecklistCortesRecordsScreen> {
-  List<ChecklistCortes> _checklists = [];
+class _ChecklistLaboresTemporalesRecordsScreenState extends State<ChecklistLaboresTemporalesRecordsScreen> {
+  List<ChecklistLaboresTemporales> _checklists = [];
   bool _isLoading = true;
   bool _isSyncing = false;
   String _searchQuery = '';
@@ -30,12 +30,12 @@ class _ChecklistCortesRecordsScreenState extends State<ChecklistCortesRecordsScr
     });
 
     try {
-      List<ChecklistCortes> checklists = await ChecklistCortesStorageService.getAllChecklists();
+      List<ChecklistLaboresTemporales> checklists = await ChecklistLaboresTemporalesStorageService.getAllChecklists();
       setState(() {
         _checklists = checklists;
         _isLoading = false;
       });
-      print('Cargados ${checklists.length} checklists de cortes');
+      print('Cargados ${checklists.length} checklists de labores permanentes');
     } catch (e) {
       setState(() {
         _isLoading = false;
@@ -50,12 +50,12 @@ class _ChecklistCortesRecordsScreenState extends State<ChecklistCortesRecordsScr
 
   Future<void> _loadStatistics() async {
     try {
-      Map<String, dynamic> stats = await ChecklistCortesStorageService.getStatistics();
+      Map<String, dynamic> stats = await ChecklistLaboresTemporalesStorageService.getStatistics();
       setState(() {
         _statistics = stats;
       });
     } catch (e) {
-      print('Error cargando estadísticas de cortes: $e');
+      print('Error cargando estadísticas de labores temporales: $e');
     }
   }
 
@@ -65,7 +65,7 @@ class _ChecklistCortesRecordsScreenState extends State<ChecklistCortesRecordsScr
     });
 
     try {
-      Map<String, dynamic> result = await ChecklistCortesStorageService.syncChecklistsToServer();
+      Map<String, dynamic> result = await ChecklistLaboresTemporalesStorageService.syncChecklistsToServer();
       
       if (result['success']) {
         Fluttertoast.showToast(
@@ -79,14 +79,14 @@ class _ChecklistCortesRecordsScreenState extends State<ChecklistCortesRecordsScr
         await _loadStatistics();
       } else {
         Fluttertoast.showToast(
-          msg: result['message'],
+          msg: result['message'] ?? 'Error en la sincronización',
           backgroundColor: Colors.red[600],
           textColor: Colors.white,
         );
       }
     } catch (e) {
       Fluttertoast.showToast(
-        msg: 'Error durante la sincronización: $e',
+        msg: 'Error de conexión: $e',
         backgroundColor: Colors.red[600],
         textColor: Colors.white,
       );
@@ -97,7 +97,7 @@ class _ChecklistCortesRecordsScreenState extends State<ChecklistCortesRecordsScr
     }
   }
 
-  Future<void> _syncIndividualChecklist(ChecklistCortes checklist) async {
+  Future<void> _syncIndividualChecklist(ChecklistLaboresTemporales checklist) async {
     try {
       // Mostrar diálogo de confirmación
       bool confirmed = await showDialog(
@@ -115,7 +115,7 @@ class _ChecklistCortesRecordsScreenState extends State<ChecklistCortesRecordsScr
                 onPressed: () => Navigator.of(context).pop(false),
               ),
               ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[600]),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
                 child: Text('Sincronizar'),
                 onPressed: () => Navigator.of(context).pop(true),
               ),
@@ -124,63 +124,21 @@ class _ChecklistCortesRecordsScreenState extends State<ChecklistCortesRecordsScr
         },
       ) ?? false;
 
-      if (!confirmed) return;
-
-      // Mostrar indicador de carga
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (BuildContext context) {
-          return AlertDialog(
-            content: Row(
-              children: [
-                CircularProgressIndicator(color: Colors.blue[600]),
-                SizedBox(width: 16),
-                Text('Sincronizando...'),
-              ],
-            ),
-          );
-        },
-      );
-
-      // Sincronizar el checklist individual
-      Map<String, dynamic> result = await ChecklistCortesStorageService.syncChecklistsToServer();
-      
-      // Cerrar diálogo de carga
-      Navigator.of(context).pop();
-
-      if (result['success']) {
-        Fluttertoast.showToast(
-          msg: 'Checklist sincronizado exitosamente',
-          backgroundColor: Colors.green[600],
-          textColor: Colors.white,
-        );
-        
-        // Recargar datos
-        await _loadChecklists();
-        await _loadStatistics();
-      } else {
-        Fluttertoast.showToast(
-          msg: 'Error sincronizando checklist: ${result['message']}',
-          backgroundColor: Colors.red[600],
-          textColor: Colors.white,
-        );
+      if (confirmed && checklist.id != null) {
+        // Aquí implementarías la sincronización individual
+        // Por ahora, usamos la sincronización general
+        await _syncToServer();
       }
     } catch (e) {
-      // Cerrar diálogo de carga si está abierto
-      if (Navigator.of(context).canPop()) {
-        Navigator.of(context).pop();
-      }
-      
       Fluttertoast.showToast(
-        msg: 'Error durante la sincronización: $e',
+        msg: 'Error sincronizando checklist: $e',
         backgroundColor: Colors.red[600],
         textColor: Colors.white,
       );
     }
   }
 
-  Future<void> _deleteChecklist(ChecklistCortes checklist) async {
+  Future<void> _deleteChecklist(ChecklistLaboresTemporales checklist) async {
     bool confirmed = await showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -208,7 +166,7 @@ class _ChecklistCortesRecordsScreenState extends State<ChecklistCortesRecordsScr
     if (confirmed) {
       try {
         if (checklist.id != null) {
-          await ChecklistCortesStorageService.deleteChecklist(checklist.id!);
+          await ChecklistLaboresTemporalesStorageService.deleteChecklist(checklist.id!);
           await _loadChecklists();
           await _loadStatistics();
           
@@ -228,11 +186,11 @@ class _ChecklistCortesRecordsScreenState extends State<ChecklistCortesRecordsScr
     }
   }
 
-  Future<void> _editChecklist(ChecklistCortes checklist) async {
+  Future<void> _editChecklist(ChecklistLaboresTemporales checklist) async {
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => ChecklistCortesScreen(
+        builder: (context) => ChecklistLaboresTemporalesScreen(
           checklistToEdit: checklist,
           recordId: checklist.id,
         ),
@@ -245,14 +203,14 @@ class _ChecklistCortesRecordsScreenState extends State<ChecklistCortesRecordsScr
     }
   }
 
-  List<ChecklistCortes> _getFilteredChecklists() {
+  List<ChecklistLaboresTemporales> _getFilteredChecklists() {
     if (_searchQuery.isEmpty) {
       return _checklists;
     }
 
     return _checklists.where((checklist) {
       return (checklist.finca?.nombre.toLowerCase().contains(_searchQuery.toLowerCase()) ?? false) ||
-             (checklist.supervisor?.toLowerCase().contains(_searchQuery.toLowerCase()) ?? false) ||
+             (checklist.kontroller?.toLowerCase().contains(_searchQuery.toLowerCase()) ?? false) ||
              _formatDate(checklist.fecha).toLowerCase().contains(_searchQuery.toLowerCase());
     }).toList();
   }
@@ -267,14 +225,14 @@ class _ChecklistCortesRecordsScreenState extends State<ChecklistCortesRecordsScr
     return DateFormat('dd/MM/yyyy', 'es_ES').format(date);
   }
 
-  Color _getStatusColor(ChecklistCortes checklist) {
+  Color _getStatusColor(ChecklistLaboresTemporales checklist) {
     if (checklist.fechaEnvio != null) {
       return Colors.green;
     }
     return Colors.orange;
   }
 
-  String _getStatusText(ChecklistCortes checklist) {
+  String _getStatusText(ChecklistLaboresTemporales checklist) {
     if (checklist.fechaEnvio != null) {
       return 'Sincronizado';
     }
@@ -296,14 +254,14 @@ class _ChecklistCortesRecordsScreenState extends State<ChecklistCortesRecordsScr
           children: [
             Row(
               children: [
-                Icon(Icons.analytics, color: Colors.blue[700]),
+                Icon(Icons.analytics, color: Colors.deepPurple[700]),
                 SizedBox(width: 8),
                 Text(
                   'Estadísticas Generales',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: Colors.blue[700],
+                    color: Colors.deepPurple[700],
                   ),
                 ),
               ],
@@ -313,7 +271,7 @@ class _ChecklistCortesRecordsScreenState extends State<ChecklistCortesRecordsScr
             // Fila 1
             Row(
               children: [
-                Expanded(child: _buildStatItem('Total', '${_statistics['totalChecklists']}', Colors.blue)),
+                Expanded(child: _buildStatItem('Total', '${_statistics['totalChecklists']}', Colors.deepPurple)),
                 Expanded(child: _buildStatItem('Sincronizados', '${_statistics['enviados']}', Colors.green)),
                 Expanded(child: _buildStatItem('Pendientes', '${_statistics['pendientes']}', Colors.orange)),
               ],
@@ -336,20 +294,20 @@ class _ChecklistCortesRecordsScreenState extends State<ChecklistCortesRecordsScr
             Container(
               padding: EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.blue[50],
+                color: Colors.deepPurple[50],
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.blue[200]!),
+                border: Border.all(color: Colors.deepPurple[200]!),
               ),
               child: Row(
                 children: [
-                  Icon(Icons.info_outline, color: Colors.blue[600], size: 20),
+                  Icon(Icons.info_outline, color: Colors.deepPurple[600], size: 20),
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       'Toca en cualquier checklist para editarlo o usa el botón "Nuevo" para crear uno nuevo',
                       style: TextStyle(
                         fontSize: 13,
-                        color: Colors.blue[700],
+                        color: Colors.deepPurple[700],
                         fontStyle: FontStyle.italic,
                       ),
                     ),
@@ -386,98 +344,95 @@ class _ChecklistCortesRecordsScreenState extends State<ChecklistCortesRecordsScr
   }
 
   Widget _buildSearchBar() {
-    return Column(
+    return Row(
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Container(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                decoration: BoxDecoration(
-                  color: Colors.grey[100],
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: TextField(
-                  decoration: InputDecoration(
-                    hintText: 'Buscar por finca, supervisor o fecha...',
-                    border: InputBorder.none,
-                    prefixIcon: Icon(Icons.search, color: Colors.grey[600]),
-                    suffixIcon: _searchQuery.isNotEmpty
-                        ? IconButton(
-                            icon: Icon(Icons.clear, color: Colors.grey[600]),
-                            onPressed: () {
-                              setState(() {
-                                _searchQuery = '';
-                              });
-                            },
-                          )
-                        : null,
-                  ),
-                  onChanged: (value) {
-                    setState(() {
-                      _searchQuery = value;
-                    });
-                  },
-                ),
-              ),
+        Expanded(
+          child: Container(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(
+              color: Colors.grey[100],
+              borderRadius: BorderRadius.circular(10),
             ),
-            SizedBox(width: 12),
-            ElevatedButton.icon(
-              onPressed: () async {
-                final result = await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => ChecklistCortesScreen(),
-                  ),
-                );
-                if (result != null) {
-                  _loadChecklists();
-                  _loadStatistics();
-                }
+            child: TextField(
+              decoration: InputDecoration(
+                hintText: 'Buscar por finca, kontroller o fecha...',
+                border: InputBorder.none,
+                prefixIcon: Icon(Icons.search, color: Colors.grey[600]),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: Icon(Icons.clear, color: Colors.grey[600]),
+                        onPressed: () {
+                          setState(() {
+                            _searchQuery = '';
+                          });
+                        },
+                      )
+                    : null,
+              ),
+              onChanged: (value) {
+                setState(() {
+                  _searchQuery = value;
+                });
               },
-              icon: Icon(Icons.add, size: 18),
-              label: Text('Nuevo'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green[600],
-                foregroundColor: Colors.white,
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              ),
             ),
-          ],
+          ),
         ),
-        SizedBox(height: 12),
-        // Botón de sincronización
-        Container(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: _isSyncing ? null : _syncToServer,
-            icon: _isSyncing 
-                ? SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                    ),
-                  )
-                : Icon(Icons.cloud_upload, size: 18),
-            label: Text(_isSyncing ? 'Sincronizando...' : 'Sincronizar con Servidor'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue[600],
-              foregroundColor: Colors.white,
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+        SizedBox(width: 12),
+        ElevatedButton.icon(
+          onPressed: () async {
+            final result = await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ChecklistLaboresTemporalesScreen(),
               ),
-            ),
+            );
+            if (result != null) {
+              _loadChecklists();
+              _loadStatistics();
+            }
+          },
+          icon: Icon(Icons.add, size: 18),
+          label: Text('Nuevo'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.deepPurple[600],
+            foregroundColor: Colors.white,
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildChecklistCard(ChecklistCortes checklist) {
-    List<ChecklistCortes> filteredList = _getFilteredChecklists();
+  Widget _buildSyncButton() {
+    return Container(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: _isSyncing ? null : _syncToServer,
+        icon: _isSyncing 
+            ? SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              )
+            : Icon(Icons.cloud_upload, size: 18),
+        label: Text(_isSyncing ? 'Sincronizando...' : 'Sincronizar con Servidor'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.blue[600],
+          foregroundColor: Colors.white,
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChecklistCard(ChecklistLaboresTemporales checklist) {
+    List<ChecklistLaboresTemporales> filteredList = _getFilteredChecklists();
     int index = filteredList.indexOf(checklist);
     
     return Card(
@@ -498,7 +453,7 @@ class _ChecklistCortesRecordsScreenState extends State<ChecklistCortesRecordsScr
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: Colors.green[600],
+                      color: Colors.deepPurple[600],
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Center(
@@ -524,7 +479,7 @@ class _ChecklistCortesRecordsScreenState extends State<ChecklistCortesRecordsScr
                           ),
                         ),
                         Text(
-                          'Supervisor: ${checklist.supervisor ?? 'No especificado'}',
+                          'Kontroller: ${checklist.kontroller ?? 'No especificado'}',
                           style: TextStyle(
                             fontSize: 14,
                             color: Colors.grey[600],
@@ -583,15 +538,15 @@ class _ChecklistCortesRecordsScreenState extends State<ChecklistCortesRecordsScr
                     Container(
                       padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: Colors.blue[100],
+                        color: Colors.deepPurple[100],
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.blue[300]!),
+                        border: Border.all(color: Colors.deepPurple[300]!),
                       ),
                       child: Text(
                         cuadrante.cuadrante,
                         style: TextStyle(
                           fontSize: 12,
-                          color: Colors.blue[700],
+                          color: Colors.deepPurple[700],
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -657,7 +612,7 @@ class _ChecklistCortesRecordsScreenState extends State<ChecklistCortesRecordsScr
                   TextButton.icon(
                     onPressed: () => _showChecklistDetails(checklist),
                     icon: Icon(Icons.visibility, size: 18),
-                    label: Text('Ver'),
+                    label: Text('Ver Detalles'),
                     style: TextButton.styleFrom(
                       foregroundColor: Colors.green[600],
                     ),
@@ -710,7 +665,7 @@ class _ChecklistCortesRecordsScreenState extends State<ChecklistCortesRecordsScr
     );
   }
 
-  void _showChecklistDetails(ChecklistCortes checklist) {
+  void _showChecklistDetails(ChecklistLaboresTemporales checklist) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -725,7 +680,9 @@ class _ChecklistCortesRecordsScreenState extends State<ChecklistCortesRecordsScr
                 children: [
                   _buildDetailRow('Fecha:', _formatDate(checklist.fecha)),
                   _buildDetailRow('Finca:', checklist.finca?.nombre ?? 'N/A'),
-                  _buildDetailRow('Supervisor:', checklist.supervisor ?? 'N/A'),
+                  _buildDetailRow('Kontroller:', checklist.kontroller ?? 'N/A'),
+                  _buildDetailRow('UP:', checklist.up ?? 'N/A'),
+                  _buildDetailRow('Semana:', checklist.semana ?? 'N/A'),
                   _buildDetailRow('Cuadrantes:', '${checklist.cuadrantes.length}'),
                   _buildDetailRow('Ítems evaluados:', '${checklist.items.length}'),
                   _buildDetailRow('% Cumplimiento:', '${checklist.porcentajeCumplimiento?.toStringAsFixed(1) ?? '0.0'}%'),
@@ -746,7 +703,7 @@ class _ChecklistCortesRecordsScreenState extends State<ChecklistCortesRecordsScr
                       Padding(
                         padding: EdgeInsets.only(left: 8, bottom: 4),
                         child: Text(
-                          '• ${cuadrante.cuadrante}${cuadrante.bloque != null ? ' (Bl. ${cuadrante.bloque})' : ''}${cuadrante.variedad != null ? ' - ${cuadrante.variedad}' : ''}',
+                          '• ${cuadrante.supervisor} - ${cuadrante.cuadrante}${cuadrante.bloque != null ? ' (Bl. ${cuadrante.bloque})' : ''}${cuadrante.variedad != null ? ' - ${cuadrante.variedad}' : ''}',
                           style: TextStyle(fontSize: 14),
                         ),
                       ),
@@ -797,12 +754,12 @@ class _ChecklistCortesRecordsScreenState extends State<ChecklistCortesRecordsScr
 
   @override
   Widget build(BuildContext context) {
-    List<ChecklistCortes> filteredChecklists = _getFilteredChecklists();
+    List<ChecklistLaboresTemporales> filteredChecklists = _getFilteredChecklists();
     
     return Scaffold(
       appBar: AppBar(
-        title: Text('Registros de Cortes'),
-        backgroundColor: Colors.green[700],
+        title: Text('Registros de Labores Temporales'),
+        backgroundColor: Colors.deepPurple[700],
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
@@ -821,7 +778,7 @@ class _ChecklistCortesRecordsScreenState extends State<ChecklistCortesRecordsScr
           final result = await Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => ChecklistCortesScreen(),
+              builder: (context) => ChecklistLaboresTemporalesScreen(),
             ),
           );
           if (result != null) {
@@ -829,7 +786,7 @@ class _ChecklistCortesRecordsScreenState extends State<ChecklistCortesRecordsScr
             _loadStatistics();
           }
         },
-        backgroundColor: Colors.green[600],
+        backgroundColor: Colors.deepPurple[600],
         child: Icon(Icons.add, color: Colors.white),
         tooltip: 'Nuevo Checklist',
       ),
@@ -838,7 +795,7 @@ class _ChecklistCortesRecordsScreenState extends State<ChecklistCortesRecordsScr
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  CircularProgressIndicator(color: Colors.green[600]),
+                  CircularProgressIndicator(color: Colors.deepPurple[600]),
                   SizedBox(height: 16),
                   Text('Cargando registros...'),
                 ],
@@ -857,6 +814,8 @@ class _ChecklistCortesRecordsScreenState extends State<ChecklistCortesRecordsScr
                     _buildStatisticsCard(),
                     SizedBox(height: 16),
                     _buildSearchBar(),
+                    SizedBox(height: 12),
+                    _buildSyncButton(),
                     SizedBox(height: 16),
                     
                     if (filteredChecklists.isEmpty)
@@ -881,7 +840,7 @@ class _ChecklistCortesRecordsScreenState extends State<ChecklistCortesRecordsScr
                                 final result = await Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (context) => ChecklistCortesScreen(),
+                                    builder: (context) => ChecklistLaboresTemporalesScreen(),
                                   ),
                                 );
                                 if (result != null) {
@@ -892,7 +851,7 @@ class _ChecklistCortesRecordsScreenState extends State<ChecklistCortesRecordsScr
                               icon: Icon(Icons.add),
                               label: Text('Crear Primer Checklist'),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green[600],
+                                backgroundColor: Colors.deepPurple[600],
                                 foregroundColor: Colors.white,
                               ),
                             ),

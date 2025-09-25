@@ -366,6 +366,22 @@ class ChecklistDataLaboresPermanentes {
           id: 12,
           proceso: "Presencia de charcos de agua",
         ),
+        ChecklistLaboresPermanentesItem(
+          id: 13,
+          proceso: "Tutoreo y tensado de alambres",
+        ),
+        ChecklistLaboresPermanentesItem(
+          id: 14,
+          proceso: "Drenchado",
+        ),
+        ChecklistLaboresPermanentesItem(
+          id: 15,
+          proceso: "Erradicación de velloso",
+        ),
+        ChecklistLaboresPermanentesItem(
+          id: 16,
+          proceso: "Pinch (tallos > 7mm)",
+        ),
       ],
     );
   }

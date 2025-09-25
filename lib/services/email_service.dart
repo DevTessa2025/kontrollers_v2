@@ -150,6 +150,103 @@ class EmailService {
     }
   }
 
+  /// Envía un documento Word (bytes) como adjunto a múltiples destinatarios
+  static Future<Map<String, dynamic>> enviarDocumentoWord({
+    required List<String> destinatarios,
+    required Uint8List fileBytes,
+    required String fileName,
+    String asunto = 'Observaciones Adicionales',
+    String cuerpoMensaje = 'Se adjunta documento con las observaciones adicionales.',
+    String? cuerpoHTML,
+  }) async {
+    try {
+      List<String> destinatariosProcesados = _procesarDestinatarios(destinatarios);
+      if (destinatariosProcesados.isEmpty) {
+        return {'exito': false, 'mensaje': 'No hay destinatarios válidos'};
+      }
+
+      final smtpServer = SmtpServer(
+        _smtpServer,
+        port: _smtpPort,
+        username: _senderEmail,
+        password: _password,
+        ssl: false,
+        allowInsecure: false,
+      );
+
+      final message = Message()
+        ..from = Address(_senderEmail, 'Sistema Kontrollers')
+        ..subject = asunto
+        ..text = cuerpoMensaje
+        ..html = cuerpoHTML
+        ..attachments = [
+          StreamAttachment(
+            Stream.fromIterable([fileBytes]),
+            'application/msword',
+            fileName: fileName,
+          ),
+        ];
+
+      for (final d in destinatariosProcesados) {
+        message.recipients.add(Address(d));
+      }
+
+      final sendReport = await send(message, smtpServer);
+      return {'exito': true, 'mensaje': 'Documento enviado', 'detalles': sendReport.toString()};
+    } catch (e) {
+      return {'exito': false, 'mensaje': 'Error enviando documento: $e'};
+    }
+  }
+
+  /// Envía un adjunto genérico con mime/type y nombre de archivo personalizados
+  static Future<Map<String, dynamic>> enviarAdjunto({
+    required List<String> destinatarios,
+    required Uint8List bytes,
+    required String fileName,
+    required String mimeType,
+    String asunto = 'Documento adjunto',
+    String cuerpoMensaje = 'Se adjunta documento.',
+    String? cuerpoHTML,
+  }) async {
+    try {
+      List<String> destinatariosProcesados = _procesarDestinatarios(destinatarios);
+      if (destinatariosProcesados.isEmpty) {
+        return {'exito': false, 'mensaje': 'No hay destinatarios válidos'};
+      }
+
+      final smtpServer = SmtpServer(
+        _smtpServer,
+        port: _smtpPort,
+        username: _senderEmail,
+        password: _password,
+        ssl: false,
+        allowInsecure: false,
+      );
+
+      final message = Message()
+        ..from = Address(_senderEmail, 'Sistema Kontrollers')
+        ..subject = asunto
+        ..text = cuerpoMensaje
+        ..html = cuerpoHTML
+        ..attachments = [
+          StreamAttachment(
+            Stream.fromIterable([bytes]),
+            mimeType,
+            fileName: fileName,
+          ),
+        ];
+
+      for (final d in destinatariosProcesados) {
+        message.recipients.add(Address(d));
+      }
+
+      final sendReport = await send(message, smtpServer);
+      return {'exito': true, 'mensaje': 'Adjunto enviado', 'detalles': sendReport.toString()};
+    } catch (e) {
+      return {'exito': false, 'mensaje': 'Error enviando adjunto: $e'};
+    }
+  }
+
   // ==================== MÉTODOS PRIVADOS ====================
 
   /// Procesa lista de destinatarios agregando dominio automáticamente
