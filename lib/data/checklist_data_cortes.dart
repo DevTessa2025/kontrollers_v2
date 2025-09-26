@@ -73,11 +73,13 @@ class CuadranteInfo {
   final String cuadrante;
   final String? bloque;
   final String? variedad;
+  final String? supervisor;
 
   CuadranteInfo({
     required this.cuadrante,
     this.bloque,
     this.variedad,
+    this.supervisor,
   });
 
   Map<String, dynamic> toJson() {
@@ -85,6 +87,7 @@ class CuadranteInfo {
       'cuadrante': cuadrante,
       'bloque': bloque,
       'variedad': variedad,
+      'supervisor': supervisor,
     };
   }
 
@@ -93,6 +96,7 @@ class CuadranteInfo {
       cuadrante: json['cuadrante'],
       bloque: json['bloque'],
       variedad: json['variedad'],
+      supervisor: json['supervisor'],
     );
   }
 }

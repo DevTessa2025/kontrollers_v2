@@ -1414,6 +1414,7 @@ class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> {
             cuadrante: cuadrante,
             bloque: cuadranteData['bloque']?.nombre,
             variedad: cuadranteData['variedad']?.nombre,
+            supervisor: supervisor, // Supervisor específico del cuadrante
           ));
 
           // Procesar muestras y convertir a la estructura de items

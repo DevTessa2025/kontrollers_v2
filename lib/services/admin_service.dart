@@ -397,6 +397,7 @@ class AdminService {
           c.id,
           c.id as checklist_uuid,
           c.finca_nombre,
+          c.supervisor,
           c.supervisor as bloque_nombre,
           c.supervisor as variedad_nombre,
           c.usuario_creacion as usuario_id,
@@ -407,7 +408,12 @@ class AdminService {
           END as usuario_nombre,
           c.fecha_creacion,
           c.fecha_modificacion as fecha_envio,
-          c.porcentaje_cumplimiento
+          c.porcentaje_cumplimiento,
+          c.cuadrantes_json,
+          c.items_json,
+          c.total_evaluaciones,
+          c.total_conformes,
+          c.total_no_conformes
         FROM check_cortes c
         LEFT JOIN usuarios_app u ON c.usuario_creacion = u.username
         $whereClause
@@ -964,10 +970,10 @@ class AdminService {
       case 'check_cortes':
         camposBase = [
           'id', 'id as checklist_uuid', 'finca_nombre', 
-          'usuario_creacion as usuario_id', 'usuario_creacion as usuario_nombre', 
+          'supervisor', 'usuario_creacion as usuario_id', 'usuario_creacion as usuario_nombre', 
           'fecha_creacion', 'fecha_modificacion as fecha_envio', 
           'porcentaje_cumplimiento', 'supervisor as bloque_nombre',
-          'cuadrantes_json', 'items_json'
+          'cuadrantes_json', 'items_json', 'total_evaluaciones', 'total_conformes', 'total_no_conformes'
         ];
         break;
       case 'check_labores_permanentes':
