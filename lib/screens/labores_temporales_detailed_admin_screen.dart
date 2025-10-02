@@ -98,54 +98,34 @@ class _LaboresTemporalesDetailedAdminScreenState extends State<LaboresTemporales
 
   double _calcularPorcentajePromedio() {
     if (_cuadrantes.isEmpty) return 0.0;
-    
     double sumaPorcentajes = 0.0;
     int cuadrantesConDatos = 0;
-    
     for (var cuadrante in _cuadrantes) {
       final cuadranteId = cuadrante['cuadrante']?.toString() ?? '';
       final bloque = cuadrante['bloque']?.toString() ?? '';
       if (cuadranteId.isEmpty || bloque.isEmpty) continue;
-      
-      // Construir el key correcto
       final resultadoKey = 'test_${bloque}_${cuadranteId}';
-      
-      // Buscar el item "Labores temporales conforme"
-      String? itemLaboresConforme;
-      for (var item in _resultados[resultadoKey]?.keys ?? {}) {
-        final itemStr = item?.toString() ?? '';
-        if (itemStr.toLowerCase().contains('labores temporales conforme')) {
-          itemLaboresConforme = itemStr;
-          break;
+      int marcados = 0;
+      const int paradas = 5;
+      final int numItems = _items.length;
+      if (_resultados.containsKey(resultadoKey)) {
+        final cuadranteResultados = _resultados[resultadoKey]!;
+        for (final entry in cuadranteResultados.entries) {
+          final mapaParadas = entry.value;
+          for (int p = 1; p <= paradas; p++) {
+            final v = mapaParadas[p];
+            if (v != null && v.toString().isNotEmpty) marcados++;
+          }
         }
       }
-      
-      if (itemLaboresConforme != null && _resultados.containsKey(resultadoKey)) {
-        final cuadranteResultados = _resultados[resultadoKey]!;
-        if (cuadranteResultados.containsKey(itemLaboresConforme)) {
-          final paradas = cuadranteResultados[itemLaboresConforme]!;
-          int totalParadas = 0;
-          int paradasConformes = 0;
-          
-          for (int i = 1; i <= 5; i++) {
-            final resultado = paradas[i];
-            if (resultado != null && resultado.isNotEmpty) {
-              totalParadas++;
-              if (resultado == '1') {
-                paradasConformes++;
-              }
-            }
-          }
-          
-          if (totalParadas > 0) {
-            final porcentaje = (paradasConformes / 5) * 100;
-            sumaPorcentajes += porcentaje;
-            cuadrantesConDatos++;
-          }
-        }
+      if (numItems > 0) {
+        final int totalSlots = numItems * paradas;
+        final int noMarcados = totalSlots - marcados;
+        final porcentaje = (noMarcados / totalSlots) * 100;
+        sumaPorcentajes += porcentaje;
+        cuadrantesConDatos++;
       }
     }
-    
     return cuadrantesConDatos > 0 ? (sumaPorcentajes / cuadrantesConDatos) : 0.0;
   }
 
@@ -343,35 +323,19 @@ class _LaboresTemporalesDetailedAdminScreenState extends State<LaboresTemporales
     }
 
     final cuadranteResultados = _resultados[resultadoKey]!;
-    
-    // Buscar el item "Labores temporales conforme"
-    String? itemLaboresConforme;
-    for (var item in cuadranteResultados.keys) {
-      if (item.toLowerCase().contains('labores temporales conforme')) {
-        itemLaboresConforme = item;
-        break;
+    int marcados = 0;
+    const int paradas = 5;
+    final int numItems = _items.length;
+    for (final entry in cuadranteResultados.entries) {
+      final mapaParadas = entry.value;
+      for (int p = 1; p <= paradas; p++) {
+        final v = mapaParadas[p];
+        if (v != null && v.toString().isNotEmpty) marcados++;
       }
     }
-    
-    if (itemLaboresConforme == null || !cuadranteResultados.containsKey(itemLaboresConforme)) {
-      return Text('Sin datos disponibles', style: TextStyle(color: Colors.grey));
-    }
-
-    final paradas = cuadranteResultados[itemLaboresConforme]!;
-    int totalParadas = 0;
-    int paradasConLaboresConforme = 0;
-    
-    for (int i = 1; i <= 5; i++) {
-      final resultado = paradas[i];
-      if (resultado != null && resultado.isNotEmpty) {
-        totalParadas++;
-        if (resultado == '1') {
-          paradasConLaboresConforme++;
-        }
-      }
-    }
-    
-    final porcentaje = totalParadas > 0 ? (paradasConLaboresConforme / 5) * 100 : 0.0;
+    final int totalSlots = numItems * paradas;
+    final int noMarcados = totalSlots - marcados;
+    final double porcentaje = totalSlots > 0 ? (noMarcados / totalSlots) * 100 : 0.0;
     final color = _getCumplimientoColor(porcentaje);
     
     return Container(

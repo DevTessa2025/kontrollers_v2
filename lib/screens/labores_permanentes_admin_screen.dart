@@ -56,7 +56,7 @@ class _LaboresPermanentesAdminScreenState extends State<LaboresPermanentesAdminS
         items = List<Map<String, dynamic>>.from(itemsData);
       }
       
-      // Calcular porcentaje promedio de "Labores permanentes conforme"
+      // 100% si nada está marcado; baja al marcar (promedio por cuadrante)
       double sumaPorcentajes = 0.0;
       int cuadrantesConDatos = 0;
       
@@ -64,53 +64,36 @@ class _LaboresPermanentesAdminScreenState extends State<LaboresPermanentesAdminS
         final cuadranteId = cuadrante['cuadrante']?.toString() ?? cuadrante['id']?.toString() ?? '';
         if (cuadranteId.isEmpty) continue;
         
-        // Buscar el item "Labores permanentes conforme"
-        String? itemLaboresConforme;
-        for (var item in items) {
-          final itemProceso = item['proceso']?.toString() ?? '';
-          if (itemProceso.toLowerCase().contains('labores permanentes conforme')) {
-            itemLaboresConforme = itemProceso;
-            break;
-          }
-        }
-        
-        if (itemLaboresConforme != null) {
-          // Buscar el item en la lista de items
-          Map<String, dynamic>? itemData;
-          for (var item in items) {
-            if (item['proceso']?.toString() == itemLaboresConforme) {
-              itemData = item;
-              break;
-            }
-          }
-          
-          if (itemData != null && itemData['resultadosPorCuadrante'] != null) {
-            final resultadosPorCuadrante = itemData['resultadosPorCuadrante'];
-            if (resultadosPorCuadrante is Map<String, dynamic> && 
-                resultadosPorCuadrante.containsKey(cuadranteId)) {
-              final muestras = resultadosPorCuadrante[cuadranteId];
-              if (muestras is Map<String, dynamic>) {
-                int totalMuestras = 0;
-                int muestrasConformes = 0;
-                
-                for (int i = 1; i <= 10; i++) {
-                  final resultado = muestras[i.toString()];
-                  if (resultado != null && resultado.toString().isNotEmpty) {
-                    totalMuestras++;
-                    if (resultado.toString().toLowerCase() == 'c' || resultado.toString() == '1') {
-                      muestrasConformes++;
-                    }
-                  }
-                }
-                
-                if (totalMuestras > 0) {
-                  final porcentaje = (muestrasConformes / 10) * 100; // Usar 10 como total fijo
-                  sumaPorcentajes += porcentaje;
-                  cuadrantesConDatos++;
-                }
+        // Calcular marcados para este cuadrante sumando todos los items y sus paradas
+        final String bloque = cuadrante['bloque']?.toString() ?? '';
+        final String resultadoKey = 'test_${bloque}_${cuadranteId}';
+
+        int marcados = 0;
+        final int numItems = items.length;
+        const int paradas = 5;
+
+        for (final item in items) {
+          final resParada = (item['resultadosPorCuadranteParada'] ?? item['resultadosPorCuadrante']) as Map<String, dynamic>?;
+          if (resParada == null) continue;
+          final mapaCuadrante = resParada.containsKey(resultadoKey)
+              ? resParada[resultadoKey]
+              : (resParada[cuadranteId]);
+          if (mapaCuadrante is Map<String, dynamic>) {
+            for (int p = 1; p <= paradas; p++) {
+              final v = mapaCuadrante[p.toString()] ?? mapaCuadrante[p];
+              if (v != null && v.toString().trim().isNotEmpty) {
+                marcados++;
               }
             }
           }
+        }
+
+        if (numItems > 0) {
+          final int totalSlots = numItems * paradas;
+          final int noMarcados = totalSlots - marcados;
+          final double porcentaje = (noMarcados / totalSlots) * 100;
+          sumaPorcentajes += porcentaje;
+          cuadrantesConDatos++;
         }
       }
       

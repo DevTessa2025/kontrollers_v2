@@ -1821,25 +1821,27 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
   }
 
   double _calcularPorcentajeGeneral() {
-    int totalEvaluaciones = 0;
-    int totalConformes = 0;
+    // 100% si nada está marcado; baja al marcar
+    int filas = matrizLabores.length;
+    if (filas == 0) return 0.0;
+    final int itemsPorParada = laboresPermanentes.length;
+    final int paradasPorFila = 5;
+    final int totalSlots = filas * paradasPorFila * itemsPorParada;
 
+    int marcados = 0;
     matrizLabores.forEach((clave, data) {
-      Map<int, Map<int, String?>> paradas = data['paradas'];
-      
-      paradas.forEach((parada, items) {
-        items.forEach((itemId, resultado) {
+      final Map<int, Map<int, String?>> paradas = data['paradas'];
+      paradas.forEach((_, items) {
+        items.forEach((_, resultado) {
           if (resultado != null && resultado.trim().isNotEmpty) {
-            totalEvaluaciones++;
-            if (resultado == '1' || resultado.toLowerCase() == 'c') {
-              totalConformes++;
-            }
+            marcados++;
           }
         });
       });
     });
 
-    return totalEvaluaciones > 0 ? (totalConformes / totalEvaluaciones) * 100 : 0.0;
+    final int noMarcados = totalSlots - marcados;
+    return totalSlots > 0 ? (noMarcados / totalSlots) * 100 : 0.0;
   }
 
   @override

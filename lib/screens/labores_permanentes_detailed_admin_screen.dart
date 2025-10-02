@@ -123,54 +123,33 @@ class _LaboresPermanentesDetailedAdminScreenState extends State<LaboresPermanent
 
   double _calcularPorcentajePromedio() {
     if (_cuadrantes.isEmpty) return 0.0;
-    
     double sumaPorcentajes = 0.0;
     int cuadrantesConDatos = 0;
-    
     for (var cuadrante in _cuadrantes) {
       final cuadranteId = cuadrante['cuadrante']?.toString() ?? cuadrante['id']?.toString() ?? '';
       if (cuadranteId.isEmpty) continue;
-      
-      // Buscar el item "Labores permanentes conforme"
-      String? itemLaboresConforme;
-      for (var item in _items) {
-        final itemProceso = item['proceso']?.toString() ?? '';
-        if (itemProceso.toLowerCase().contains('labores permanentes conforme')) {
-          itemLaboresConforme = itemProceso;
-          break;
+      int marcados = 0;
+      const int paradas = 5;
+      final int numItems = _items.length;
+      if (_resultados.containsKey(cuadranteId)) {
+        final cuadranteResultados = _resultados[cuadranteId]!;
+        for (final entry in cuadranteResultados.entries) {
+          final mapaParadas = entry.value;
+          for (int p = 1; p <= paradas; p++) {
+            final v = mapaParadas[p];
+            if (v != null && v.toString().isNotEmpty) marcados++;
+          }
         }
       }
-      
-      if (itemLaboresConforme != null && _resultados.containsKey(cuadranteId)) {
-        final cuadranteResultados = _resultados[cuadranteId]!;
-        if (cuadranteResultados.containsKey(itemLaboresConforme)) {
-          final paradas = cuadranteResultados[itemLaboresConforme]!;
-          int totalParadas = 0;
-          int paradasConformes = 0;
-          
-          for (int i = 1; i <= 5; i++) { // Labores permanentes usa paradas 1-5
-            final resultado = paradas[i];
-            if (resultado != null && resultado.isNotEmpty) {
-              totalParadas++;
-              if (resultado == '1') { // En labores permanentes, '1' significa conforme
-                paradasConformes++;
-              }
-            }
-          }
-          
-          if (totalParadas > 0) {
-            final porcentaje = (paradasConformes / 5) * 100; // Usar 5 como total fijo para paradas
-            sumaPorcentajes += porcentaje;
-            cuadrantesConDatos++;
-            print('Cuadrante $cuadranteId: $porcentaje%');
-          }
-        }
+      if (numItems > 0) {
+        final int totalSlots = numItems * paradas;
+        final int noMarcados = totalSlots - marcados;
+        final porcentaje = (noMarcados / totalSlots) * 100;
+        sumaPorcentajes += porcentaje;
+        cuadrantesConDatos++;
       }
     }
-    
-    final promedio = cuadrantesConDatos > 0 ? (sumaPorcentajes / cuadrantesConDatos) : 0.0;
-    print('Promedio de cuadrantes: ${promedio.toStringAsFixed(1)}%');
-    return promedio;
+    return cuadrantesConDatos > 0 ? (sumaPorcentajes / cuadrantesConDatos) : 0.0;
   }
 
   Widget _buildHeader() {
@@ -404,27 +383,27 @@ class _LaboresPermanentesDetailedAdminScreenState extends State<LaboresPermanent
   }
 
   Widget _buildCuadranteStats(String cuadranteId) {
-    int totalParadas = 0;
-    int paradasConLaboresConforme = 0;
-
-    if (_resultados.containsKey(cuadranteId)) {
-      _resultados[cuadranteId]!.forEach((item, paradas) {
-        // Solo procesar el item "Labores permanentes conforme"
-        if (item.toLowerCase().contains('labores permanentes conforme')) {
-          paradas.forEach((parada, resultado) {
-            if (resultado != null && resultado.isNotEmpty) {
-              totalParadas++;
-              // Contar solo las paradas con '1' en "Labores permanentes conforme"
-              if (resultado == '1') {
-                paradasConLaboresConforme++;
-              }
-            }
-          });
-        }
-      });
+    // Nuevo criterio: 100% si nada está marcado; baja al marcar
+    if (!_resultados.containsKey(cuadranteId)) {
+      return Text('Sin datos disponibles', style: TextStyle(color: Colors.grey));
     }
 
-    final porcentaje = totalParadas > 0 ? (paradasConLaboresConforme / 5 * 100) : 0.0; // 5 paradas máximo
+    final cuadranteResultados = _resultados[cuadranteId]!;
+    int marcados = 0;
+    const int paradas = 5;
+    final int numItems = _items.length;
+
+    for (final entry in cuadranteResultados.entries) {
+      final mapaParadas = entry.value;
+      for (int p = 1; p <= paradas; p++) {
+        final v = mapaParadas[p];
+        if (v != null && v.toString().isNotEmpty) marcados++;
+      }
+    }
+
+    final int totalSlots = numItems * paradas;
+    final int noMarcados = totalSlots - marcados;
+    final double porcentaje = totalSlots > 0 ? (noMarcados / totalSlots) * 100 : 0.0;
 
     return Column(
       children: [

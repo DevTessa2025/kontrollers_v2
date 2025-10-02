@@ -133,53 +133,27 @@ class _LaboresTemporalesAdminScreenState extends State<LaboresTemporalesAdminScr
         final cuadranteId = cuadrante['cuadrante']?.toString() ?? '';
         final bloque = cuadrante['bloque']?.toString() ?? '';
         if (cuadranteId.isEmpty || bloque.isEmpty) continue;
-        
-        // Construir el key correcto
         final resultadoKey = 'test_${bloque}_${cuadranteId}';
-        
-        // Buscar el item "Labores temporales conforme"
-        String? itemLaboresConforme;
-        for (var item in items) {
-          final itemProceso = item['proceso']?.toString() ?? '';
-          if (itemProceso.toLowerCase().contains('labores temporales conforme')) {
-            itemLaboresConforme = itemProceso;
-            break;
-          }
-        }
-        
-        if (itemLaboresConforme != null) {
-          // Buscar resultados para este cuadrante
-          for (var item in items) {
-            final itemProceso = item['proceso']?.toString() ?? '';
-            if (itemProceso == itemLaboresConforme) {
-              final resultadosPorCuadranteParada = item['resultadosPorCuadranteParada'];
-              if (resultadosPorCuadranteParada is Map<String, dynamic> &&
-                  resultadosPorCuadranteParada.containsKey(resultadoKey)) {
-                final paradas = resultadosPorCuadranteParada[resultadoKey];
-                if (paradas is Map<String, dynamic>) {
-                  int totalParadas = 0;
-                  int paradasConformes = 0;
-                  
-                  for (int i = 1; i <= 5; i++) {
-                    final resultado = paradas[i.toString()];
-                    if (resultado != null && resultado.toString().isNotEmpty) {
-                      totalParadas++;
-                      if (resultado.toString() == '1') {
-                        paradasConformes++;
-                      }
-                    }
-                  }
-                  
-                  if (totalParadas > 0) {
-                    final porcentaje = (paradasConformes / 5) * 100;
-                    sumaPorcentajes += porcentaje;
-                    cuadrantesConDatos++;
-                  }
-                }
-              }
-              break;
+        int marcados = 0;
+        final int numItems = items.length;
+        const int paradas = 5;
+        for (final item in items) {
+          final res = item['resultadosPorCuadranteParada'] as Map<String, dynamic>?;
+          if (res == null) continue;
+          final mapa = res[resultadoKey];
+          if (mapa is Map<String, dynamic>) {
+            for (int p = 1; p <= paradas; p++) {
+              final v = mapa[p.toString()];
+              if (v != null && v.toString().isNotEmpty) marcados++;
             }
           }
+        }
+        if (numItems > 0) {
+          final int totalSlots = numItems * paradas;
+          final int noMarcados = totalSlots - marcados;
+          final porcentaje = (noMarcados / totalSlots) * 100;
+          sumaPorcentajes += porcentaje;
+          cuadrantesConDatos++;
         }
       }
       

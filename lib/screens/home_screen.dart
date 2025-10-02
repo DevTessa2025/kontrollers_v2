@@ -870,7 +870,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             _buildModuleCard('Cortes del Día', Icons.content_cut, Colors.purple[600]!, _isCortesModuleActive(), isTablet),
             _buildModuleCard('Labores Permanentes', Icons.agriculture, Colors.deepPurple[600]!, _isLaboresPermanentesModuleActive(), isTablet),
             _buildModuleCard('Labores Temporales', Icons.construction, Colors.amber[600]!, _isLaboresTemporalesModuleActive(), isTablet),
-            _buildModuleCard('Observaciones adicionales', Icons.note_add_outlined, Colors.teal[600]!, true, isTablet),
+            
           ],
           isTablet,
         ),
@@ -878,9 +878,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         // Módulo de administración - siempre visible
         SizedBox(height: isTablet ? 32 : 20),
         _buildModuleCategory(
-          'Administración',
+          'Observaciones adicionales',
           [
-            _buildModuleCard('Administración', Icons.admin_panel_settings, Colors.red[700]!, true, isTablet),
+            _buildModuleCard('Observaciones adicionales', Icons.note_add_outlined, Colors.teal[600]!, true, isTablet),
+          ],
+          isTablet,
+        ),
+        SizedBox(height: isTablet ? 32 : 20),
+        _buildModuleCategory(
+          'Reportería',
+          [
+            _buildModuleCard('Reportería', Icons.document_scanner, Colors.red[700]!, true, isTablet),
             //_buildModuleCard('Observaciones Registros', Icons.library_books_outlined, Colors.teal[700]!, true, isTablet),
           ],
           isTablet,
