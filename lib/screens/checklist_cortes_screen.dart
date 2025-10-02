@@ -97,6 +97,20 @@ class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> {
     }
   }
 
+  String? _nombreDe(dynamic value) {
+    if (value == null) return null;
+    if (value is String) return value;
+    try {
+      final dynamic obj = value as dynamic;
+      final dynamic nombreProp = obj.nombre;
+      if (nombreProp is String) return nombreProp;
+    } catch (_) {}
+    if (value is Map && value['nombre'] is String) {
+      return value['nombre'] as String;
+    }
+    return value.toString();
+  }
+
   void _loadExistingChecklist() {
     checklist = widget.checklistToEdit!;
     selectedFinca = checklist.finca;
@@ -409,7 +423,7 @@ class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      'Cuadrante: $cuadrante${matrizCortes[supervisor]![cuadrante]!['bloque'] != null ? ' - Bloque: ${matrizCortes[supervisor]![cuadrante]!['bloque']!.nombre}' : ''}',
+                      'Cuadrante: $cuadrante${matrizCortes[supervisor]![cuadrante]!['bloque'] != null ? ' - Bloque: ${_nombreDe(matrizCortes[supervisor]![cuadrante]!['bloque'])}' : ''}',
                       style: TextStyle(fontWeight: FontWeight.w600),
                     ),
                     SizedBox(height: 16),
@@ -521,8 +535,11 @@ class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> {
   }
 
   void _editarBloqueVariedad(String supervisor, String cuadrante) {
-    Bloque? bloqueActual = matrizCortes[supervisor]![cuadrante]!['bloque'];
-    Variedad? variedadActual = matrizCortes[supervisor]![cuadrante]!['variedad'];
+    // Soportar que vengan como String u objeto
+    final dynamic bloqueRaw = matrizCortes[supervisor]![cuadrante]!['bloque'];
+    final dynamic variedadRaw = matrizCortes[supervisor]![cuadrante]!['variedad'];
+    Bloque? bloqueActual = bloqueRaw is Bloque ? bloqueRaw : null;
+    Variedad? variedadActual = variedadRaw is Variedad ? variedadRaw : null;
 
     showDialog(
       context: context,
@@ -556,7 +573,7 @@ class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> {
                           variedadActual = null; // Resetear variedad al cambiar bloque
                         });
                         if (newValue != null && selectedFinca != null) {
-                          _loadVariedadesForFincaAndBloque(selectedFinca!.nombre, newValue.nombre);
+                    _loadVariedadesForFincaAndBloque(selectedFinca!.nombre, newValue.nombre);
                         }
                       },
                       items: bloques.map<DropdownMenuItem<Bloque>>((Bloque bloque) {
@@ -837,7 +854,7 @@ class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> {
                                _selectedVariedadForm = null; // Resetear variedad al cambiar bloque
                              });
                              if (newValue != null && selectedFinca != null) {
-                               _loadVariedadesForFincaAndBloque(selectedFinca!.nombre, newValue.nombre);
+                          _loadVariedadesForFincaAndBloque(selectedFinca!.nombre, newValue.nombre);
                              }
                            } : null,
                            items: bloques.map<DropdownMenuItem<Bloque>>((Bloque bloque) {
@@ -1081,7 +1098,7 @@ class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> {
                  Container(
                    width: 70,
                    child: Text(
-                     cuadranteData['bloque']?.nombre ?? '',
+                    _nombreDe(cuadranteData['bloque']) ?? '',
                      style: TextStyle(fontSize: 12),
                      textAlign: TextAlign.center,
                    ),
@@ -1092,7 +1109,7 @@ class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> {
                  Container(
                    width: 80,
                    child: Text(
-                     cuadranteData['variedad']?.nombre ?? '',
+                    _nombreDe(cuadranteData['variedad']) ?? '',
                      style: TextStyle(fontSize: 12),
                      overflow: TextOverflow.ellipsis,
                    ),
@@ -1412,8 +1429,8 @@ class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> {
           // Agregar cuadrante
           cuadrantes.add(CuadranteInfo(
             cuadrante: cuadrante,
-            bloque: cuadranteData['bloque']?.nombre,
-            variedad: cuadranteData['variedad']?.nombre,
+            bloque: _nombreDe(cuadranteData['bloque']),
+            variedad: _nombreDe(cuadranteData['variedad']),
             supervisor: supervisor, // Supervisor específico del cuadrante
           ));
 
@@ -1478,23 +1495,25 @@ class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> {
   }
 
   double _calcularPorcentajeGeneral() {
-    int totalMuestras = 0;
-    int muestrasEvaluadas = 0;
+    int totalMuestrasConCorteConforme = 0;
+    int muestrasConCorteConforme = 0;
 
     matrizCortes.forEach((supervisor, cuadrantes) {
       cuadrantes.forEach((cuadrante, cuadranteData) {
         Map<int, List<int>> muestras = Map<int, List<int>>.from(cuadranteData['muestras'] ?? {});
         
         muestras.forEach((muestra, items) {
-          totalMuestras++;
-          if (items.isNotEmpty) {
-            muestrasEvaluadas++;
+          // Solo contar muestras que tienen el item "Corte conforme" (item 1) evaluado
+          if (items.contains(1)) {
+            totalMuestrasConCorteConforme++;
+            // Si tiene el item "Corte conforme", considerarlo como conforme
+            muestrasConCorteConforme++;
           }
         });
       });
     });
 
-    return totalMuestras > 0 ? (muestrasEvaluadas / totalMuestras) * 100 : 0.0;
+    return totalMuestrasConCorteConforme > 0 ? (muestrasConCorteConforme / totalMuestrasConCorteConforme) * 100 : 0.0;
   }
 
   @override

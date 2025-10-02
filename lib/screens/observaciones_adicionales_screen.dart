@@ -42,6 +42,95 @@ class _ObservacionesAdicionalesScreenState extends State<ObservacionesAdicionale
   final TextEditingController _incidenciaController = TextEditingController();
   final TextEditingController _severidadController = TextEditingController();
   String _tercio = 'Alto';
+  String _incidenciaNivel = 'Medio';
+  String _severidadNivel = 'Medio';
+
+  // Helpers de mapeo nivel<->porcentaje
+  String _mapPctToNivel(double? pct) {
+    if (pct == null) return 'Medio';
+    if (pct >= 67) return 'Alto';
+    if (pct >= 34) return 'Medio';
+    return 'Bajo';
+  }
+
+  double _mapNivelToPct(String nivel) {
+    switch (nivel) {
+      case 'Alto':
+        return 90;
+      case 'Bajo':
+        return 10;
+      default:
+        return 50;
+    }
+  }
+
+  Widget _buildNivelRadios({
+    required String titulo,
+    required String nivel,
+    required ValueChanged<String> onChange,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          titulo,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey[700],
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(child: _nivelRadioOption('Bajo', nivel, onChange)),
+            const SizedBox(width: 8),
+            Expanded(child: _nivelRadioOption('Medio', nivel, onChange)),
+            const SizedBox(width: 8),
+            Expanded(child: _nivelRadioOption('Alto', nivel, onChange)),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _nivelRadioOption(String value, String group, ValueChanged<String> onChange) {
+    final bool selected = group == value;
+    return InkWell(
+      onTap: () => onChange(value),
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+        decoration: BoxDecoration(
+          color: selected ? Colors.teal[100] : Colors.grey[100],
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: selected ? Colors.teal[700]! : Colors.grey[300]!,
+            width: 2,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Radio<String>(
+              value: value,
+              groupValue: group,
+              onChanged: (v) => onChange(v ?? value),
+              activeColor: Colors.teal[700],
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            Text(
+              value,
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: selected ? Colors.teal[700] : Colors.grey[600],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -66,6 +155,9 @@ class _ObservacionesAdicionalesScreenState extends State<ObservacionesAdicionale
         _incidenciaController.text = obs.incidencia?.toString() ?? '';
         _severidadController.text = obs.severidad?.toString() ?? '';
         _tercio = obs.tercio ?? 'Alto';
+        // Nivel para radios en base al valor existente
+        _incidenciaNivel = _mapPctToNivel(obs.incidencia);
+        _severidadNivel = _mapPctToNivel(obs.severidad);
       }
       
       // Los dropdowns se cargarán después de _loadDropdownData()
@@ -308,8 +400,8 @@ class _ObservacionesAdicionalesScreenState extends State<ObservacionesAdicionale
         // Actualizar campos específicos de MIPE
         if (_tipo == 'MIPE') {
           obs.blancoBiologico = _blancoBiologicoController.text.trim();
-          obs.incidencia = double.tryParse(_incidenciaController.text.trim());
-          obs.severidad = double.tryParse(_severidadController.text.trim());
+          obs.incidencia = _mapNivelToPct(_incidenciaNivel);
+          obs.severidad = _mapNivelToPct(_severidadNivel);
           obs.tercio = _tercio;
         } else {
           // Limpiar campos MIPE si no es tipo MIPE
@@ -344,8 +436,8 @@ class _ObservacionesAdicionalesScreenState extends State<ObservacionesAdicionale
         // Agregar campos específicos de MIPE
         if (_tipo == 'MIPE') {
           obs.blancoBiologico = _blancoBiologicoController.text.trim();
-          obs.incidencia = double.tryParse(_incidenciaController.text.trim());
-          obs.severidad = double.tryParse(_severidadController.text.trim());
+          obs.incidencia = _mapNivelToPct(_incidenciaNivel);
+          obs.severidad = _mapNivelToPct(_severidadNivel);
           obs.tercio = _tercio;
         }
         
@@ -899,35 +991,17 @@ class _ObservacionesAdicionalesScreenState extends State<ObservacionesAdicionale
         ),
         const SizedBox(height: 16),
         
-        // Campos de Incidencia y Severidad en una fila
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _incidenciaController,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: 'Incidencia (%)',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                  prefixIcon: Icon(Icons.percent, color: Colors.teal[700]),
-                  hintText: '0-100',
-                ),
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: TextField(
-                controller: _severidadController,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: 'Severidad (%)',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                  prefixIcon: Icon(Icons.percent, color: Colors.teal[700]),
-                  hintText: '0-100',
-                ),
-              ),
-            ),
-          ],
+        // Incidencia y Severidad como radios (uno por fila)
+        _buildNivelRadios(
+          titulo: 'Incidencia',
+          nivel: _incidenciaNivel,
+          onChange: (v) => setState(() => _incidenciaNivel = v),
+        ),
+        const SizedBox(height: 16),
+        _buildNivelRadios(
+          titulo: 'Severidad',
+          nivel: _severidadNivel,
+          onChange: (v) => setState(() => _severidadNivel = v),
         ),
         const SizedBox(height: 16),
         

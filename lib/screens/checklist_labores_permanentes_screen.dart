@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -653,9 +654,11 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
                 Expanded(
                   child: TextField(
                     controller: _semanaController,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                     decoration: InputDecoration(
                       labelText: 'Semana',
-                      hintText: 'Ej: Semana 31',
+                      hintText: 'Ej: 31',
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                       prefixIcon: Icon(Icons.calendar_view_week, color: Colors.deepPurple[700]),
                     ),
@@ -890,6 +893,7 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
                       Expanded(
                         child: TextField(
                           controller: _cuadranteController,
+                          keyboardType: TextInputType.number,
                           decoration: InputDecoration(
                             labelText: 'Cuadrante *',
                             hintText: 'Número de cuadrante',

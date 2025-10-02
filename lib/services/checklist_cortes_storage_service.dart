@@ -224,30 +224,62 @@ class ChecklistCortesStorageService {
     // Calcular métricas
     Map<String, dynamic> metricas = _calcularMetricas(checklist);
 
-    // Construir query de inserción
-    String query = '''
-      INSERT INTO check_cortes (
-        id_local, fecha, finca_nombre, supervisor, cuadrantes_json, 
-        items_json, porcentaje_cumplimiento, total_evaluaciones, 
-        total_conformes, total_no_conformes, usuario_creacion, fecha_creacion
-      ) VALUES (
-        ${checklist.id},
-        ${DateHelper.formatForSqlServer(checklist.fecha)},
-        '$escapedFinca',
-        '$escapedSupervisor',
-        '$escapedCuadrantes',
-        '$escapedItems',
-        ${checklist.calcularPorcentajeCumplimiento()},
-        ${metricas['totalEvaluaciones']},
-        ${metricas['totalConformes']},
-        ${metricas['totalNoConformes']},
-        '$escapedUser',
-        ${DateHelper.getCurrentDateForSqlServer()}
-      )
+    // Verificar si el registro ya existe en el servidor
+    String checkQuery = '''
+      SELECT COUNT(*) as existe 
+      FROM check_cortes 
+      WHERE id_local = ${checklist.id} AND usuario_creacion = '$escapedUser'
     ''';
+    
+    String checkResult = await SqlServerService.executeQuery(checkQuery);
+    List<Map<String, dynamic>> checkData = SqlServerService.processQueryResult(checkResult);
+    bool existe = (checkData.isNotEmpty && (checkData.first['existe'] ?? 0) > 0);
+
+    String query;
+    if (existe) {
+      // UPDATE si el registro ya existe
+      query = '''
+        UPDATE check_cortes SET
+          fecha = ${DateHelper.formatForSqlServer(checklist.fecha)},
+          finca_nombre = '$escapedFinca',
+          supervisor = '$escapedSupervisor',
+          cuadrantes_json = '$escapedCuadrantes',
+          items_json = '$escapedItems',
+          porcentaje_cumplimiento = ${checklist.calcularPorcentajeCumplimiento()},
+          total_evaluaciones = ${metricas['totalEvaluaciones']},
+          total_conformes = ${metricas['totalConformes']},
+          total_no_conformes = ${metricas['totalNoConformes']},
+          fecha_modificacion = ${DateHelper.getCurrentDateForSqlServer()}
+        WHERE id_local = ${checklist.id} AND usuario_creacion = '$escapedUser'
+      ''';
+      print('Actualizando checklist cortes existente en servidor');
+    } else {
+      // INSERT si el registro no existe
+      query = '''
+        INSERT INTO check_cortes (
+          id_local, fecha, finca_nombre, supervisor, cuadrantes_json, 
+          items_json, porcentaje_cumplimiento, total_evaluaciones, 
+          total_conformes, total_no_conformes, usuario_creacion, fecha_creacion
+        ) VALUES (
+          ${checklist.id},
+          ${DateHelper.formatForSqlServer(checklist.fecha)},
+          '$escapedFinca',
+          '$escapedSupervisor',
+          '$escapedCuadrantes',
+          '$escapedItems',
+          ${checklist.calcularPorcentajeCumplimiento()},
+          ${metricas['totalEvaluaciones']},
+          ${metricas['totalConformes']},
+          ${metricas['totalNoConformes']},
+          '$escapedUser',
+          ${DateHelper.getCurrentDateForSqlServer()}
+        )
+      ''';
+      print('Insertando nuevo checklist cortes en servidor');
+    }
 
     await SqlServerService.executeQuery(query);
-    print('Checklist cortes enviado al servidor exitosamente');
+    print('Checklist cortes ${existe ? 'actualizado' : 'insertado'} en el servidor exitosamente');
   }
 
   // ==================== ESTADÍSTICAS Y REPORTES ====================

@@ -1,323 +1,538 @@
-import 'dart:typed_data';
 import 'dart:convert';
+import 'dart:typed_data';
+import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:intl/intl.dart';
-import 'package:flutter/services.dart' show rootBundle, ByteData;
-import 'package:image/image.dart' as img;
 
-class LaboresPermanentesPDFService {
-  static const int _MAX_TOTAL_PAGES = 40;
-  static const int _IMAGES_PER_PAGE = 4;
-  static const int _IMAGES_PER_DOC = 24;
-
-  // Colores de la paleta
+class LaboresPermanentesPdfService {
+  // Colores para el PDF
   static const PdfColor COLOR_NEGRO = PdfColors.black;
-  static const PdfColor COLOR_GRIS_OSCURO = PdfColor.fromInt(0xFF424242);
-  static const PdfColor COLOR_GRIS_MEDIO = PdfColor.fromInt(0xFF757575);
-  static const PdfColor COLOR_GRIS_CLARO = PdfColor.fromInt(0xFFBDBDBD);
-  static const PdfColor COLOR_GRIS_MUY_CLARO = PdfColor.fromInt(0xFFF5F5F5);
-  static const PdfColor COLOR_ROJO_PRINCIPAL = PdfColor.fromInt(0xFFD32F2F);
-  static const PdfColor COLOR_ROJO_CLARO = PdfColor.fromInt(0xFFFFEBEE);
-  static const PdfColor COLOR_RESPUESTA_SI = PdfColor.fromInt(0xFF2E7D32);
-  static const PdfColor COLOR_RESPUESTA_NO = PdfColor.fromInt(0xFFD32F2F);
-  static const PdfColor COLOR_RESPUESTA_NA = PdfColor.fromInt(0xFFFF8F00);
+  static const PdfColor COLOR_GRIS_OSCURO = PdfColors.grey800;
+  static const PdfColor COLOR_GRIS_CLARO = PdfColors.grey300;
+  static const PdfColor COLOR_BLANCO = PdfColors.white;
 
-  static Future<Uint8List> generate({
-    required Map<String, dynamic> data,
-    bool obtenerDatosFrescos = false,
+  static Future<Uint8List> generate({required Map<String, dynamic> data}) async {
+    try {
+      // Parsear datos del record
+      final record = data;
+      final cuadrantesData = record['cuadrantes_json'];
+      final itemsData = record['items_json'];
+
+      List<Map<String, dynamic>> cuadrantes = [];
+      if (cuadrantesData is String && cuadrantesData.isNotEmpty) {
+        cuadrantes = List<Map<String, dynamic>>.from(jsonDecode(cuadrantesData));
+      } else if (cuadrantesData is List) {
+        cuadrantes = List<Map<String, dynamic>>.from(cuadrantesData);
+      }
+
+      List<Map<String, dynamic>> items = [];
+      if (itemsData is String && itemsData.isNotEmpty) {
+        items = List<Map<String, dynamic>>.from(jsonDecode(itemsData));
+      } else if (itemsData is List) {
+        items = List<Map<String, dynamic>>.from(itemsData);
+      }
+
+      // Parsear resultados
+      Map<String, Map<String, Map<int, String?>>> resultados = {};
+      for (var item in items) {
+        final itemProceso = item['proceso']?.toString() ?? '';
+        
+        if (item['resultadosPorCuadranteParada'] != null) {
+          final resultadosPorCuadranteParada = item['resultadosPorCuadranteParada'];
+          if (resultadosPorCuadranteParada is Map<String, dynamic>) {
+            resultadosPorCuadranteParada.forEach((cuadrante, paradas) {
+              if (!resultados.containsKey(cuadrante)) {
+                resultados[cuadrante] = {};
+              }
+              if (paradas is Map<String, dynamic>) {
+                Map<int, String?> paradasMap = {};
+                paradas.forEach((parada, resultado) {
+                  final paradaNum = int.tryParse(parada) ?? 0;
+                  paradasMap[paradaNum] = resultado?.toString();
+                });
+                resultados[cuadrante]![itemProceso] = paradasMap;
+              }
+            });
+          }
+        }
+      }
+
+      return await generateDetailed(
+        record: record,
+        cuadrantes: cuadrantes,
+        items: items,
+        resultados: resultados,
+      );
+    } catch (e) {
+      print('Error generando PDF de labores permanentes: $e');
+      rethrow;
+    }
+  }
+
+  static Future<Uint8List> generateDetailed({
+    required Map<String, dynamic> record,
+    required List<Map<String, dynamic>> cuadrantes,
+    required List<Map<String, dynamic>> items,
+    required Map<String, Map<String, Map<int, String?>>> resultados,
   }) async {
-    print('[PDF][LABORES_PERMANENTES] Generando PDF para labores permanentes ID=${data['id']} finca=${data['finca_nombre']}');
-    final pdf = pw.Document();
+    final doc = pw.Document();
     
-    // Cargar banner
+    // Cargar imagen del banner
     pw.MemoryImage? bannerImage;
-    final List<String> rutasPosibles = [
-      'assets/images/Tessa_banner.png',
-      'assets/images/tessa_banner.png',
-      'assets/Tessa_banner.png',
-      'images/Tessa_banner.png',
-    ];
-    for (final ruta in rutasPosibles) {
-      try {
-        final ByteData dataBytes = await rootBundle.load(ruta);
-        bannerImage = pw.MemoryImage(dataBytes.buffer.asUint8List());
-        print('[PDF][LABORES_PERMANENTES] Banner cargado desde: $ruta');
-        break;
-      } catch (_) {}
+    try {
+      final ByteData bannerData = await rootBundle.load('assets/images/Tessa_banner.png');
+      bannerImage = pw.MemoryImage(bannerData.buffer.asUint8List());
+    } catch (e) {
+      print('Error cargando banner: $e');
     }
 
-    // Obtener items relevantes para labores permanentes
-    final List<Map<String, dynamic>> itemsRelevantes = _extraerItemsRelevantesLaboresPermanentes(data);
-    final List<Map<String, dynamic>> itemsConFotos = itemsRelevantes.where((item) => item['tiene_foto'] == true).toList();
-    final List<String> limitedImages = itemsConFotos.map((item) => item['foto_base64'] as String).take(_IMAGES_PER_DOC).toList();
-
-    // Página principal
-    pdf.addPage(
+    doc.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
-        maxPages: _MAX_TOTAL_PAGES,
-        margin: const pw.EdgeInsets.all(20),
-        header: (context) => _construirHeader(data, bannerImage),
-        footer: (context) => _construirFooter(context),
-        build: (context) {
-          final List<pw.Widget> widgets = [];
-
-          // Información general
-          widgets.add(_construirInformacionGeneral(data));
-          widgets.add(pw.SizedBox(height: 20));
-
-          // Evaluaciones por parada (sin porcentaje de cumplimiento)
-          if (itemsRelevantes.isNotEmpty) {
-            widgets.add(_construirSeccionEvaluaciones(itemsRelevantes));
-            widgets.add(pw.SizedBox(height: 20));
-          }
-
-          // Fotografías si hay
-          if (limitedImages.isNotEmpty) {
-            widgets.add(_construirSeccionFotografias(limitedImages));
-          }
-
-          return widgets;
+        margin: pw.EdgeInsets.all(20),
+        build: (pw.Context context) {
+          return [
+            _buildHeader(record, bannerImage),
+            pw.SizedBox(height: 20),
+            _buildInformacionGeneral(record),
+            pw.SizedBox(height: 20),
+            _buildResumenCumplimiento(record, cuadrantes, resultados),
+            pw.SizedBox(height: 20),
+            _buildTablaResultados(record, cuadrantes, items, resultados),
+          ];
         },
       ),
     );
 
-    // Páginas adicionales para imágenes si es necesario
-    if (limitedImages.length > _IMAGES_PER_PAGE) {
-      for (int i = _IMAGES_PER_PAGE; i < limitedImages.length; i += _IMAGES_PER_PAGE) {
-        final batch = limitedImages.sublist(i, (i + _IMAGES_PER_PAGE).clamp(0, limitedImages.length));
-        pdf.addPage(
-          pw.MultiPage(
-            pageFormat: PdfPageFormat.a4,
-            margin: const pw.EdgeInsets.all(20),
-            build: (context) => [_construirGridImagenes(batch)],
-          ),
-        );
-      }
-    }
-
-    print('[PDF][LABORES_PERMANENTES] PDF generado exitosamente');
-    return pdf.save();
+    return doc.save();
   }
 
-  static pw.Widget _construirHeader(Map<String, dynamic> data, pw.MemoryImage? banner) {
+  static pw.Widget _buildHeader(Map<String, dynamic> record, pw.MemoryImage? bannerImage) {
     return pw.Container(
-      padding: const pw.EdgeInsets.all(12),
-      decoration: pw.BoxDecoration(color: COLOR_NEGRO, borderRadius: pw.BorderRadius.circular(8)),
+      padding: pw.EdgeInsets.all(15),
+      decoration: pw.BoxDecoration(
+        color: COLOR_NEGRO,
+      ),
+      child: pw.Row(
+        children: [
+          if (bannerImage != null) ...[
+            pw.Image(bannerImage, width: 80, height: 40),
+            pw.SizedBox(width: 20),
+          ],
+          pw.Expanded(
+            child: pw.Text(
+              'LABORES PERMANENTES - REPORTE DETALLADO',
+              style: pw.TextStyle(
+                fontSize: 18,
+                fontWeight: pw.FontWeight.bold,
+                color: COLOR_BLANCO,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _buildInformacionGeneral(Map<String, dynamic> record) {
+    return pw.Container(
+      padding: pw.EdgeInsets.all(10),
+      decoration: pw.BoxDecoration(
+        color: COLOR_GRIS_CLARO,
+        borderRadius: pw.BorderRadius.circular(8),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            'INFORMACIÓN GENERAL',
+            style: pw.TextStyle(
+              fontSize: 16,
+              fontWeight: pw.FontWeight.bold,
+              color: COLOR_NEGRO,
+            ),
+          ),
+          pw.SizedBox(height: 10),
+          pw.Table(
+            columnWidths: {
+              0: pw.FlexColumnWidth(1),
+              1: pw.FlexColumnWidth(1),
+              
+            },
+            children: [
+              pw.TableRow(
+                children: [
+                  pw.Padding(
+                    padding: pw.EdgeInsets.all(8),
+                    child: pw.Text('Finca:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                  ),
+                  pw.Padding(
+                    padding: pw.EdgeInsets.all(8),
+                    child: pw.Text(record['finca_nombre'] ?? 'N/A'),
+                  ),
+                  pw.Padding(
+                    padding: pw.EdgeInsets.all(8),
+                    child: pw.Text('Kontroller:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                  ),
+                  pw.Padding(
+                    padding: pw.EdgeInsets.all(8),
+                    child: pw.Text(record['usuario_nombre'] ?? 'N/A'),
+                  ),
+                ],
+              ),
+              pw.TableRow(
+                children: [
+                  pw.Padding(
+                    padding: pw.EdgeInsets.all(8),
+                    child: pw.Text('Fecha:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                  ),
+                  pw.Padding(
+                    padding: pw.EdgeInsets.all(8),
+                    child: pw.Text(_formatDate(record['fecha_creacion'])),
+                  ),
+
+                  pw.Padding(
+                    padding: pw.EdgeInsets.all(8),
+                    child: pw.Text(record['supervisor'] ?? 'N/A'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _buildResumenCumplimiento(
+    Map<String, dynamic> record,
+    List<Map<String, dynamic>> cuadrantes,
+    Map<String, Map<String, Map<int, String?>>> resultados,
+  ) {
+    final promedio = _calcularPorcentajePromedio(cuadrantes, resultados);
+    
+    return pw.Container(
+      padding: pw.EdgeInsets.all(10),
+      decoration: pw.BoxDecoration(
+        color: COLOR_GRIS_CLARO,
+        borderRadius: pw.BorderRadius.circular(8),
+      ),
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
-          pw.Row(children: [
-            if (banner != null) ...[
-              pw.Container(width: 120, height: 36, child: pw.Image(banner, fit: pw.BoxFit.contain)),
-              pw.SizedBox(width: 10),
-            ],
-            pw.Text('SISTEMA KONTROLLERS', style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 16)),
-          ]),
-          pw.Text('LABORES PERMANENTES', style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 14)),
-        ],
-      ),
-    );
-  }
-
-  static pw.Widget _construirFooter(pw.Context context) {
-    return pw.Container(
-      alignment: pw.Alignment.centerRight,
-      child: pw.Text('Página ${context.pageNumber} de ${context.pagesCount}', style: const pw.TextStyle(fontSize: 10)),
-    );
-  }
-
-  static pw.Widget _construirInformacionGeneral(Map<String, dynamic> data) {
-    return pw.Container(
-      padding: const pw.EdgeInsets.all(16),
-      decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: COLOR_GRIS_MEDIO, width: 1.5),
-        borderRadius: pw.BorderRadius.circular(8),
-        color: PdfColors.white,
-      ),
-      child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
-          pw.Text('INFORMACIÓN GENERAL', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: COLOR_NEGRO)),
-          pw.SizedBox(height: 2),
-          pw.Container(height: 2, width: 60, color: COLOR_ROJO_PRINCIPAL),
-          pw.SizedBox(height: 12),
-          _construirFila('Finca', data['finca_nombre'] ?? 'N/A'),
-          _construirFila('Bloque', data['bloque_nombre'] ?? 'N/A'),
-          _construirFila('Variedad', data['variedad_nombre'] ?? 'N/A'),
-          _construirFila('Usuario', data['usuario_nombre'] ?? 'N/A'),
-          _construirFila('Fecha', _formatearFecha(data['fecha_creacion'])),
-        ],
-      ),
-    );
-  }
-
-  static pw.Widget _construirSeccionEvaluaciones(List<Map<String, dynamic>> items) {
-    return pw.Container(
-      padding: const pw.EdgeInsets.all(16),
-      decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: COLOR_GRIS_MEDIO, width: 1.5),
-        borderRadius: pw.BorderRadius.circular(8),
-        color: PdfColors.white,
-      ),
-      child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
-          pw.Text('EVALUACIONES POR PARADA', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: COLOR_NEGRO)),
-          pw.SizedBox(height: 2),
-          pw.Container(height: 2, width: 60, color: COLOR_ROJO_PRINCIPAL),
-          pw.SizedBox(height: 12),
-          ...items.map((parada) => _construirParada(parada)).toList(),
-        ],
-      ),
-    );
-  }
-
-  static pw.Widget _construirParada(Map<String, dynamic> parada) {
-    return pw.Container(
-      margin: const pw.EdgeInsets.only(bottom: 12),
-      padding: const pw.EdgeInsets.all(12),
-      decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: COLOR_GRIS_CLARO),
-        borderRadius: pw.BorderRadius.circular(6),
-        color: COLOR_GRIS_MUY_CLARO,
-      ),
-      child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
-          pw.Text('Parada ${parada['numero']}', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: COLOR_NEGRO)),
-          if ((parada['observaciones'] ?? '').toString().isNotEmpty) ...[
-            pw.SizedBox(height: 6),
-            pw.Text('Observaciones: ${parada['observaciones']}', style: const pw.TextStyle(fontSize: 12)),
-          ],
-          if (parada['tiene_foto'] == true) ...[
-            pw.SizedBox(height: 6),
-            pw.Text('📷 Incluye fotografía', style: pw.TextStyle(fontSize: 12, color: COLOR_RESPUESTA_SI)),
-          ],
-        ],
-      ),
-    );
-  }
-
-  static pw.Widget _construirSeccionFotografias(List<String> images) {
-    return pw.Container(
-      padding: const pw.EdgeInsets.all(16),
-      decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: COLOR_GRIS_MEDIO, width: 1.5),
-        borderRadius: pw.BorderRadius.circular(8),
-        color: PdfColors.white,
-      ),
-      child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
-          pw.Text('FOTOGRAFÍAS', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: COLOR_NEGRO)),
-          pw.SizedBox(height: 2),
-          pw.Container(height: 2, width: 60, color: COLOR_ROJO_PRINCIPAL),
-          pw.SizedBox(height: 12),
-          _construirGridImagenes(images.take(_IMAGES_PER_PAGE).toList()),
-        ],
-      ),
-    );
-  }
-
-  static pw.Widget _construirGridImagenes(List<String> images) {
-    final children = <pw.Widget>[];
-    for (final img in images) {
-      try {
-        final bytes = _optimizarImagen(img);
-        children.add(
-          pw.Container(
-            decoration: pw.BoxDecoration(border: pw.Border.all(color: COLOR_GRIS_CLARO), borderRadius: pw.BorderRadius.circular(6)),
-            child: pw.ClipRRect(
-              horizontalRadius: 6,
-              verticalRadius: 6,
-              child: pw.Image(pw.MemoryImage(bytes), fit: pw.BoxFit.cover),
+          pw.Text(
+            'RESUMEN DE CUMPLIMIENTO',
+            style: pw.TextStyle(
+              fontSize: 16,
+              fontWeight: pw.FontWeight.bold,
+              color: COLOR_NEGRO,
             ),
           ),
-        );
-      } catch (e) {
-        print('[PDF][LABORES_PERMANENTES] Error procesando imagen: $e');
-      }
+          pw.Row(
+            children: [
+              pw.Text(
+                'Bloques evaluados: ${cuadrantes.length}',
+                style: pw.TextStyle(fontSize: 12, color: COLOR_GRIS_OSCURO),
+              ),
+              pw.SizedBox(width: 20),
+              pw.Text(
+                'Promedio: ${promedio.toStringAsFixed(1)}%',
+                style: pw.TextStyle(
+                  fontSize: 12,
+                  fontWeight: pw.FontWeight.bold,
+                  color: COLOR_NEGRO,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _buildTablaResultados(
+    Map<String, dynamic> record,
+    List<Map<String, dynamic>> cuadrantes,
+    List<Map<String, dynamic>> items,
+    Map<String, Map<String, Map<int, String?>>> resultados,
+  ) {
+    return pw.Container(
+      padding: pw.EdgeInsets.all(15),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            'RESULTADOS POR BLOQUES',
+            style: pw.TextStyle(
+              fontSize: 18,
+              fontWeight: pw.FontWeight.bold,
+              color: COLOR_NEGRO,
+            ),
+          ),
+          pw.SizedBox(height: 15),
+          ...cuadrantes.map((cuadrante) => _buildBloqueSection(record, cuadrante, items, resultados)),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _buildBloqueSection(
+    Map<String, dynamic> record,
+    Map<String, dynamic> cuadrante,
+    List<Map<String, dynamic>> items,
+    Map<String, Map<String, Map<int, String?>>> resultados,
+  ) {
+    final cuadranteId = cuadrante['cuadrante']?.toString() ?? 'N/A';
+    final bloque = cuadrante['bloque'] ?? 'N/A';
+    final variedad = cuadrante['variedad'] ?? 'N/A';
+    final supervisor = cuadrante['supervisor'] ?? record['supervisor'] ?? 'N/A';
+    
+    // Construir el key correcto para buscar en resultados
+    final resultadoKey = 'test_${bloque}_${cuadranteId}';
+    final porcentaje = _calcularPorcentajeBloque(resultadoKey, resultados);
+
+    return pw.Container(
+      margin: pw.EdgeInsets.only(bottom: 15),
+      padding: pw.EdgeInsets.all(8),
+      decoration: pw.BoxDecoration(
+        color: COLOR_GRIS_CLARO,
+        borderRadius: pw.BorderRadius.circular(8),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text(
+                'Bloque: $bloque',
+                style: pw.TextStyle(
+                  fontSize: 14,
+                  fontWeight: pw.FontWeight.bold,
+                  color: COLOR_NEGRO,
+                ),
+              ),
+              pw.Text(
+                'Cumplimiento: ${porcentaje.toStringAsFixed(1)}%',
+                style: pw.TextStyle(
+                  fontSize: 12,
+                  fontWeight: pw.FontWeight.bold,
+                  color: COLOR_GRIS_OSCURO,
+                ),
+              ),
+            ],
+          ),
+          pw.SizedBox(height: 8),
+          pw.Row(
+            children: [
+              pw.Text('Cuadrante: $cuadranteId', style: pw.TextStyle(fontSize: 10)),
+              pw.SizedBox(width: 20),
+              pw.Text('Variedad: $variedad', style: pw.TextStyle(fontSize: 10)),
+              pw.SizedBox(width: 20),
+              pw.Text('Supervisor: $supervisor', style: pw.TextStyle(fontSize: 10)),
+            ],
+          ),
+          pw.SizedBox(height: 10),
+          _buildMuestrasTable(resultadoKey, items, resultados),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _buildMuestrasTable(
+    String cuadranteId,
+    List<Map<String, dynamic>> items,
+    Map<String, Map<String, Map<int, String?>>> resultados,
+  ) {
+    if (!resultados.containsKey(cuadranteId)) {
+      return pw.Text('Sin datos disponibles');
     }
 
-    return pw.GridView(
-      crossAxisCount: 2,
-      childAspectRatio: 1,
-      crossAxisSpacing: 10,
-      mainAxisSpacing: 10,
-      children: children,
+    final cuadranteResultados = resultados[cuadranteId]!;
+    
+    return pw.Table(
+      border: pw.TableBorder.all(color: COLOR_NEGRO, width: 0.5),
+      columnWidths: {
+        0: pw.FlexColumnWidth(2.5), // Item
+        for (int i = 1; i <= 5; i++) i: pw.FlexColumnWidth(0.8), // P1-P5
+      },
+      children: [
+        // Header
+        pw.TableRow(
+          decoration: pw.BoxDecoration(color: COLOR_GRIS_CLARO),
+          children: [
+            pw.Padding(
+              padding: pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+              child: pw.Text(
+                'Item',
+                style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold),
+              ),
+            ),
+            for (int i = 1; i <= 5; i++)
+              pw.Padding(
+                padding: pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+                child: pw.Text(
+                  'P$i',
+                  style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold),
+                  textAlign: pw.TextAlign.center,
+                ),
+              ),
+          ],
+        ),
+        // Data rows
+        ...items.map((item) {
+          final itemProceso = item['proceso']?.toString() ?? '';
+          final paradas = cuadranteResultados[itemProceso] ?? {};
+          
+          return pw.TableRow(
+            children: [
+              pw.Padding(
+                padding: pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+                child: pw.Text(
+                  itemProceso,
+                  style: pw.TextStyle(fontSize: 8),
+                ),
+              ),
+              for (int i = 1; i <= 5; i++)
+                pw.Container(
+                  height: 16,
+                  padding: pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+                  decoration: pw.BoxDecoration(
+                    color: _getResultadoColor(paradas[i]),
+                    borderRadius: pw.BorderRadius.circular(2),
+                  ),
+                  child: pw.Center(
+                    child: pw.Text(
+                      _getResultadoTexto(paradas[i]),
+                      style: pw.TextStyle(
+                        color: COLOR_BLANCO,
+                        fontWeight: pw.FontWeight.bold,
+                        fontSize: 8,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          );
+        }).toList(),
+      ],
     );
   }
 
-  static pw.Widget _construirFila(String label, String value) {
-    return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(vertical: 2),
-      child: pw.Row(children: [
-        pw.SizedBox(width: 150, child: pw.Text('$label:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold))),
-        pw.Expanded(child: pw.Text(value)),
-      ]),
-    );
-  }
-
-  static List<Map<String, dynamic>> _extraerItemsRelevantesLaboresPermanentes(Map<String, dynamic> data) {
-    try {
-      final jsonStr = data['items_json'];
-      if (jsonStr == null) return [];
+  static double _calcularPorcentajePromedio(
+    List<Map<String, dynamic>> cuadrantes,
+    Map<String, Map<String, Map<int, String?>>> resultados,
+  ) {
+    if (cuadrantes.isEmpty) return 0.0;
+    
+    double sumaPorcentajes = 0.0;
+    int cuadrantesConDatos = 0;
+    
+    for (var cuadrante in cuadrantes) {
+      final cuadranteId = cuadrante['cuadrante']?.toString() ?? '';
+      final bloque = cuadrante['bloque']?.toString() ?? '';
+      if (cuadranteId.isEmpty || bloque.isEmpty) continue;
       
-      final List<dynamic> items = jsonDecode(jsonStr);
-      final List<Map<String, dynamic>> relevantes = [];
+      // Construir el key correcto
+      final resultadoKey = 'test_${bloque}_${cuadranteId}';
       
-      for (int i = 0; i < items.length; i++) {
-        final item = items[i];
-        final tieneObservacion = (item['observaciones'] ?? '').toString().isNotEmpty;
-        final tieneFoto = (item['fotoBase64'] ?? '').toString().isNotEmpty;
-        
-        if (tieneObservacion || tieneFoto) {
-          relevantes.add({
-            'numero': i + 1,
-            'observaciones': item['observaciones'] ?? '',
-            'foto_base64': item['fotoBase64'] ?? '',
-            'tiene_foto': tieneFoto,
-          });
+      // Buscar el item "Labores permanentes conforme"
+      String? itemLaboresConforme;
+      for (var item in resultados[resultadoKey]?.keys ?? {}) {
+        final itemStr = item?.toString() ?? '';
+        if (itemStr.toLowerCase().contains('labores permanentes conforme')) {
+          itemLaboresConforme = itemStr;
+          break;
         }
       }
       
-      return relevantes;
-    } catch (e) {
-      print('[PDF][LABORES_PERMANENTES] Error extrayendo items: $e');
-      return [];
-    }
-  }
-
-  static Uint8List _optimizarImagen(String b64) {
-    try {
-      final cleaned = b64.replaceAll(RegExp(r"\s+"), '');
-      final String b64Only = cleaned.startsWith('data:') ? cleaned.substring(cleaned.indexOf('base64,') + 7) : cleaned;
-      final raw = base64Decode(b64Only);
-      final img.Image? decoded = img.decodeImage(raw);
-      if (decoded == null) return raw;
-      final resized = img.copyResize(decoded, width: decoded.width >= decoded.height ? 1024 : null, height: decoded.height > decoded.width ? 1024 : null);
-      return Uint8List.fromList(img.encodeJpg(resized, quality: 65));
-    } catch (e) {
-      print('[PDF][LABORES_PERMANENTES] Error optimizando imagen: $e');
-      try {
-        final cleaned = b64.replaceAll(RegExp(r"\s+"), '');
-        final String b64Only = cleaned.startsWith('data:') ? cleaned.substring(cleaned.indexOf('base64,') + 7) : cleaned;
-        return base64Decode(b64Only);
-      } catch (_) {
-        return Uint8List(0);
+      if (itemLaboresConforme != null && resultados.containsKey(resultadoKey)) {
+        final cuadranteResultados = resultados[resultadoKey]!;
+        if (cuadranteResultados.containsKey(itemLaboresConforme)) {
+          final muestras = cuadranteResultados[itemLaboresConforme]!;
+          int totalMuestras = 0;
+          int muestrasConformes = 0;
+          
+          for (int i = 1; i <= 5; i++) {
+            final resultado = muestras[i];
+            if (resultado != null && resultado.isNotEmpty) {
+              totalMuestras++;
+              if (resultado.toLowerCase() == 'c' || resultado == '1') {
+                muestrasConformes++;
+              }
+            }
+          }
+          
+          if (totalMuestras > 0) {
+            final porcentaje = (muestrasConformes / 5) * 100; // Usar 5 como total fijo
+            sumaPorcentajes += porcentaje;
+            cuadrantesConDatos++;
+          }
+        }
       }
     }
+    
+    return cuadrantesConDatos > 0 ? (sumaPorcentajes / cuadrantesConDatos) : 0.0;
   }
 
-  static String _formatearFecha(dynamic fecha) {
-    if (fecha == null) return 'N/A';
+  static double _calcularPorcentajeBloque(String cuadranteId, Map<String, Map<String, Map<int, String?>>> resultados) {
+    if (!resultados.containsKey(cuadranteId)) return 0.0;
+    
+    final cuadranteResultados = resultados[cuadranteId]!;
+    
+    // Buscar el item "Labores permanentes conforme"
+    String? itemLaboresConforme;
+    for (var item in cuadranteResultados.keys) {
+      if (item.toLowerCase().contains('labores permanentes conforme')) {
+        itemLaboresConforme = item;
+        break;
+      }
+    }
+    
+    if (itemLaboresConforme != null && cuadranteResultados.containsKey(itemLaboresConforme)) {
+      final muestras = cuadranteResultados[itemLaboresConforme]!;
+      int totalMuestras = 0;
+      int muestrasConformes = 0;
+      
+      for (int i = 1; i <= 5; i++) {
+        final resultado = muestras[i];
+        if (resultado != null && resultado.isNotEmpty) {
+          totalMuestras++;
+          if (resultado.toLowerCase() == 'c' || resultado == '1') {
+            muestrasConformes++;
+          }
+        }
+      }
+      
+      if (totalMuestras > 0) {
+        return (muestrasConformes / 5) * 100; // Usar 5 como total fijo
+      }
+    }
+    
+    return 0.0;
+  }
+
+  static PdfColor _getResultadoColor(String? resultado) {
+    if (resultado == null || resultado.isEmpty) return COLOR_GRIS_CLARO;
+    if (resultado.toLowerCase() == 'c' || resultado == '1') return PdfColors.green;
+    if (resultado.toLowerCase() == 'nc' || resultado == '0') return PdfColors.red;
+    return PdfColors.orange;
+  }
+
+  static String _getResultadoTexto(String? resultado) {
+    if (resultado == null || resultado.isEmpty) return '';
+    if (resultado.toLowerCase() == 'c' || resultado == '1') return 'X';
+    if (resultado.toLowerCase() == 'nc' || resultado == '0') return 'NC';
+    return resultado.toUpperCase();
+  }
+
+  static String _formatDate(dynamic date) {
+    if (date == null) return 'N/A';
     try {
-      final d = DateTime.parse(fecha.toString());
-      return DateFormat('dd/MM/yyyy HH:mm:ss').format(d);
-    } catch (_) {
-      return fecha.toString();
+      final d = DateTime.parse(date.toString());
+      return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+    } catch (e) {
+      return 'N/A';
     }
   }
 }

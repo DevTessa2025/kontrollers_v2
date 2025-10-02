@@ -477,7 +477,7 @@ class _ChecklistLaboresPermanentesRecordsScreenState extends State<ChecklistLabo
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => _editChecklist(checklist),
+        onTap: () => checklist.fechaEnvio != null ? _showChecklistDetails(checklist) : _editChecklist(checklist),
         child: Padding(
           padding: EdgeInsets.all(16),
           child: Column(
@@ -638,14 +638,15 @@ class _ChecklistLaboresPermanentesRecordsScreenState extends State<ChecklistLabo
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  TextButton.icon(
-                    onPressed: () => _editChecklist(checklist),
-                    icon: Icon(Icons.edit, size: 18),
-                    label: Text('Editar'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.blue[600],
+                  if (checklist.fechaEnvio == null)
+                    TextButton.icon(
+                      onPressed: () => _editChecklist(checklist),
+                      icon: Icon(Icons.edit, size: 18),
+                      label: Text('Editar'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.blue[600],
+                      ),
                     ),
-                  ),
                   TextButton.icon(
                     onPressed: () => _showChecklistDetails(checklist),
                     icon: Icon(Icons.visibility, size: 18),
@@ -663,14 +664,15 @@ class _ChecklistLaboresPermanentesRecordsScreenState extends State<ChecklistLabo
                         foregroundColor: Colors.orange[600],
                       ),
                     ),
-                  TextButton.icon(
-                    onPressed: () => _deleteChecklist(checklist),
-                    icon: Icon(Icons.delete, size: 18),
-                    label: Text('Eliminar'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.red[600],
+                  if (checklist.fechaEnvio == null)
+                    TextButton.icon(
+                      onPressed: () => _deleteChecklist(checklist),
+                      icon: Icon(Icons.delete, size: 18),
+                      label: Text('Eliminar'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.red[600],
+                      ),
                     ),
-                  ),
                 ],
               ),
             ],
@@ -755,13 +757,14 @@ class _ChecklistLaboresPermanentesRecordsScreenState extends State<ChecklistLabo
               child: Text('Cerrar'),
               onPressed: () => Navigator.of(context).pop(),
             ),
-            ElevatedButton(
-              child: Text('Editar'),
-              onPressed: () {
-                Navigator.of(context).pop();
-                _editChecklist(checklist);
-              },
-            ),
+            if (checklist.fechaEnvio == null)
+              ElevatedButton(
+                child: Text('Editar'),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  _editChecklist(checklist);
+                },
+              ),
           ],
         );
       },

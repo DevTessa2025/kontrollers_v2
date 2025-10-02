@@ -454,10 +454,10 @@ class _ShareDialogState extends State<ShareDialog> {
           pdfBytes = await CortesPdfService.generate(data: widget.recordData);
           break;
         case 'labores_permanentes':
-          pdfBytes = await LaboresPermanentesPDFService.generate(data: widget.recordData);
+          pdfBytes = await LaboresPermanentesPdfService.generate(data: widget.recordData);
           break;
         case 'labores_temporales':
-          pdfBytes = await LaboresTemporalesPDFService.generate(data: widget.recordData);
+          pdfBytes = await LaboresTemporalesPdfService.generate(data: widget.recordData);
           break;
         case 'fertirriego':
           pdfBytes = await FertirriegoPDFService.generate(data: widget.recordData);
@@ -515,10 +515,10 @@ class _ShareDialogState extends State<ShareDialog> {
             _pdfBytes = await CortesPdfService.generate(data: widget.recordData);
             break;
           case 'labores_permanentes':
-            _pdfBytes = await LaboresPermanentesPDFService.generate(data: widget.recordData);
+            _pdfBytes = await LaboresPermanentesPdfService.generate(data: widget.recordData);
             break;
           case 'labores_temporales':
-            _pdfBytes = await LaboresTemporalesPDFService.generate(data: widget.recordData);
+            _pdfBytes = await LaboresTemporalesPdfService.generate(data: widget.recordData);
             break;
           case 'fertirriego':
             _pdfBytes = await FertirriegoPDFService.generate(data: widget.recordData);

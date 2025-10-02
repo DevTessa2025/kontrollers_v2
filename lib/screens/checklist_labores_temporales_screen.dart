@@ -642,6 +642,7 @@ class _ChecklistLaboresTemporalesScreenState extends State<ChecklistLaboresTempo
                 Expanded(
                   child: TextField(
                     controller: _semanaController,
+                    keyboardType: TextInputType.number,
                     decoration: InputDecoration(
                       labelText: 'Semana',
                       hintText: 'Ej: Semana 31',
@@ -879,6 +880,7 @@ class _ChecklistLaboresTemporalesScreenState extends State<ChecklistLaboresTempo
                       Expanded(
                         child: TextField(
                           controller: _cuadranteController,
+                          keyboardType: TextInputType.number,
                           decoration: InputDecoration(
                             labelText: 'Cuadrante *',
                             hintText: 'Número de cuadrante',

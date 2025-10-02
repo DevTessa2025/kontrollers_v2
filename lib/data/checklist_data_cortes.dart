@@ -157,24 +157,36 @@ class ChecklistCortes {
   double calcularPorcentajeCumplimiento() {
     if (items.isEmpty || cuadrantes.isEmpty) return 0.0;
 
-    int totalRespuestas = 0;
-    int totalConformes = 0;
-
-    for (var item in items) {
-      for (var cuadrante in cuadrantes) {
-        for (int muestra = 1; muestra <= 10; muestra++) {
-          String? resultado = item.getResultado(cuadrante.cuadrante, muestra);
-          if (resultado != null && resultado.isNotEmpty) {
-            totalRespuestas++;
-            if (resultado.toLowerCase() == 'c' || resultado == '1') {
-              totalConformes++;
-            }
-          }
-        }
+    // Usar exclusivamente el ítem "Corte conforme" (id 1) y promediar por cuadrante
+    ChecklistCortesItem? itemCorteConforme;
+    for (final item in items) {
+      if (item.id == 1 || item.proceso.toLowerCase().contains('corte conforme')) {
+        itemCorteConforme = item;
+        break;
       }
     }
 
-    return totalRespuestas > 0 ? (totalConformes / totalRespuestas) * 100 : 0.0;
+    if (itemCorteConforme == null) return 0.0;
+
+    double sumaPorcentajes = 0.0;
+    int cuadrantesConDatos = 0;
+
+    for (final cuadrante in cuadrantes) {
+      int muestrasConformes = 0;
+      for (int muestra = 1; muestra <= 10; muestra++) {
+        final resultado = itemCorteConforme.getResultado(cuadrante.cuadrante, muestra);
+        if (resultado != null && resultado.isNotEmpty) {
+          if (resultado.toLowerCase() == 'c' || resultado == '1') {
+            muestrasConformes++;
+          }
+        }
+      }
+      final porcentajeCuadrante = (muestrasConformes / 10) * 100;
+      sumaPorcentajes += porcentajeCuadrante;
+      cuadrantesConDatos++;
+    }
+
+    return cuadrantesConDatos > 0 ? (sumaPorcentajes / cuadrantesConDatos) : 0.0;
   }
 
   // Calcular resumen por ítem

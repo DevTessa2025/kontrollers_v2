@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:intl/intl.dart';
@@ -149,7 +150,7 @@ class AplicacionesPDFService {
       final respuesta = data['item_${i}_respuesta']?.toString();
       print('[PDF][APLICACIONES] Item $i: respuesta=$respuesta');
       
-      if (respuesta != null && respuesta.isNotEmpty) {
+      if (respuesta != null && respuesta.isNotEmpty && respuesta.toLowerCase() != 'n/a') {
         totalItems++;
         if (respuesta.toLowerCase() == 'sí' || respuesta.toLowerCase() == 'si') {
           conformes++;
@@ -160,6 +161,7 @@ class AplicacionesPDFService {
     }
 
     final porcentaje = totalItems > 0 ? (conformes / totalItems * 100).round() : 0;
+    final double barFactor = ((porcentaje.clamp(0, 100)) / 100).toDouble();
     print('[PDF][APLICACIONES] Total items: $totalItems, Conformes: $conformes, No conformes: $noConformes, Porcentaje: $porcentaje%');
 
     return pw.Container(
@@ -178,41 +180,62 @@ class AplicacionesPDFService {
           pw.SizedBox(height: 12),
           pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: pw.CrossAxisAlignment.center,
             children: [
-              pw.Text('Total Items: $totalItems', style: const pw.TextStyle(fontSize: 14)),
-              pw.Text('Conformes: $conformes', style: pw.TextStyle(fontSize: 14, color: COLOR_RESPUESTA_SI)),
-              pw.Text('No Conformes: $noConformes', style: pw.TextStyle(fontSize: 14, color: COLOR_RESPUESTA_NO)),
+              _buildGraficoCircular(porcentaje, porcentaje >= 80 ? COLOR_RESPUESTA_SI : porcentaje >= 60 ? COLOR_RESPUESTA_NA : COLOR_RESPUESTA_NO),
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text('Total Items: $totalItems', style: const pw.TextStyle(fontSize: 14)),
+                  pw.Text('Conformes: $conformes', style: pw.TextStyle(fontSize: 14, color: COLOR_RESPUESTA_SI)),
+                  pw.Text('No Conformes: $noConformes', style: pw.TextStyle(fontSize: 14, color: COLOR_RESPUESTA_NO)),
+                  pw.SizedBox(height: 6),
+                  pw.Text('$porcentaje% de cumplimiento', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: porcentaje >= 80 ? COLOR_RESPUESTA_SI : porcentaje >= 60 ? COLOR_RESPUESTA_NA : COLOR_RESPUESTA_NO)),
+                ],
+              ),
             ],
           ),
-          pw.SizedBox(height: 8),
-          pw.Container(
-            width: double.infinity,
-            height: 20,
-            decoration: pw.BoxDecoration(
-              border: pw.Border.all(color: COLOR_GRIS_CLARO),
-              borderRadius: pw.BorderRadius.circular(10),
-            ),
-            child: pw.Stack(children: [
-              pw.Container(
-                width: double.infinity,
-                height: 20,
-                decoration: pw.BoxDecoration(
-                  color: COLOR_GRIS_MUY_CLARO,
-                  borderRadius: pw.BorderRadius.circular(10),
-                ),
-              ),
-              pw.Container(
-                width: (porcentaje / 100) * 200,
-                height: 20,
-                decoration: pw.BoxDecoration(
-                  color: porcentaje >= 80 ? COLOR_RESPUESTA_SI : porcentaje >= 60 ? COLOR_RESPUESTA_NA : COLOR_RESPUESTA_NO,
-                  borderRadius: pw.BorderRadius.circular(10),
-                ),
-              ),
-            ]),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _buildGraficoCircular(int porcentaje, PdfColor color) {
+    final pct = porcentaje.clamp(0, 100) / 100.0;
+    return pw.Container(
+      width: 72,
+      height: 72,
+      child: pw.Stack(
+        alignment: pw.Alignment.center,
+        children: [
+          pw.CustomPaint(
+            size: const PdfPoint(72, 72),
+            painter: (PdfGraphics canvas, PdfPoint size) {
+              final double w = size.x;
+              final double h = size.y;
+              final double cx = w / 2;
+              final double cy = h / 2;
+              final double outerR = (w < h ? w : h) / 2;
+              final double innerR = outerR - 6;
+              final int totalTicks = 40;
+              final int filled = (pct * totalTicks).round();
+
+              for (int i = 0; i < totalTicks; i++) {
+                final double ang = -math.pi / 2 + (2 * math.pi) * (i / totalTicks);
+                final double x1 = cx + innerR * math.cos(ang);
+                final double y1 = cy + innerR * math.sin(ang);
+                final double x2 = cx + outerR * math.cos(ang);
+                final double y2 = cy + outerR * math.sin(ang);
+                canvas
+                  ..setStrokeColor(i < filled ? color : COLOR_GRIS_CLARO)
+                  ..setLineWidth(3)
+                  ..setLineCap(PdfLineCap.round)
+                  ..drawLine(x1, y1, x2, y2)
+                  ..strokePath();
+              }
+            },
           ),
-          pw.SizedBox(height: 8),
-          pw.Text('$porcentaje% de cumplimiento', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: porcentaje >= 80 ? COLOR_RESPUESTA_SI : porcentaje >= 60 ? COLOR_RESPUESTA_NA : COLOR_RESPUESTA_NO)),
+          pw.Text('$porcentaje%', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: COLOR_NEGRO)),
         ],
       ),
     );

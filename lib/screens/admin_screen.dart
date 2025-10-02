@@ -14,6 +14,9 @@ import '../services/observaciones_adicionales_excel_service.dart';
 import '../services/email_service.dart';
 import 'observaciones_adicionales_admin_detail_screen.dart';
 import 'cortes_admin_screen.dart';
+import 'labores_permanentes_admin_screen.dart';
+import 'labores_temporales_admin_screen.dart';
+import 'observaciones_adicionales_admin_screen.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
@@ -423,6 +426,27 @@ class _AdminScreenState extends State<AdminScreen> {
         context,
         MaterialPageRoute(
           builder: (context) => CortesAdminScreen(),
+        ),
+      );
+    } else if (checklistType == 'labores_permanentes') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => LaboresPermanentesAdminScreen(),
+        ),
+      );
+    } else if (checklistType == 'labores_temporales') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => LaboresTemporalesAdminScreen(),
+        ),
+      );
+    } else if (checklistType == 'observaciones_adicionales') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ObservacionesAdicionalesAdminScreen(),
         ),
       );
     } else {

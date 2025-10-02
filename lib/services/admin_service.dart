@@ -529,7 +529,12 @@ class AdminService {
           END as usuario_nombre,
           l.fecha_creacion,
           l.fecha_modificacion as fecha_envio,
-          l.porcentaje_cumplimiento
+          l.porcentaje_cumplimiento,
+          l.cuadrantes_json,
+          l.items_json,
+          l.total_evaluaciones,
+          l.total_conformes,
+          l.total_no_conformes
         FROM check_labores_permanentes l
         $whereClause
         ORDER BY l.fecha_creacion DESC
@@ -544,28 +549,33 @@ class AdminService {
       print('🔍 Resultado: $result');
       if (records.isNotEmpty) {
         print('🔍 Primer registro: ${records.first}');
-        print('🔍 usuario_nombre del primer registro: ${records.first['usuario_nombre']}');
-        print('🔍 usuario_id del primer registro: ${records.first['usuario_id']}');
+        print('🔍 Keys del primer registro: ${records.first.keys.toList()}');
+        print('🔍 cuadrantes_json presente: ${records.first.containsKey('cuadrantes_json')}');
+        print('🔍 items_json presente: ${records.first.containsKey('items_json')}');
+        if (records.first.containsKey('cuadrantes_json')) {
+          print('🔍 cuadrantes_json valor: ${records.first['cuadrantes_json']}');
+        }
+        if (records.first.containsKey('items_json')) {
+          print('🔍 items_json valor: ${records.first['items_json']}');
+        }
       }
       
-      // Debug adicional: verificar la columna kontroller
+      // Debug adicional: verificar si hay datos en la tabla
       String debugQuery = '''
-        SELECT 
-          l.usuario_creacion,
-          l.kontroller,
+        SELECT TOP 1
           l.id,
-          CASE 
-            WHEN l.kontroller IS NOT NULL AND l.kontroller != '' THEN l.kontroller
-            ELSE l.usuario_creacion
-          END as usuario_nombre_calculado
+          l.cuadrantes_json,
+          l.items_json,
+          l.fecha_creacion
         FROM check_labores_permanentes l
-        WHERE l.id = ${records.isNotEmpty ? records.first['id'] : 'NULL'}
+        ORDER BY l.fecha_creacion DESC
       ''';
       
       try {
         String debugResult = await SqlServerService.executeQuery(debugQuery);
         List<Map<String, dynamic>> debugRecords = SqlServerService.processQueryResult(debugResult);
-        print('🔍 DEBUG KONTROLLER - Resultado de la consulta: $debugRecords');
+        print('🔍 DEBUG - Verificación de datos en servidor: $debugResult');
+        print('🔍 DEBUG - Registros procesados: $debugRecords');
         if (debugRecords.isNotEmpty) {
           print('🔍 DEBUG KONTROLLER - usuario_creacion: ${debugRecords.first['usuario_creacion']}');
           print('🔍 DEBUG KONTROLLER - kontroller: ${debugRecords.first['kontroller']}');
@@ -651,7 +661,12 @@ class AdminService {
           END as usuario_nombre,
           l.fecha_creacion,
           l.fecha_modificacion as fecha_envio,
-          l.porcentaje_cumplimiento
+          l.porcentaje_cumplimiento,
+          l.cuadrantes_json,
+          l.items_json,
+          l.total_evaluaciones,
+          l.total_conformes,
+          l.total_no_conformes
         FROM check_labores_temporales l
         $whereClause
         ORDER BY l.fecha_creacion DESC
