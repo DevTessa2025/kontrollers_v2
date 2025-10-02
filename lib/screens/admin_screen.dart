@@ -124,218 +124,94 @@ class _AdminScreenState extends State<AdminScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Panel de Administración'),
-        backgroundColor: Colors.red[700],
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Colors.red[700]!,
-              Colors.red[50]!,
-            ],
-            stops: [0.0, 0.3],
-          ),
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: EdgeInsets.all(16),
+      backgroundColor: Colors.grey[50],
+      body: Column(
+        children: [
+          // Header mejorado con gradiente
+          Container(
+            width: double.infinity,
+            padding: EdgeInsets.fromLTRB(24, 60, 24, 32),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Colors.deepOrange[600]!, Colors.red[800]!],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.deepOrange.withOpacity(0.3),
+                  blurRadius: 20,
+                  offset: Offset(0, 8),
+                ),
+              ],
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Header con información del admin
-                Container(
-                  width: double.infinity,
-                  padding: EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 10,
-                        offset: Offset(0, 4),
+                Row(
+                  children: [
+                    Container(
+                      width: 50,
+                      height: 50,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(15),
+                        border: Border.all(color: Colors.white.withOpacity(0.3), width: 1),
                       ),
-                    ],
+                      child: Icon(
+                        Icons.analytics,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                    ),
+                    SizedBox(width: 20),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Panel de Reportería',
+                            style: TextStyle(
+                              fontSize: 26,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                          Text(
+                            'Gestión y análisis de reportes',
+                            style: TextStyle(
+                              fontSize: 15,
+                              color: Colors.white.withOpacity(0.9),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 20),
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white.withOpacity(0.2), width: 1),
                   ),
                   child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Container(
-                        padding: EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.red[100],
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Icon(Icons.admin_panel_settings,
-                            color: Colors.red[700], size: 32),
+                      Icon(
+                        Icons.trending_up,
+                        color: Colors.white,
+                        size: 16,
                       ),
-                      SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Panel de Administración',
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.grey[800],
-                              ),
-                            ),
-                            SizedBox(height: 4),
-                            Text(
-                              'Acceso completo a registros del sistema',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey[600],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                SizedBox(height: 32),
-
-                Text(
-                  'Registros de Checklists',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-
-                SizedBox(height: 8),
-
-                Text(
-                  'Selecciona el tipo de checklist para ver sus registros',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.white.withOpacity(0.9),
-                  ),
-                ),
-
-                SizedBox(height: 24),
-
-                // Grid de botones para cada tipo de checklist
-                Expanded(
-                  child: GridView.count(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 16,
-                    mainAxisSpacing: 16,
-                    childAspectRatio: 1.0,
-                    children: [
-                      _buildChecklistCard(
-                        title: 'Fertirriego',
-                        subtitle: 'Finca • Bloque',
-                        icon: Icons.water_drop,
-                        color: Colors.blue,
-                        onTap: () => _navigateToRecords('fertirriego'),
-                      ),
-                      _buildChecklistCard(
-                        title: 'Bodega',
-                        subtitle: 'Finca • Supervisor • Pesador',
-                        icon: Icons.warehouse,
-                        color: Colors.orange,
-                        onTap: () => _navigateToRecords('bodega'),
-                      ),
-                      _buildChecklistCard(
-                        title: 'Aplicaciones',
-                        subtitle: 'Finca • Bloque • Bomba',
-                        icon: Icons.sanitizer,
-                        color: Colors.green,
-                        onTap: () => _navigateToRecords('aplicaciones'),
-                      ),
-                      _buildChecklistCard(
-                        title: 'Cosechas',
-                        subtitle: 'Finca • Bloque • Variedad',
-                        icon: Icons.agriculture,
-                        color: Colors.purple,
-                        onTap: () => _navigateToRecords('cosecha'),
-                      ),
-                      _buildChecklistCard(
-                        title: 'Cortes del Día',
-                        subtitle: 'Finca • Bloque • Variedad',
-                        icon: Icons.content_cut,
-                        color: Colors.red,
-                        onTap: () => _navigateToRecords('cortes'),
-                      ),
-                      _buildChecklistCard(
-                        title: 'Labores Permanentes',
-                        subtitle: 'Finca • Bloque • Variedad',
-                        icon: Icons.agriculture,
-                        color: Colors.deepPurple,
-                        onTap: () => _navigateToRecords('labores_permanentes'),
-                      ),
-                      _buildChecklistCard(
-                        title: 'Labores Temporales',
-                        subtitle: 'Finca • Bloque • Variedad',
-                        icon: Icons.construction,
-                        color: Colors.amber,
-                        onTap: () => _navigateToRecords('labores_temporales'),
-                      ),
-                      _buildChecklistCard(
-                        title: 'Observaciones Adicionales',
-                        subtitle: 'Finca • Bloque • Variedad',
-                        icon: Icons.note_alt,
-                        color: Colors.teal,
-                        onTap: () => _navigateToRecords('observaciones_adicionales'),
-                      ),
-                    ],
-                  ),
-                ),
-
-                SizedBox(height: 16),
-
-                // Información adicional
-                Container(
-                  width: double.infinity,
-                  padding: EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 8,
-                        offset: Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.info_outline,
-                          color: Colors.blue[600], size: 24),
-                      SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Información importante',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.grey[800],
-                              ),
-                            ),
-                            SizedBox(height: 4),
-                            Text(
-                              'Los datos se consultan directamente del servidor. Requiere conexión a internet.',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey[600],
-                              ),
-                            ),
-                          ],
+                      SizedBox(width: 8),
+                      Text(
+                        'Reportes en tiempo real',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ],
@@ -344,73 +220,231 @@ class _AdminScreenState extends State<AdminScreen> {
               ],
             ),
           ),
-        ),
+
+          // Contenido principal
+          Expanded(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.all(24),
+              child: Column(
+                children: [
+                  // Módulos principales
+                  _buildDashboardSection(
+                    'Módulos Principales',
+                    [
+                      _buildDashboardCard('Bodega', Icons.warehouse, Colors.red[600]!, 'Control de inventario', () => _navigateToRecords('bodega')),
+                      _buildDashboardCard('Cosecha', Icons.grass, Colors.green[600]!, 'Control de calidad', () => _navigateToRecords('cosecha')),
+                      _buildDashboardCard('Aplicaciones', Icons.spa, Colors.orange[600]!, 'Registro fitosanitario', () => _navigateToRecords('aplicaciones')),
+                      _buildDashboardCard('Fertirriego', Icons.water_drop, Colors.blue[600]!, 'Riego y fertilización', () => _navigateToRecords('fertirriego')),
+                    ],
+                  ),
+
+                  SizedBox(height: 32),
+
+                  _buildDashboardSection(
+                    'Control de Calidad',
+                    [
+                      _buildDashboardCard('Cortes del Día', Icons.content_cut, Colors.purple[600]!, 'Control de cortes', () => _navigateToRecords('cortes')),
+                      _buildDashboardCard('Labores Permanentes', Icons.agriculture, Colors.deepPurple[600]!, 'Mantenimiento', () => _navigateToRecords('labores_permanentes')),
+                      _buildDashboardCard('Labores Temporales', Icons.construction, Colors.amber[600]!, 'Labores estacionales', () => _navigateToRecords('labores_temporales')),
+                    ],
+                  ),
+
+                  SizedBox(height: 32),
+
+                  _buildDashboardSection(
+                    'Observaciones adicionales',
+                    [
+                      _buildDashboardCard('Observaciones adicionales', Icons.note_add_outlined, Colors.teal[600]!, 'Registro especial', () => _navigateToRecords('observaciones_adicionales')),
+                    ],
+                  ),
+
+                  SizedBox(height: 32),
+
+                  // Footer minimalista
+                  Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[100],
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          color: Colors.grey[600],
+                          size: 20,
+                        ),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Los reportes se generan en tiempo real desde el servidor',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  SizedBox(height: 24),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildChecklistCard({
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return Card(
-      elevation: 8,
-      shadowColor: color.withOpacity(0.3),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
+  Widget _buildDashboardSection(String title, List<Widget> cards) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [
-                color.withOpacity(0.1),
-                color.withOpacity(0.05),
-              ],
+              colors: [Colors.red[50]!, Colors.grey[100]!],
             ),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.red[200]!, width: 1),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: Colors.red[600],
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              SizedBox(width: 12),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.red[800],
+                ),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: 20),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: NeverScrollableScrollPhysics(),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            crossAxisSpacing: 8,
+            mainAxisSpacing: 8,
+            childAspectRatio: 1.0,
+          ),
+          itemCount: cards.length,
+          itemBuilder: (context, index) => cards[index],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDashboardCard(String title, IconData icon, Color color, String subtitle, VoidCallback onTap) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Colors.white, Colors.grey[50]!],
+            ),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: color.withOpacity(0.2), width: 1),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.06),
+                blurRadius: 15,
+                offset: Offset(0, 5),
+              ),
+              BoxShadow(
+                color: color.withOpacity(0.1),
+                blurRadius: 8,
+                offset: Offset(0, 2),
+              ),
+            ],
           ),
           child: Padding(
-            padding: EdgeInsets.all(16),
+            padding: EdgeInsets.all(12),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Container(
-                  padding: EdgeInsets.all(16),
+                  width: 32,
+                  height: 32,
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.2),
-                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [color, color.withOpacity(0.8)],
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: [
+                      BoxShadow(
+                        color: color.withOpacity(0.3),
+                        blurRadius: 4,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
                   ),
                   child: Icon(
                     icon,
-                    size: 32,
-                    color: color,
+                    color: Colors.white,
+                    size: 16,
                   ),
                 ),
-                SizedBox(height: 12),
+                SizedBox(height: 8),
                 Text(
                   title,
                   style: TextStyle(
-                    fontSize: 16,
+                    fontSize: 12,
                     fontWeight: FontWeight.bold,
-                    color: color,
+                    color: Colors.grey[900],
                   ),
                   textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                SizedBox(height: 4),
+                SizedBox(height: 2),
                 Text(
                   subtitle,
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: 9,
                     color: Colors.grey[600],
+                    height: 1.1,
                   ),
                   textAlign: TextAlign.center,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
+                ),
+                SizedBox(height: 6),
+                Container(
+                  width: double.infinity,
+                  height: 1.5,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [color.withOpacity(0.3), color.withOpacity(0.1)],
+                    ),
+                    borderRadius: BorderRadius.circular(1),
+                  ),
                 ),
               ],
             ),

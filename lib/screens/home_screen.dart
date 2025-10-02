@@ -401,7 +401,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           MaterialPageRoute(builder: (context) => ChecklistLaboresTemporalesScreen()),
         );
         break;
-      case 'Administración':
+      case 'Reportería':
         Navigator.push(
           context,
           MaterialPageRoute(builder: (context) => AdminScreen()),
