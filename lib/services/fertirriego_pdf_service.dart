@@ -147,17 +147,19 @@ class FertirriegoPDFService {
   }
 
   static pw.Widget _construirResumenCumplimiento(Map<String, dynamic> data) {
+    // Usar el porcentaje que ya está calculado en la base de datos
+    final porcentaje = data['porcentaje_cumplimiento']?.toDouble() ?? 0.0;
+    final porcentajeRedondeado = porcentaje.round();
+    
+    print('[PDF][FERTIRRIEGO] Usando porcentaje de la base de datos: $porcentaje%');
+
+    // Calcular conformes y no conformes para mostrar en el resumen
     int totalItems = 0;
     int conformes = 0;
     int noConformes = 0;
-
-    print('[PDF][FERTIRRIEGO] Calculando porcentaje de cumplimiento...');
     
     for (int i in ITEMS_FERTIRRIEGO) {
-      // Usar el mismo formato que el servicio general
       final respuesta = data['item_${i}_respuesta']?.toString();
-      print('[PDF][FERTIRRIEGO] Item $i: respuesta=$respuesta');
-      
       if (respuesta != null && respuesta.isNotEmpty && respuesta.toLowerCase() != 'n/a') {
         totalItems++;
         if (respuesta.toLowerCase() == 'sí' || respuesta.toLowerCase() == 'si') {
@@ -167,10 +169,8 @@ class FertirriegoPDFService {
         }
       }
     }
-
-    final porcentaje = totalItems > 0 ? (conformes / totalItems * 100).round() : 0;
-    final double barFactor = ((porcentaje.clamp(0, 100)) / 100).toDouble();
-    print('[PDF][FERTIRRIEGO] Total items: $totalItems, Conformes: $conformes, No conformes: $noConformes, Porcentaje: $porcentaje%');
+    
+    print('[PDF][FERTIRRIEGO] Total items: $totalItems, Conformes: $conformes, No conformes: $noConformes, Porcentaje: $porcentajeRedondeado%');
 
     return pw.Container(
       padding: const pw.EdgeInsets.all(16),
@@ -190,7 +190,7 @@ class FertirriegoPDFService {
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             crossAxisAlignment: pw.CrossAxisAlignment.center,
             children: [
-              _buildGraficoCircular(porcentaje, porcentaje >= 80 ? COLOR_RESPUESTA_SI : porcentaje >= 60 ? COLOR_RESPUESTA_NA : COLOR_RESPUESTA_NO),
+              _buildGraficoCircular(porcentajeRedondeado, porcentajeRedondeado >= 80 ? COLOR_RESPUESTA_SI : porcentajeRedondeado >= 60 ? COLOR_RESPUESTA_NA : COLOR_RESPUESTA_NO),
               pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
@@ -198,7 +198,7 @@ class FertirriegoPDFService {
                   pw.Text('Conformes: $conformes', style: pw.TextStyle(fontSize: 14, color: COLOR_RESPUESTA_SI)),
                   pw.Text('No Conformes: $noConformes', style: pw.TextStyle(fontSize: 14, color: COLOR_RESPUESTA_NO)),
                   pw.SizedBox(height: 6),
-                  pw.Text('$porcentaje% de cumplimiento', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: porcentaje >= 80 ? COLOR_RESPUESTA_SI : porcentaje >= 60 ? COLOR_RESPUESTA_NA : COLOR_RESPUESTA_NO)),
+                  pw.Text('$porcentajeRedondeado% de cumplimiento', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: porcentajeRedondeado >= 80 ? COLOR_RESPUESTA_SI : porcentajeRedondeado >= 60 ? COLOR_RESPUESTA_NA : COLOR_RESPUESTA_NO)),
                 ],
               ),
             ],
