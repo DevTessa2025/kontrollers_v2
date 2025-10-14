@@ -17,6 +17,7 @@ import 'cortes_admin_screen.dart';
 import 'labores_permanentes_admin_screen.dart';
 import 'labores_temporales_admin_screen.dart';
 import 'observaciones_adicionales_admin_screen.dart';
+import 'user_admin_screen.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
@@ -26,30 +27,21 @@ class AdminScreen extends StatefulWidget {
 }
 
 class _AdminScreenState extends State<AdminScreen> {
-  bool _hasAdminPermissions = false;
+  bool _hasUserAdminPermissions = false;
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _checkAdminPermissions();
+    _checkUserAdminPermissions();
   }
 
-  Future<void> _checkAdminPermissions() async {
-    bool isAdmin = await AdminService.isCurrentUserAdmin();
+  Future<void> _checkUserAdminPermissions() async {
+    bool canManageUsers = await AdminService.isCurrentUserAdmin();
     if (mounted) {
       setState(() {
-        _hasAdminPermissions = isAdmin;
+        _hasUserAdminPermissions = canManageUsers;
         _isLoading = false;
-      });
-    }
-
-    if (!isAdmin) {
-      // Si no es admin, regresar después de 2 segundos
-      Future.delayed(Duration(seconds: 2), () {
-        if (mounted) {
-          Navigator.pop(context);
-        }
       });
     }
   }
@@ -59,69 +51,23 @@ class _AdminScreenState extends State<AdminScreen> {
     if (_isLoading) {
       return Scaffold(
         appBar: AppBar(
-          title: Text('Verificando permisos...'),
-          backgroundColor: Colors.red[700],
+          title: Text('Cargando...'),
+          backgroundColor: Colors.deepOrange[600],
           foregroundColor: Colors.white,
         ),
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              CircularProgressIndicator(color: Colors.red[700]),
+              CircularProgressIndicator(color: Colors.deepOrange[600]),
               SizedBox(height: 16),
-              Text('Validando acceso...'),
+              Text('Cargando panel de reportería...'),
             ],
           ),
         ),
       );
     }
 
-    if (!_hasAdminPermissions) {
-      return Scaffold(
-        appBar: AppBar(
-          title: Text('Acceso Denegado'),
-          backgroundColor: Colors.red[700],
-          foregroundColor: Colors.white,
-        ),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.security,
-                size: 80,
-                color: Colors.red[300],
-              ),
-              SizedBox(height: 20),
-              Text(
-                'No tienes permisos de administrador',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.red[700],
-                ),
-              ),
-              SizedBox(height: 10),
-              Text(
-                'Contacta al administrador del sistema',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[600],
-                ),
-              ),
-              SizedBox(height: 30),
-              Text(
-                'Regresando automáticamente...',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[500],
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
 
     return Scaffold(
       backgroundColor: Colors.grey[50],
@@ -257,6 +203,18 @@ class _AdminScreenState extends State<AdminScreen> {
                       _buildDashboardCard('Observaciones adicionales', Icons.note_add_outlined, Colors.teal[600]!, 'Registro especial', () => _navigateToRecords('observaciones_adicionales')),
                     ],
                   ),
+
+                  // Solo mostrar sección de administración si el usuario tiene permisos
+                  if (_hasUserAdminPermissions) ...[
+                    SizedBox(height: 32),
+
+                    _buildDashboardSection(
+                      'Administración del Sistema',
+                      [
+                        _buildDashboardCard('Usuarios', Icons.people, Colors.indigo[600]!, 'Gestión de usuarios', () => _navigateToUserAdmin()),
+                      ],
+                    ),
+                  ],
 
                   SizedBox(height: 32),
 
@@ -492,6 +450,15 @@ class _AdminScreenState extends State<AdminScreen> {
         ),
       );
     }
+  }
+
+  void _navigateToUserAdmin() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => UserAdminScreen(),
+      ),
+    );
   }
 }
 

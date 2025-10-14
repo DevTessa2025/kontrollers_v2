@@ -62,6 +62,13 @@ class _ObservacionesAdicionalesDetailedAdminScreenState extends State<Observacio
     }
   }
 
+  String _mapPctToNivel(double? pct) {
+    if (pct == null) return 'Medio';
+    if (pct >= 67) return 'Alto';
+    if (pct >= 34) return 'Medio';
+    return 'Bajo';
+  }
+
   @override
   Widget build(BuildContext context) {
     final tipo = widget.record['tipo'] ?? 'N/A';
@@ -320,9 +327,9 @@ class _ObservacionesAdicionalesDetailedAdminScreenState extends State<Observacio
           if (widget.record['blanco_biologico'] != null)
             _buildInfoRow('Blanco Biológico', widget.record['blanco_biologico']),
           if (widget.record['incidencia'] != null)
-            _buildInfoRow('Incidencia', '${widget.record['incidencia']}%'),
+            _buildInfoRow('Incidencia', _mapPctToNivel(widget.record['incidencia']?.toDouble())),
           if (widget.record['severidad'] != null)
-            _buildInfoRow('Severidad', '${widget.record['severidad']}%'),
+            _buildInfoRow('Severidad', _mapPctToNivel(widget.record['severidad']?.toDouble())),
           if (widget.record['tercio'] != null)
             _buildInfoRow('Tercio', widget.record['tercio']),
         ],

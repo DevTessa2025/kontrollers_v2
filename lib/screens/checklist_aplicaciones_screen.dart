@@ -288,7 +288,7 @@ class _ChecklistAplicacionesScreenState extends State<ChecklistAplicacionesScree
 
     try {
       // ✅ Usar variable temporal con nombre diferente
-      List<Bomba> loadedBombas = await AplicacionesDropdownService.getBombasByFincaAndBloque(finca, bloque);
+      List<Bomba> loadedBombas = await AplicacionesDropdownServiceUltra.getBombasByFincaAndBloque(finca, bloque);
       
       print('📦 Bombas recibidas del servicio: ${loadedBombas.length}');
       loadedBombas.forEach((bomba) => print('  - ${bomba.nombre}'));
@@ -471,7 +471,7 @@ class _ChecklistAplicacionesScreenState extends State<ChecklistAplicacionesScree
     });
 
     try {
-      List<Bomba> loadedBombas = await AplicacionesDropdownService.getBombasByFincaAndBloque(finca, bloque);
+      List<Bomba> loadedBombas = await AplicacionesDropdownServiceUltra.getBombasByFincaAndBloque(finca, bloque);
       
       setState(() {
         bombas = loadedBombas;

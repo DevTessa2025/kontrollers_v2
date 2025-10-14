@@ -20,7 +20,7 @@ class AdminService {
   };
   
   // Verificar si el usuario actual es administrador
-  // MODIFICADO: Ahora permite a todos los usuarios autenticados
+  // Solo permite acceso a usuarios admin o Belén Escobar
   static Future<bool> isCurrentUserAdmin() async {
     try {
       Map<String, dynamic>? currentUser = await AuthService.getCurrentUser();
@@ -29,8 +29,16 @@ class AdminService {
         return false;
       }
       
-      // Permitir acceso a todos los usuarios autenticados
-      return true;
+      String username = currentUser['username']?.toString().toLowerCase() ?? '';
+      String nombre = currentUser['nombre']?.toString() ?? '';
+      
+      // Verificar si es admin o Belén Escobar
+      bool isAdmin = username == 'admin' || 
+                     nombre.toLowerCase().contains('belén') && nombre.toLowerCase().contains('escobar');
+      
+      print('🔍 Verificación de admin - Username: $username, Nombre: $nombre, Es admin: $isAdmin');
+      
+      return isAdmin;
       
     } catch (e) {
       print('Error verificando permisos de admin: $e');
@@ -1046,5 +1054,135 @@ class AdminService {
   
   static List<int> getExistingItemsForType(String tableName) {
     return ITEMS_POR_TIPO[tableName] ?? [];
+  }
+  
+  // ==================== ADMINISTRACIÓN DE USUARIOS ====================
+  
+  // Crear nuevo usuario
+  static Future<Map<String, dynamic>> createUser({
+    required String username,
+    required String password,
+    required String nombre,
+    required String email,
+  }) async {
+    try {
+      String query = '''
+        INSERT INTO usuarios_app (username, password, nombre, email, activo, fecha_creacion)
+        VALUES ('$username', '$password', '$nombre', '$email', 1, GETDATE())
+      ''';
+      
+      await SqlServerService.executeQuery(query);
+      
+      return {
+        'success': true,
+        'message': 'Usuario creado exitosamente'
+      };
+      
+    } catch (e) {
+      print('Error creando usuario: $e');
+      return {
+        'success': false,
+        'error': e.toString()
+      };
+    }
+  }
+  
+  // Actualizar usuario
+  static Future<Map<String, dynamic>> updateUser({
+    required int userId,
+    String? username,
+    String? password,
+    String? nombre,
+    String? email,
+    bool? activo,
+  }) async {
+    try {
+      List<String> updates = [];
+      
+      if (username != null) updates.add("username = '$username'");
+      if (password != null) updates.add("password = '$password'");
+      if (nombre != null) updates.add("nombre = '$nombre'");
+      if (email != null) updates.add("email = '$email'");
+      if (activo != null) updates.add("activo = ${activo ? 1 : 0}");
+      
+      if (updates.isEmpty) {
+        return {
+          'success': false,
+          'error': 'No hay campos para actualizar'
+        };
+      }
+      
+      updates.add("fecha_actualizacion = GETDATE()");
+      
+      String query = '''
+        UPDATE usuarios_app 
+        SET ${updates.join(', ')}
+        WHERE id = $userId
+      ''';
+      
+      await SqlServerService.executeQuery(query);
+      
+      return {
+        'success': true,
+        'message': 'Usuario actualizado exitosamente'
+      };
+      
+    } catch (e) {
+      print('Error actualizando usuario: $e');
+      return {
+        'success': false,
+        'error': e.toString()
+      };
+    }
+  }
+  
+  // Activar/Desactivar usuario
+  static Future<Map<String, dynamic>> toggleUserStatus(int userId, bool activo) async {
+    try {
+      String query = '''
+        UPDATE usuarios_app 
+        SET activo = ${activo ? 1 : 0}, fecha_actualizacion = GETDATE()
+        WHERE id = $userId
+      ''';
+      
+      await SqlServerService.executeQuery(query);
+      
+      return {
+        'success': true,
+        'message': 'Estado del usuario actualizado exitosamente'
+      };
+      
+    } catch (e) {
+      print('Error cambiando estado del usuario: $e');
+      return {
+        'success': false,
+        'error': e.toString()
+      };
+    }
+  }
+  
+  // Eliminar usuario (soft delete)
+  static Future<Map<String, dynamic>> deleteUser(int userId) async {
+    try {
+      String query = '''
+        UPDATE usuarios_app 
+        SET activo = 0, fecha_actualizacion = GETDATE()
+        WHERE id = $userId
+      ''';
+      
+      await SqlServerService.executeQuery(query);
+      
+      return {
+        'success': true,
+        'message': 'Usuario eliminado exitosamente'
+      };
+      
+    } catch (e) {
+      print('Error eliminando usuario: $e');
+      return {
+        'success': false,
+        'error': e.toString()
+      };
+    }
   }
 }

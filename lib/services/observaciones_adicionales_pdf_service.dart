@@ -11,6 +11,13 @@ class ObservacionesAdicionalesPDFService {
   static const int _IMAGES_PER_PAGE = 4;  // 2x2 grilla
   static const int _IMAGES_PER_DOC = 24;  // 6 páginas de anexos máx
 
+  static String _mapPctToNivel(double? pct) {
+    if (pct == null) return 'Medio';
+    if (pct >= 67) return 'Alto';
+    if (pct >= 34) return 'Medio';
+    return 'Bajo';
+  }
+
   static Future<Uint8List> generate({
     required Map<String, dynamic> data,
   }) async {
@@ -129,8 +136,8 @@ class ObservacionesAdicionalesPDFService {
 
     if ((data['tipo']?.toString().toUpperCase() ?? '') == 'MIPE') {
       if ((data['blanco_biologico'] ?? '').toString().isNotEmpty) rows.add(_row('Blanco Biológico', data['blanco_biologico'].toString()));
-      if (data['incidencia'] != null) rows.add(_row('Incidencia', '${data['incidencia']}%'));
-      if (data['severidad'] != null) rows.add(_row('Severidad', '${data['severidad']}%'));
+      if (data['incidencia'] != null) rows.add(_row('Incidencia', _mapPctToNivel(data['incidencia']?.toDouble())));
+      if (data['severidad'] != null) rows.add(_row('Severidad', _mapPctToNivel(data['severidad']?.toDouble())));
       if ((data['tercio'] ?? '').toString().isNotEmpty) rows.add(_row('Tercio', data['tercio'].toString()));
     }
 

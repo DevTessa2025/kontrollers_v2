@@ -1018,7 +1018,7 @@ class _ObservacionesAdicionalesScreenState extends State<ObservacionesAdicionale
         Row(
           children: [
             Expanded(
-              child: _buildTercioRadioOption('Alto', 'Alto'),
+              child: _buildTercioRadioOption('Bajo', 'Bajo'),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -1026,7 +1026,7 @@ class _ObservacionesAdicionalesScreenState extends State<ObservacionesAdicionale
             ),
             const SizedBox(width: 16),
             Expanded(
-              child: _buildTercioRadioOption('Bajo', 'Bajo'),
+              child: _buildTercioRadioOption('Alto', 'Alto'),
             ),
           ],
         ),
