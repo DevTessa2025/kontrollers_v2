@@ -4,6 +4,8 @@ import 'package:intl/intl.dart';
 import '../data/checklist_data_labores_permanentes.dart';
 import '../services/checklist_labores_permanentes_storage_service.dart';
 import 'checklist_labores_permanentes_screen.dart';
+import 'dart:convert';
+import 'dart:typed_data';
 
 class ChecklistLaboresPermanentesRecordsScreen extends StatefulWidget {
   @override
@@ -738,15 +740,7 @@ class _ChecklistLaboresPermanentesRecordsScreenState extends State<ChecklistLabo
                       style: TextStyle(fontWeight: FontWeight.bold),
                     ),
                     SizedBox(height: 8),
-                    ...checklist.cuadrantes.map((cuadrante) => 
-                      Padding(
-                        padding: EdgeInsets.only(left: 8, bottom: 4),
-                        child: Text(
-                          '• ${cuadrante.supervisor} - ${cuadrante.cuadrante}${cuadrante.bloque.isNotEmpty ? ' (Bl. ${cuadrante.bloque})' : ''}${cuadrante.variedad != null ? ' - ${cuadrante.variedad}' : ''}',
-                          style: TextStyle(fontSize: 14),
-                        ),
-                      ),
-                    ),
+                    ...checklist.cuadrantes.map((cuadrante) => _buildCuadranteWithPhotos(checklist, cuadrante)),
                   ],
                 ],
               ),
@@ -766,6 +760,134 @@ class _ChecklistLaboresPermanentesRecordsScreenState extends State<ChecklistLabo
                 },
               ),
           ],
+        );
+      },
+    );
+  }
+
+  Widget _buildCuadranteWithPhotos(ChecklistLaboresPermanentes checklist, CuadranteLaboresInfo cuadrante) {
+    final List<Map<String, dynamic>> fotos = cuadrante.fotos;
+    final String supervisor = cuadrante.supervisor;
+    final String bloque = cuadrante.bloque;
+    final String? variedad = cuadrante.variedad;
+    final String cuad = cuadrante.cuadrante;
+
+    return Card(
+      margin: EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.location_on, size: 16, color: Colors.deepPurple[600]),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '$supervisor - $cuad (Bl. $bloque)${variedad != null ? ' - $variedad' : ''}',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+            if (fotos.isNotEmpty || (cuadrante.fotoBase64 != null && cuadrante.fotoBase64!.isNotEmpty)) ...[
+              SizedBox(height: 10),
+              Text('Fotos adjuntas (${fotos.isNotEmpty ? fotos.length : 1}):', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey[700])),
+              SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _buildFotosPreviews(cuadrante, checklist.items),
+              ),
+            ] else ...[
+              SizedBox(height: 8),
+              Text('Sin fotos adjuntas', style: TextStyle(fontSize: 12, color: Colors.grey[500], fontStyle: FontStyle.italic)),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildFotosPreviews(CuadranteLaboresInfo cuadrante, List<ChecklistLaboresPermanentesItem> items) {
+    final List<Map<String, dynamic>> fotos = cuadrante.fotos.isNotEmpty
+        ? cuadrante.fotos
+        : (cuadrante.fotoBase64 != null && cuadrante.fotoBase64!.isNotEmpty
+            ? [ {'base64': cuadrante.fotoBase64, 'etiqueta': null} ]
+            : []);
+
+    return fotos.map((foto) {
+      final base64Image = foto['base64'] as String?;
+      final etiqueta = foto['etiqueta'] as String?;
+      if (base64Image == null || base64Image.isEmpty) {
+        return Container(width: 80, height: 80, color: Colors.grey[200], alignment: Alignment.center, child: Icon(Icons.broken_image, color: Colors.grey));
+      }
+      try {
+        final bytes = base64Decode(base64Image);
+        final etiquetaText = _getItemNameFromEtiqueta(etiqueta, items);
+        return GestureDetector(
+          onTap: () => _showFullImage(bytes, etiquetaText),
+          child: Container(
+            width: 100,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: Image.memory(bytes, width: 100, height: 100, fit: BoxFit.cover),
+                ),
+                if (etiquetaText.isNotEmpty)
+                  Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                    color: Colors.deepPurple[600],
+                    child: Text(etiquetaText, style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+                  ),
+              ],
+            ),
+          ),
+        );
+      } catch (_) {
+        return Container(width: 80, height: 80, color: Colors.red[100], alignment: Alignment.center, child: Icon(Icons.error, color: Colors.red));
+      }
+    }).toList();
+  }
+
+  String _getItemNameFromEtiqueta(String? etiqueta, List<ChecklistLaboresPermanentesItem> items) {
+    if (etiqueta == null || etiqueta.isEmpty) return '';
+    final int? id = int.tryParse(etiqueta);
+    if (id == null) return '';
+    try {
+      final found = items.firstWhere((it) => it.id.toString() == id.toString());
+      return found.proceso;
+    } catch (_) {
+      return '';
+    }
+  }
+
+  void _showFullImage(Uint8List bytes, String etiquetaText) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (etiquetaText.isNotEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.all(12),
+                  color: Colors.deepPurple[600],
+                  child: Text(etiquetaText, style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+                ),
+              Container(
+                constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.9, maxHeight: MediaQuery.of(context).size.height * 0.8),
+                child: Image.memory(bytes, fit: BoxFit.contain),
+              ),
+              TextButton(onPressed: () => Navigator.of(context).pop(), child: Text('Cerrar')),
+            ],
+          ),
         );
       },
     );

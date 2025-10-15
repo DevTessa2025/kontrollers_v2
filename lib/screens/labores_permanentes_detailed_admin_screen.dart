@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'dart:convert';
+import 'dart:typed_data';
 import '../widget/share_dialog_widget.dart';
 
 class LaboresPermanentesDetailedAdminScreen extends StatefulWidget {
@@ -127,12 +128,15 @@ class _LaboresPermanentesDetailedAdminScreenState extends State<LaboresPermanent
     int cuadrantesConDatos = 0;
     for (var cuadrante in _cuadrantes) {
       final cuadranteId = cuadrante['cuadrante']?.toString() ?? cuadrante['id']?.toString() ?? '';
-      if (cuadranteId.isEmpty) continue;
+      final bloque = cuadrante['bloque']?.toString() ?? '';
+      final supervisor = cuadrante['supervisor']?.toString() ?? (widget.record['supervisor']?.toString() ?? '');
+      if (cuadranteId.isEmpty || bloque.isEmpty) continue;
+      final resultadoKey = '${supervisor}_${bloque}_${cuadranteId}';
       int marcados = 0;
       const int paradas = 5;
       final int numItems = _items.length;
-      if (_resultados.containsKey(cuadranteId)) {
-        final cuadranteResultados = _resultados[cuadranteId]!;
+      if (_resultados.containsKey(resultadoKey)) {
+        final cuadranteResultados = _resultados[resultadoKey]!;
         for (final entry in cuadranteResultados.entries) {
           final mapaParadas = entry.value;
           for (int p = 1; p <= paradas; p++) {
@@ -324,7 +328,7 @@ class _LaboresPermanentesDetailedAdminScreenState extends State<LaboresPermanent
     final supervisor = cuadrante['supervisor'] ?? widget.record['supervisor'] ?? 'N/A';
     
     // Construir el key correcto para buscar en _resultados
-    final resultadoKey = 'test_${bloque}_${cuadranteId}';
+    final resultadoKey = '${supervisor}_${bloque}_${cuadranteId}';
     
     print('=== DEBUG: _buildCuadranteCard ===');
     print('cuadrante: $cuadrante');
@@ -376,6 +380,8 @@ class _LaboresPermanentesDetailedAdminScreenState extends State<LaboresPermanent
             ),
             SizedBox(height: 16),
             _buildMuestrasTable(resultadoKey),
+            SizedBox(height: 12),
+            _buildFotosSection(cuadrante),
           ],
         ),
       ),
@@ -497,6 +503,123 @@ class _LaboresPermanentesDetailedAdminScreenState extends State<LaboresPermanent
           );
         }).toList(),
       ),
+    );
+  }
+
+  Widget _buildFotosSection(Map<String, dynamic> cuadrante) {
+    final List<Map<String, dynamic>> fotos = _getFotosFromCuadrante(cuadrante);
+    if (fotos.isEmpty) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: Text('Sin fotos adjuntas', style: TextStyle(fontSize: 12, color: Colors.grey[600], fontStyle: FontStyle.italic)),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Fotos adjuntas (${fotos.length}):', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey[700])),
+        SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: fotos.map((f) => _buildFotoPreview(f)).toList(),
+        ),
+      ],
+    );
+  }
+
+  List<Map<String, dynamic>> _getFotosFromCuadrante(Map<String, dynamic> cuadrante) {
+    List<Map<String, dynamic>> fotos = [];
+    if (cuadrante['fotos'] is List) {
+      fotos = List<Map<String, dynamic>>.from(cuadrante['fotos']);
+    } else if (cuadrante['fotos'] is String && (cuadrante['fotos'] as String).isNotEmpty) {
+      try {
+        final decoded = jsonDecode(cuadrante['fotos'] as String);
+        if (decoded is List) fotos = List<Map<String, dynamic>>.from(decoded);
+      } catch (_) {}
+    }
+    if (fotos.isEmpty && cuadrante['fotoBase64'] != null && (cuadrante['fotoBase64'] as String).isNotEmpty) {
+      fotos.add({'base64': cuadrante['fotoBase64'], 'etiqueta': null});
+    }
+    return fotos;
+  }
+
+  Widget _buildFotoPreview(Map<String, dynamic> foto) {
+    final base64Image = foto['base64']?.toString();
+    final etiqueta = foto['etiqueta']?.toString();
+    if (base64Image == null || base64Image.isEmpty) {
+      return Container(width: 90, height: 90, alignment: Alignment.center, color: Colors.grey[200], child: Icon(Icons.broken_image, color: Colors.grey));
+    }
+    try {
+      final bytes = base64Decode(base64Image);
+      final etiquetaText = _getItemNameFromEtiqueta(etiqueta);
+      return GestureDetector(
+        onTap: () => _showFullImage(bytes, etiquetaText),
+        child: Container(
+          width: 100,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: Image.memory(bytes, width: 100, height: 100, fit: BoxFit.cover),
+              ),
+              if (etiquetaText.isNotEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  color: Colors.deepPurple[600],
+                  child: Text(
+                    etiquetaText,
+                    style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    } catch (_) {
+      return Container(width: 90, height: 90, alignment: Alignment.center, color: Colors.red[100], child: Icon(Icons.error, color: Colors.red));
+    }
+  }
+
+  String _getItemNameFromEtiqueta(String? etiqueta) {
+    if (etiqueta == null || etiqueta.isEmpty) return '';
+    final int? id = int.tryParse(etiqueta);
+    if (id == null) return '';
+    try {
+      final found = _items.firstWhere((it) => (it['id']?.toString() ?? '') == id.toString(), orElse: () => {});
+      return found['proceso']?.toString() ?? '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  void _showFullImage(Uint8List bytes, String etiquetaText) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (etiquetaText.isNotEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.all(12),
+                  color: Colors.deepPurple[600],
+                  child: Text(etiquetaText, style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+                ),
+              Container(
+                constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.9, maxHeight: MediaQuery.of(context).size.height * 0.8),
+                child: Image.memory(bytes, fit: BoxFit.contain),
+              ),
+              TextButton(onPressed: () => Navigator.of(context).pop(), child: Text('Cerrar')),
+            ],
+          ),
+        );
+      },
     );
   }
 

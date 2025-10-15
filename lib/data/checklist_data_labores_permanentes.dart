@@ -1,4 +1,5 @@
 import '../models/dropdown_models.dart';
+import 'dart:convert';
 
 // ==================== MODELOS ESPECÍFICOS PARA LABORES PERMANENTES ====================
 
@@ -74,13 +75,17 @@ class CuadranteLaboresInfo {
   final String bloque;
   final String? variedad;
   final String cuadrante;
+  final String? fotoBase64;
+  final List<Map<String, dynamic>> fotos;
 
   CuadranteLaboresInfo({
     required this.supervisor,
     required this.bloque,
     this.variedad,
     required this.cuadrante,
-  });
+    this.fotoBase64,
+    List<Map<String, dynamic>>? fotos,
+  }) : fotos = fotos ?? [];
 
   Map<String, dynamic> toJson() {
     return {
@@ -88,15 +93,28 @@ class CuadranteLaboresInfo {
       'bloque': bloque,
       'variedad': variedad,
       'cuadrante': cuadrante,
+      'fotoBase64': fotoBase64,
+      'fotos': fotos,
     };
   }
 
   factory CuadranteLaboresInfo.fromJson(Map<String, dynamic> json) {
+    List<Map<String, dynamic>> fotos = [];
+    if (json['fotos'] is List) {
+      fotos = List<Map<String, dynamic>>.from(json['fotos']);
+    } else if (json['fotos'] is String && (json['fotos'] as String).isNotEmpty) {
+      try {
+        final decoded = jsonDecode(json['fotos'] as String);
+        if (decoded is List) fotos = List<Map<String, dynamic>>.from(decoded);
+      } catch (_) {}
+    }
     return CuadranteLaboresInfo(
       supervisor: json['supervisor'],
       bloque: json['bloque'],
       variedad: json['variedad'],
       cuadrante: json['cuadrante'],
+      fotoBase64: json['fotoBase64'],
+      fotos: fotos,
     );
   }
   

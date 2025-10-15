@@ -3,6 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'dart:convert';
+import 'dart:typed_data';
+import 'package:image_picker/image_picker.dart';
 import '../data/checklist_data_labores_permanentes.dart';
 import '../models/dropdown_models.dart';
 import '../services/cosecha_dropdown_service.dart';
@@ -317,6 +320,8 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
         'variedad': variedadObj,
         'cuadrante': cuadrante.cuadrante,
         'paradas': paradas,
+        'foto': cuadrante.fotoBase64,
+        'fotos': List<Map<String, dynamic>>.from(cuadrante.fotos),
       };
       
       print('Fila agregada a matriz con clave: $clave');
@@ -598,6 +603,8 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
         'variedad': _selectedVariedadForm,
         'cuadrante': cuadrante,
         'paradas': paradas,
+        'foto': null,
+        'fotos': <Map<String, dynamic>>[],
       };
     });
 
@@ -1344,7 +1351,7 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
             // Acciones
             DataCell(
               Container(
-                width: 160,
+                width: 200,
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -1369,6 +1376,7 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
                       constraints: BoxConstraints(minWidth: 30, minHeight: 30),
                       tooltip: 'Eliminar Fila',
                     ),
+                    _buildCameraButtonWithCounter(clave),
                   ],
                 ),
               ),
@@ -1440,6 +1448,191 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
         ),
       ),
     );
+  }
+
+  Widget _buildCameraButtonWithCounter(String clave) {
+    final data = matrizLabores[clave];
+    final fotos = data?['fotos'] as List<Map<String, dynamic>>? ?? [];
+    final fotoCount = fotos.length;
+    return Stack(
+      children: [
+        IconButton(
+          icon: Icon(Icons.camera_alt, color: Colors.teal, size: 18),
+          onPressed: () => _showPhotoManagementModal(clave),
+          padding: EdgeInsets.zero,
+          constraints: BoxConstraints(minWidth: 30, minHeight: 30),
+          tooltip: 'Gestionar Fotos',
+        ),
+        if (fotoCount > 0)
+          Positioned(
+            right: 0,
+            top: 0,
+            child: Container(
+              padding: EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                color: Colors.red,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              constraints: BoxConstraints(minWidth: 16, minHeight: 16),
+              child: Text(
+                '$fotoCount',
+                style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  void _showPhotoManagementModal(String clave) {
+    final data = matrizLabores[clave];
+    final fotos = data?['fotos'] as List<Map<String, dynamic>>? ?? [];
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: Text('Gestión de Fotos'),
+              content: Container(
+                width: double.maxFinite,
+                height: 420,
+                child: Column(
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: () => _showImageSourceSelection(clave, setState),
+                      icon: Icon(Icons.add_a_photo),
+                      label: Text('Agregar Foto'),
+                    ),
+                    SizedBox(height: 12),
+                    Expanded(
+                      child: fotos.isEmpty
+                          ? Center(child: Text('No hay fotos agregadas', style: TextStyle(color: Colors.grey[600])))
+                          : ListView.builder(
+                              itemCount: fotos.length,
+                              itemBuilder: (context, index) {
+                                final foto = fotos[index];
+                                return _buildPhotoItem(foto, index, clave, setState);
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.of(context).pop(), child: Text('Cerrar')),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildPhotoItem(Map<String, dynamic> foto, int index, String clave, StateSetter setState) {
+    final base64Image = foto['base64'] as String?;
+    final etiqueta = foto['etiqueta'] as String?;
+    return Card(
+      margin: EdgeInsets.symmetric(vertical: 4),
+      child: Padding(
+        padding: EdgeInsets.all(8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (base64Image != null && base64Image.isNotEmpty)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: Image.memory(base64Decode(base64Image), height: 140, width: double.infinity, fit: BoxFit.cover),
+              ),
+            SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              value: etiqueta,
+              decoration: InputDecoration(labelText: 'Etiqueta del ítem', border: OutlineInputBorder()),
+              items: [
+                DropdownMenuItem(value: null, child: Text('Sin etiqueta')),
+                ...laboresPermanentes.asMap().entries.map((e) => DropdownMenuItem(value: (e.key + 1).toString(), child: Text('${e.key + 1}. ${e.value}'))),
+              ],
+              onChanged: (String? newValue) {
+                setState(() {
+                  foto['etiqueta'] = newValue;
+                  _updateFotosInMatrix(clave);
+                });
+              },
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      matrizLabores[clave]!['fotos'].removeAt(index);
+                      _updateFotosInMatrix(clave);
+                    });
+                  },
+                  icon: Icon(Icons.delete, color: Colors.red),
+                  label: Text('Eliminar', style: TextStyle(color: Colors.red)),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showImageSourceSelection(String clave, StateSetter setState) {
+    showModalBottomSheet(
+      context: context,
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: Icon(Icons.camera_alt),
+                title: Text('Tomar foto'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _takePhoto(clave, setState, ImageSource.camera);
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.photo_library),
+                title: Text('Seleccionar de galería'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _takePhoto(clave, setState, ImageSource.gallery);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _takePhoto(String clave, StateSetter setState, ImageSource source) async {
+    try {
+      final picker = ImagePicker();
+      final XFile? image = await picker.pickImage(source: source, maxWidth: 1920, maxHeight: 1080, imageQuality: 85);
+      if (image == null) return;
+      final bytes = await image.readAsBytes();
+      final base64Image = base64Encode(bytes);
+      setState(() {
+        matrizLabores[clave]!['fotos'].add({'base64': base64Image, 'etiqueta': null});
+        _updateFotosInMatrix(clave);
+      });
+    } catch (e) {
+      Fluttertoast.showToast(msg: 'Error con la imagen: $e', backgroundColor: Colors.red[600], textColor: Colors.white);
+    }
+  }
+
+  void _updateFotosInMatrix(String clave) {
+    setState(() {
+      final fotos = matrizLabores[clave]!['fotos'] as List<Map<String, dynamic>>;
+      matrizLabores[clave]!['foto'] = fotos.isNotEmpty ? fotos.first['base64'] : null;
+    });
   }
 
   void _editarFila(String clave) {
@@ -1920,6 +2113,8 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
         String bloque = data['bloque']?.nombre ?? '';
         String? variedad = data['variedad']?.nombre;
         String cuadrante = data['cuadrante'] ?? '';
+        String? fotoBase64 = data['foto'];
+        List<Map<String, dynamic>> fotos = List<Map<String, dynamic>>.from(data['fotos'] ?? []);
         
         // Agregar cuadrante
         cuadrantes.add(CuadranteLaboresInfo(
@@ -1927,6 +2122,8 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
           bloque: bloque,
           variedad: variedad,
           cuadrante: cuadrante,
+          fotoBase64: fotoBase64,
+          fotos: fotos,
         ));
       });
 

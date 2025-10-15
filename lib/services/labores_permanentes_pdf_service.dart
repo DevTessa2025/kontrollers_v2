@@ -96,7 +96,7 @@ class LaboresPermanentesPdfService {
             pw.SizedBox(height: 20),
             _buildInformacionGeneral(record),
             pw.SizedBox(height: 20),
-            _buildResumenCumplimiento(record, cuadrantes, resultados),
+            _buildResumenCumplimiento(record, cuadrantes, items, resultados),
             pw.SizedBox(height: 20),
             _buildTablaResultados(record, cuadrantes, items, resultados),
           ];
@@ -207,9 +207,10 @@ class LaboresPermanentesPdfService {
   static pw.Widget _buildResumenCumplimiento(
     Map<String, dynamic> record,
     List<Map<String, dynamic>> cuadrantes,
+    List<Map<String, dynamic>> items,
     Map<String, Map<String, Map<int, String?>>> resultados,
   ) {
-    final promedio = _calcularPorcentajePromedio(cuadrantes, resultados);
+    final promedio = _calcularPorcentajePromedio(cuadrantes, resultados, items.length);
     
     return pw.Container(
       padding: pw.EdgeInsets.all(10),
@@ -288,8 +289,8 @@ class LaboresPermanentesPdfService {
     final supervisor = cuadrante['supervisor'] ?? record['supervisor'] ?? 'N/A';
     
     // Construir el key correcto para buscar en resultados
-    final resultadoKey = 'test_${bloque}_${cuadranteId}';
-    final porcentaje = _calcularPorcentajeBloque(resultadoKey, resultados);
+    final resultadoKey = '${supervisor}_${bloque}_${cuadranteId}';
+    final porcentaje = _calcularPorcentajeBloque(resultadoKey, resultados, items.length);
 
     return pw.Container(
       margin: pw.EdgeInsets.only(bottom: 15),
@@ -334,6 +335,10 @@ class LaboresPermanentesPdfService {
           ),
           pw.SizedBox(height: 10),
           _buildMuestrasTable(resultadoKey, items, resultados),
+          if (_getFotosFromCuadrante(cuadrante).isNotEmpty) ...[
+            pw.SizedBox(height: 8),
+            _buildFotosSection(_getFotosFromCuadrante(cuadrante), items),
+          ],
         ],
       ),
     );
@@ -419,9 +424,82 @@ class LaboresPermanentesPdfService {
     );
   }
 
+  static List<Map<String, dynamic>> _getFotosFromCuadrante(Map<String, dynamic> cuadrante) {
+    List<Map<String, dynamic>> fotos = [];
+    if (cuadrante['fotos'] is List) {
+      fotos = List<Map<String, dynamic>>.from(cuadrante['fotos']);
+    } else if (cuadrante['fotos'] is String && (cuadrante['fotos'] as String).isNotEmpty) {
+      try {
+        final decoded = jsonDecode(cuadrante['fotos'] as String);
+        if (decoded is List) fotos = List<Map<String, dynamic>>.from(decoded);
+      } catch (_) {}
+    }
+    if (fotos.isEmpty && cuadrante['fotoBase64'] != null && (cuadrante['fotoBase64'] as String).isNotEmpty) {
+      fotos.add({'base64': cuadrante['fotoBase64'], 'etiqueta': null});
+    }
+    return fotos;
+  }
+
+  static pw.Widget _buildFotosSection(List<Map<String, dynamic>> fotos, List<Map<String, dynamic>> items) {
+    if (fotos.isEmpty) return pw.SizedBox.shrink();
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text('FOTOS ADJUNTAS (${fotos.length})', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: COLOR_NEGRO)),
+        pw.SizedBox(height: 6),
+        pw.Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: fotos.map((f) => _buildFotoWidget(f, items)).toList(),
+        ),
+      ],
+    );
+  }
+
+  static pw.Widget _buildFotoWidget(Map<String, dynamic> foto, List<Map<String, dynamic>> items) {
+    final base64Image = foto['base64']?.toString();
+    final etiqueta = foto['etiqueta']?.toString();
+    if (base64Image == null || base64Image.isEmpty) {
+      return pw.Container(width: 60, height: 60, color: COLOR_GRIS_CLARO, child: pw.Center(child: pw.Text('Sin imagen', style: pw.TextStyle(fontSize: 8, color: COLOR_GRIS_OSCURO))));
+    }
+    try {
+      final bytes = base64Decode(base64Image);
+      final image = pw.MemoryImage(bytes);
+      String etiquetaText = '';
+      if (etiqueta != null && etiqueta.isNotEmpty) {
+        final int? id = int.tryParse(etiqueta);
+        if (id != null) {
+          try {
+            final found = items.firstWhere((it) => (it['id']?.toString() ?? '') == id.toString(), orElse: () => {});
+            etiquetaText = found['proceso']?.toString() ?? '';
+          } catch (_) {}
+        }
+      }
+      return pw.Container(
+        width: 90,
+        child: pw.Column(
+          mainAxisSize: pw.MainAxisSize.min,
+          children: [
+            pw.ClipRRect(child: pw.Image(image, width: 90, height: 90, fit: pw.BoxFit.cover)),
+            if (etiquetaText.isNotEmpty)
+              pw.Container(
+                width: double.infinity,
+                padding: pw.EdgeInsets.symmetric(horizontal: 3, vertical: 2),
+                color: COLOR_NEGRO,
+                child: pw.Text(etiquetaText, style: pw.TextStyle(color: COLOR_BLANCO, fontSize: 8, fontWeight: pw.FontWeight.bold), textAlign: pw.TextAlign.center),
+              ),
+          ],
+        ),
+      );
+    } catch (_) {
+      return pw.Container(width: 60, height: 60, color: PdfColors.red100, child: pw.Center(child: pw.Text('Error', style: pw.TextStyle(fontSize: 8, color: PdfColors.red))));
+    }
+  }
+
   static double _calcularPorcentajePromedio(
     List<Map<String, dynamic>> cuadrantes,
     Map<String, Map<String, Map<int, String?>>> resultados,
+    int itemsCount,
   ) {
     if (cuadrantes.isEmpty) return 0.0;
     
@@ -434,82 +512,32 @@ class LaboresPermanentesPdfService {
       if (cuadranteId.isEmpty || bloque.isEmpty) continue;
       
       // Construir el key correcto
-      final resultadoKey = 'test_${bloque}_${cuadranteId}';
-      
-      // Buscar el item "Labores permanentes conforme"
-      String? itemLaboresConforme;
-      for (var item in resultados[resultadoKey]?.keys ?? {}) {
-        final itemStr = item?.toString() ?? '';
-        if (itemStr.toLowerCase().contains('labores permanentes conforme')) {
-          itemLaboresConforme = itemStr;
-          break;
-        }
-      }
-      
-      if (itemLaboresConforme != null && resultados.containsKey(resultadoKey)) {
-        final cuadranteResultados = resultados[resultadoKey]!;
-        if (cuadranteResultados.containsKey(itemLaboresConforme)) {
-          final muestras = cuadranteResultados[itemLaboresConforme]!;
-          int totalMuestras = 0;
-          int muestrasConformes = 0;
-          
-          for (int i = 1; i <= 5; i++) {
-            final resultado = muestras[i];
-            if (resultado != null && resultado.isNotEmpty) {
-              totalMuestras++;
-              if (resultado.toLowerCase() == 'c' || resultado == '1') {
-                muestrasConformes++;
-              }
-            }
-          }
-          
-          if (totalMuestras > 0) {
-            final porcentaje = (muestrasConformes / 5) * 100; // Usar 5 como total fijo
-            sumaPorcentajes += porcentaje;
-            cuadrantesConDatos++;
-          }
-        }
-      }
+      final supervisor = cuadrante['supervisor']?.toString() ?? '';
+      final resultadoKey = '${supervisor}_${bloque}_${cuadranteId}';
+      final porcentaje = _calcularPorcentajeBloque(resultadoKey, resultados, itemsCount);
+      sumaPorcentajes += porcentaje;
+      cuadrantesConDatos++;
     }
     
     return cuadrantesConDatos > 0 ? (sumaPorcentajes / cuadrantesConDatos) : 0.0;
   }
 
-  static double _calcularPorcentajeBloque(String cuadranteId, Map<String, Map<String, Map<int, String?>>> resultados) {
+  static double _calcularPorcentajeBloque(String cuadranteId, Map<String, Map<String, Map<int, String?>>> resultados, int itemsCount) {
     if (!resultados.containsKey(cuadranteId)) return 0.0;
-    
     final cuadranteResultados = resultados[cuadranteId]!;
-    
-    // Buscar el item "Labores permanentes conforme"
-    String? itemLaboresConforme;
-    for (var item in cuadranteResultados.keys) {
-      if (item.toLowerCase().contains('labores permanentes conforme')) {
-        itemLaboresConforme = item;
-        break;
+    int marcados = 0;
+    const int paradas = 5;
+    final int totalSlots = (itemsCount > 0 ? itemsCount : cuadranteResultados.keys.length) * paradas;
+    for (final entry in cuadranteResultados.entries) {
+      final mapaParadas = entry.value;
+      for (int p = 1; p <= paradas; p++) {
+        final v = mapaParadas[p];
+        if (v != null && v.toString().isNotEmpty) marcados++;
       }
     }
-    
-    if (itemLaboresConforme != null && cuadranteResultados.containsKey(itemLaboresConforme)) {
-      final muestras = cuadranteResultados[itemLaboresConforme]!;
-      int totalMuestras = 0;
-      int muestrasConformes = 0;
-      
-      for (int i = 1; i <= 5; i++) {
-        final resultado = muestras[i];
-        if (resultado != null && resultado.isNotEmpty) {
-          totalMuestras++;
-          if (resultado.toLowerCase() == 'c' || resultado == '1') {
-            muestrasConformes++;
-          }
-        }
-      }
-      
-      if (totalMuestras > 0) {
-        return (muestrasConformes / 5) * 100; // Usar 5 como total fijo
-      }
-    }
-    
-    return 0.0;
+    if (totalSlots == 0) return 0.0;
+    final int noMarcados = totalSlots - marcados;
+    return (noMarcados / totalSlots) * 100;
   }
 
   static PdfColor _getResultadoColor(String? resultado) {
