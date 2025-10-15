@@ -170,26 +170,28 @@ class ChecklistLaboresPermanentes {
 
   // Calcular porcentaje de cumplimiento general
   double calcularPorcentajeCumplimiento() {
+    // Nueva regla: 100% cuando no hay nada marcado; al marcar baja el porcentaje
     if (items.isEmpty || cuadrantes.isEmpty) return 0.0;
 
-    int totalEvaluaciones = 0;
-    int totalConformes = 0;
+    final int itemsPorParada = items.length;
+    final int paradasPorCuadrante = 5;
+    final int totalSlots = itemsPorParada * cuadrantes.length * paradasPorCuadrante;
+    if (totalSlots == 0) return 0.0;
 
+    int marcados = 0;
     for (var item in items) {
       for (var cuadrante in cuadrantes) {
         for (int parada = 1; parada <= 5; parada++) {
           String? resultado = item.getResultado(cuadrante.claveUnica, parada);
-          if (resultado != null && resultado.isNotEmpty) {
-            totalEvaluaciones++;
-            if (resultado == '1' || resultado.toLowerCase() == 'c') {
-              totalConformes++;
-            }
+          if (resultado != null && resultado.trim().isNotEmpty) {
+            marcados++;
           }
         }
       }
     }
 
-    return totalEvaluaciones > 0 ? (totalConformes / totalEvaluaciones) * 100 : 0.0;
+    final int conformes = totalSlots - marcados;
+    return (conformes / totalSlots) * 100;
   }
 
   // Calcular resumen por item

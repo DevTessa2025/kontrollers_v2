@@ -1386,17 +1386,15 @@ class _ChecklistLaboresTemporalesScreenState extends State<ChecklistLaboresTempo
   Widget _buildParadaCell(String clave, int parada, Map<int, Map<int, String?>> paradas) {
     Map<int, String?> itemsEvaluados = paradas[parada] ?? {};
     int totalItems = laboresTemporales.length;
-    int itemsConformes = 0;
-    
-    // Contar items conformes
-    itemsEvaluados.forEach((itemId, resultado) {
+    // Ítems marcados = cualquier valor no nulo
+    int itemsMarcados = 0;
+    itemsEvaluados.forEach((_, resultado) {
       if (resultado != null && resultado.trim().isNotEmpty) {
-        if (resultado == '1' || resultado.toLowerCase() == 'c') {
-          itemsConformes++;
-        }
+        itemsMarcados++;
       }
     });
-    
+    final int itemsRestantes = totalItems - itemsMarcados; // tratados como conformes
+
     return InkWell(
       onTap: () => _editarParada(clave, parada),
       child: Container(
@@ -1404,17 +1402,17 @@ class _ChecklistLaboresTemporalesScreenState extends State<ChecklistLaboresTempo
         decoration: BoxDecoration(
           border: Border.all(color: Colors.grey[300]!),
           borderRadius: BorderRadius.circular(4),
-          color: itemsConformes > 0 ? Colors.green[50] : Colors.grey[50],
+          color: itemsRestantes == totalItems ? Colors.green[50] : Colors.grey[50],
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
-              '$itemsConformes/$totalItems',
+              '$itemsRestantes/$totalItems',
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.bold,
-                color: itemsConformes > 0 ? Colors.green[700] : Colors.grey[600],
+                color: itemsRestantes == totalItems ? Colors.green[700] : Colors.grey[600],
               ),
             ),
             Text(
@@ -1673,32 +1671,28 @@ class _ChecklistLaboresTemporalesScreenState extends State<ChecklistLaboresTempo
   Widget _buildResumenEstadisticas() {
     if (matrizLabores.isEmpty) return SizedBox.shrink();
 
-    // Calcular estadísticas
-    int totalEvaluaciones = 0;
-    int totalConformes = 0;
-    int totalNoConformes = 0;
-    int totalFilas = matrizLabores.length;
-    int totalParadas = totalFilas * 5;
+    // Nueva lógica: 100% si nada marcado; al marcar baja
+    final int totalFilas = matrizLabores.length;
+    final int totalParadas = totalFilas * 5;
+    final int itemsPorParada = laboresTemporales.length;
+    final int totalSlots = totalParadas * itemsPorParada;
 
-    matrizLabores.forEach((clave, data) {
-      Map<int, Map<int, String?>> paradas = data['paradas'];
-      
-      paradas.forEach((parada, items) {
-        items.forEach((itemId, resultado) {
+    int marcados = 0;
+    matrizLabores.forEach((_, data) {
+      final Map<int, Map<int, String?>> paradas = data['paradas'];
+      paradas.forEach((_, items) {
+        items.forEach((_, resultado) {
           if (resultado != null && resultado.trim().isNotEmpty) {
-            totalEvaluaciones++;
-            if (resultado == '1' || resultado.toLowerCase() == 'c') {
-              totalConformes++;
-            } else if (resultado == '0' || resultado.toLowerCase() == 'nc') {
-              totalNoConformes++;
-            }
+            marcados++;
           }
         });
       });
     });
 
-    double porcentajeGeneral = totalEvaluaciones > 0 
-        ? (totalConformes / totalEvaluaciones) * 100 
+    final int totalConformes = totalSlots - marcados; // no marcados
+    final int totalNoConformes = marcados;            // marcados
+    final double porcentajeGeneral = totalSlots > 0
+        ? (totalConformes / totalSlots) * 100
         : 0.0;
 
     return Column(
@@ -1726,7 +1720,7 @@ class _ChecklistLaboresTemporalesScreenState extends State<ChecklistLaboresTempo
             children: [
               _buildStatCard('Filas', '$totalFilas', Colors.blue),
               _buildStatCard('Paradas', '$totalParadas', Colors.orange),
-              _buildStatCard('Evaluaciones', '$totalEvaluaciones', Colors.green),
+              _buildStatCard('Total Ítems', '$totalSlots', Colors.green),
               _buildStatCard('Conformes', '$totalConformes', Colors.green),
               _buildStatCard('No Conformes', '$totalNoConformes', Colors.red),
               _buildStatCard('% Cumplimiento', '${porcentajeGeneral.toStringAsFixed(1)}%', Colors.deepPurple),
@@ -1738,7 +1732,7 @@ class _ChecklistLaboresTemporalesScreenState extends State<ChecklistLaboresTempo
         
         // Lista de ítems de control como referencia
         Text(
-          'Ítems de Control (12):',
+          'Ítems de Control (5):',
           style: TextStyle(fontWeight: FontWeight.w600),
         ),
         SizedBox(height: 8),

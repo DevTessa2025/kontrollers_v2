@@ -241,53 +241,67 @@ class ChecklistLaboresTemporalesStorageService {
   
   static Future<Map<String, dynamic>> getStatistics() async {
     final db = await DatabaseHelper().database;
-    
-    final result = await db.rawQuery('''
-      SELECT 
-        COUNT(*) as total_checklists,
-        COUNT(CASE WHEN enviado = 1 THEN 1 END) as enviados,
-        COUNT(CASE WHEN enviado = 0 THEN 1 END) as pendientes,
-        AVG(COALESCE(porcentaje_cumplimiento, 0)) as promedio_cumplimiento,
-        MAX(COALESCE(porcentaje_cumplimiento, 0)) as mejor_cumplimiento,
-        MIN(COALESCE(porcentaje_cumplimiento, 0)) as menor_cumplimiento,
-        COUNT(DISTINCT finca_nombre) as fincas_evaluadas,
-        COUNT(DISTINCT kontroller) as kontrollers_activos,
-        SUM(COALESCE(total_evaluaciones, 0)) as total_evaluaciones_suma,
-        SUM(COALESCE(total_conformes, 0)) as total_conformes_suma,
-        SUM(COALESCE(total_no_conformes, 0)) as total_no_conformes_suma
-      FROM check_labores_temporales
-      WHERE activo = 1
-    ''');
+    // Traer registros activos y reconstruir para recalcular porcentaje
+    final List<Map<String, dynamic>> maps = await db.query(
+      'check_labores_temporales',
+      where: 'activo = ?',
+      whereArgs: [1],
+      orderBy: 'fecha_creacion DESC',
+    );
 
-    if (result.isNotEmpty) {
-      var row = result.first;
+    if (maps.isEmpty) {
       return {
-        'totalChecklists': row['total_checklists'] ?? 0,
-        'enviados': row['enviados'] ?? 0,
-        'pendientes': row['pendientes'] ?? 0,
-        'promedioCumplimiento': ((row['promedio_cumplimiento'] as num?) ?? 0.0).toDouble(),
-        'mejorCumplimiento': ((row['mejor_cumplimiento'] as num?) ?? 0.0).toDouble(),
-        'menorCumplimiento': ((row['menor_cumplimiento'] as num?) ?? 0.0).toDouble(),
-        'fincasEvaluadas': row['fincas_evaluadas'] ?? 0,
-        'kontrollersActivos': row['kontrollers_activos'] ?? 0,
-        'totalEvaluacionesSuma': row['total_evaluaciones_suma'] ?? 0,
-        'totalConformesSuma': row['total_conformes_suma'] ?? 0,
-        'totalNoConformesSuma': row['total_no_conformes_suma'] ?? 0,
+        'totalChecklists': 0,
+        'enviados': 0,
+        'pendientes': 0,
+        'promedioCumplimiento': 0.0,
+        'mejorCumplimiento': 0.0,
+        'menorCumplimiento': 0.0,
+        'fincasEvaluadas': 0,
+        'kontrollersActivos': 0,
+        'totalEvaluacionesSuma': 0,
+        'totalConformesSuma': 0,
+        'totalNoConformesSuma': 0,
       };
     }
 
+    List<ChecklistLaboresTemporales> checklists = maps.map((m) => _mapToChecklistLaboresTemporales(m)).toList();
+
+    final int totalChecklists = maps.length;
+    final int enviados = maps.where((m) => (m['enviado'] ?? 0) == 1).length;
+    final int pendientes = totalChecklists - enviados;
+    final int fincasEvaluadas = maps.map((m) => (m['finca_nombre'] ?? '').toString()).toSet().length;
+    final int kontrollersActivos = maps.map((m) => (m['kontroller'] ?? '').toString()).toSet().length;
+
+    final List<double> porcentajes = checklists.map((c) => (c.porcentajeCumplimiento ?? 0.0)).toList();
+    final double promedioCumplimiento = porcentajes.isNotEmpty
+        ? (porcentajes.reduce((a, b) => a + b) / porcentajes.length)
+        : 0.0;
+    final double mejorCumplimiento = porcentajes.isNotEmpty ? porcentajes.reduce((a, b) => a > b ? a : b) : 0.0;
+    final double menorCumplimiento = porcentajes.isNotEmpty ? porcentajes.reduce((a, b) => a < b ? a : b) : 0.0;
+
+    int totalEvaluacionesSuma = 0;
+    int totalConformesSuma = 0;
+    int totalNoConformesSuma = 0;
+    for (final c in checklists) {
+      final metricas = _calcularMetricas(c);
+      totalEvaluacionesSuma += (metricas['totalEvaluaciones'] as int);
+      totalConformesSuma += (metricas['totalConformes'] as int);
+      totalNoConformesSuma += (metricas['totalNoConformes'] as int);
+    }
+
     return {
-      'totalChecklists': 0,
-      'enviados': 0,
-      'pendientes': 0,
-      'promedioCumplimiento': 0.0,
-      'mejorCumplimiento': 0.0,
-      'menorCumplimiento': 0.0,
-      'fincasEvaluadas': 0,
-      'kontrollersActivos': 0,
-      'totalEvaluacionesSuma': 0,
-      'totalConformesSuma': 0,
-      'totalNoConformesSuma': 0,
+      'totalChecklists': totalChecklists,
+      'enviados': enviados,
+      'pendientes': pendientes,
+      'promedioCumplimiento': promedioCumplimiento,
+      'mejorCumplimiento': mejorCumplimiento,
+      'menorCumplimiento': menorCumplimiento,
+      'fincasEvaluadas': fincasEvaluadas,
+      'kontrollersActivos': kontrollersActivos,
+      'totalEvaluacionesSuma': totalEvaluacionesSuma,
+      'totalConformesSuma': totalConformesSuma,
+      'totalNoConformesSuma': totalNoConformesSuma,
     };
   }
 
@@ -442,6 +456,29 @@ class ChecklistLaboresTemporalesStorageService {
       finca = Finca(nombre: map['finca_nombre'].toString());
     }
 
+    // Recalcular porcentaje según la nueva regla (conformes = no marcados)
+    double porcentajeRecalculado = 0.0;
+    if (items.isNotEmpty && cuadrantes.isNotEmpty) {
+      final int itemsPorParada = items.length;
+      final int paradasPorCuadrante = 5;
+      final int totalSlots = itemsPorParada * cuadrantes.length * paradasPorCuadrante;
+      if (totalSlots > 0) {
+        int marcados = 0;
+        for (var item in items) {
+          for (var cuadrante in cuadrantes) {
+            for (int parada = 1; parada <= 5; parada++) {
+              String? resultado = item.getResultado(cuadrante.claveUnica, parada);
+              if (resultado != null && resultado.trim().isNotEmpty) {
+                marcados++;
+              }
+            }
+          }
+        }
+        final int conformes = totalSlots - marcados;
+        porcentajeRecalculado = (conformes / totalSlots) * 100;
+      }
+    }
+
     return ChecklistLaboresTemporales(
       id: map['id'],
       fecha: map['fecha'] != null ? DateTime.parse(map['fecha']) : null,
@@ -452,7 +489,7 @@ class ChecklistLaboresTemporalesStorageService {
       cuadrantes: cuadrantes,
       items: items,
       fechaEnvio: map['fecha_envio'] != null ? DateTime.parse(map['fecha_envio']) : null,
-      porcentajeCumplimiento: map['porcentaje_cumplimiento']?.toDouble(),
+      porcentajeCumplimiento: porcentajeRecalculado,
       observacionesGenerales: map['observaciones_generales']?.toString(),
     );
   }

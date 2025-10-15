@@ -207,30 +207,57 @@ class ChecklistLaboresPermanentesStorageService {
     // Calcular métricas
     Map<String, dynamic> metricas = _calcularMetricas(checklist);
 
-    // Construir query de inserción
+    // Construir UPSERT (MERGE) para evitar conflictos por clave única (id_local, usuario_creacion)
     String query = '''
-      INSERT INTO check_labores_permanentes (
-        id_local, fecha, finca_nombre, up_unidad_productiva, semana, kontroller,
-        cuadrantes_json, items_json, porcentaje_cumplimiento, total_evaluaciones, 
-        total_conformes, total_no_conformes, observaciones_generales, 
-        usuario_creacion, fecha_creacion
-      ) VALUES (
-        ${checklist.id},
-        ${DateHelper.formatForSqlServer(checklist.fecha)},
-        '$escapedFinca',
-        '$escapedUp',
-        '$escapedSemana',
-        '$escapedKontroller',
-        '$escapedCuadrantes',
-        '$escapedItems',
-        ${checklist.calcularPorcentajeCumplimiento()},
-        ${metricas['totalEvaluaciones']},
-        ${metricas['totalConformes']},
-        ${metricas['totalNoConformes']},
-        '$escapedObservaciones',
-        '$escapedUser',
-        ${DateHelper.getCurrentDateForSqlServer()}
-      )
+      MERGE INTO check_labores_permanentes AS target
+      USING (
+        SELECT 
+          ${checklist.id}                AS id_local,
+          ${DateHelper.formatForSqlServer(checklist.fecha)} AS fecha,
+          '$escapedFinca'                AS finca_nombre,
+          '$escapedUp'                   AS up_unidad_productiva,
+          '$escapedSemana'               AS semana,
+          '$escapedKontroller'           AS kontroller,
+          '$escapedCuadrantes'           AS cuadrantes_json,
+          '$escapedItems'                AS items_json,
+          ${checklist.calcularPorcentajeCumplimiento()} AS porcentaje_cumplimiento,
+          ${metricas['totalEvaluaciones']} AS total_evaluaciones,
+          ${metricas['totalConformes']}    AS total_conformes,
+          ${metricas['totalNoConformes']}  AS total_no_conformes,
+          '$escapedObservaciones'        AS observaciones_generales,
+          '$escapedUser'                 AS usuario_creacion,
+          ${DateHelper.getCurrentDateForSqlServer()} AS fecha_creacion,
+          ${DateHelper.getCurrentDateForSqlServer()} AS fecha_modificacion
+      ) AS src
+      ON (target.id_local = src.id_local AND target.usuario_creacion = src.usuario_creacion)
+      WHEN MATCHED THEN
+        UPDATE SET 
+          target.fecha = src.fecha,
+          target.finca_nombre = src.finca_nombre,
+          target.up_unidad_productiva = src.up_unidad_productiva,
+          target.semana = src.semana,
+          target.kontroller = src.kontroller,
+          target.cuadrantes_json = src.cuadrantes_json,
+          target.items_json = src.items_json,
+          target.porcentaje_cumplimiento = src.porcentaje_cumplimiento,
+          target.total_evaluaciones = src.total_evaluaciones,
+          target.total_conformes = src.total_conformes,
+          target.total_no_conformes = src.total_no_conformes,
+          target.observaciones_generales = src.observaciones_generales,
+          target.fecha_modificacion = src.fecha_modificacion,
+          target.activo = 1
+      WHEN NOT MATCHED THEN
+        INSERT (
+          id_local, fecha, finca_nombre, up_unidad_productiva, semana, kontroller,
+          cuadrantes_json, items_json, porcentaje_cumplimiento, total_evaluaciones,
+          total_conformes, total_no_conformes, observaciones_generales,
+          usuario_creacion, fecha_creacion, activo
+        ) VALUES (
+          src.id_local, src.fecha, src.finca_nombre, src.up_unidad_productiva, src.semana, src.kontroller,
+          src.cuadrantes_json, src.items_json, src.porcentaje_cumplimiento, src.total_evaluaciones,
+          src.total_conformes, src.total_no_conformes, src.observaciones_generales,
+          src.usuario_creacion, src.fecha_creacion, 1
+        );
     ''';
 
     await SqlServerService.executeQuery(query);
@@ -241,53 +268,71 @@ class ChecklistLaboresPermanentesStorageService {
   
   static Future<Map<String, dynamic>> getStatistics() async {
     final db = await DatabaseHelper().database;
-    
-    final result = await db.rawQuery('''
-      SELECT 
-        COUNT(*) as total_checklists,
-        COUNT(CASE WHEN enviado = 1 THEN 1 END) as enviados,
-        COUNT(CASE WHEN enviado = 0 THEN 1 END) as pendientes,
-        AVG(COALESCE(porcentaje_cumplimiento, 0)) as promedio_cumplimiento,
-        MAX(COALESCE(porcentaje_cumplimiento, 0)) as mejor_cumplimiento,
-        MIN(COALESCE(porcentaje_cumplimiento, 0)) as menor_cumplimiento,
-        COUNT(DISTINCT finca_nombre) as fincas_evaluadas,
-        COUNT(DISTINCT kontroller) as kontrollers_activos,
-        SUM(COALESCE(total_evaluaciones, 0)) as total_evaluaciones_suma,
-        SUM(COALESCE(total_conformes, 0)) as total_conformes_suma,
-        SUM(COALESCE(total_no_conformes, 0)) as total_no_conformes_suma
-      FROM check_labores_permanentes
-      WHERE activo = 1
-    ''');
+    // Traer registros activos para reconstruir objetos y recalcular métricas
+    final List<Map<String, dynamic>> maps = await db.query(
+      'check_labores_permanentes',
+      where: 'activo = ?',
+      whereArgs: [1],
+      orderBy: 'fecha_creacion DESC',
+    );
 
-    if (result.isNotEmpty) {
-      var row = result.first;
+    if (maps.isEmpty) {
       return {
-        'totalChecklists': row['total_checklists'] ?? 0,
-        'enviados': row['enviados'] ?? 0,
-        'pendientes': row['pendientes'] ?? 0,
-        'promedioCumplimiento': ((row['promedio_cumplimiento'] as num?) ?? 0.0).toDouble(),
-        'mejorCumplimiento': ((row['mejor_cumplimiento'] as num?) ?? 0.0).toDouble(),
-        'menorCumplimiento': ((row['menor_cumplimiento'] as num?) ?? 0.0).toDouble(),
-        'fincasEvaluadas': row['fincas_evaluadas'] ?? 0,
-        'kontrollersActivos': row['kontrollers_activos'] ?? 0,
-        'totalEvaluacionesSuma': row['total_evaluaciones_suma'] ?? 0,
-        'totalConformesSuma': row['total_conformes_suma'] ?? 0,
-        'totalNoConformesSuma': row['total_no_conformes_suma'] ?? 0,
+        'totalChecklists': 0,
+        'enviados': 0,
+        'pendientes': 0,
+        'promedioCumplimiento': 0.0,
+        'mejorCumplimiento': 0.0,
+        'menorCumplimiento': 0.0,
+        'fincasEvaluadas': 0,
+        'kontrollersActivos': 0,
+        'totalEvaluacionesSuma': 0,
+        'totalConformesSuma': 0,
+        'totalNoConformesSuma': 0,
       };
     }
 
+    // Reconstruir objetos y recalcular porcentajes/metricas por checklist
+    List<ChecklistLaboresPermanentes> checklists = maps.map((m) => _mapToChecklistLaboresPermanentes(m)).toList();
+
+    final int totalChecklists = maps.length;
+    final int enviados = maps.where((m) => (m['enviado'] ?? 0) == 1).length;
+    final int pendientes = totalChecklists - enviados;
+    final int fincasEvaluadas = maps.map((m) => (m['finca_nombre'] ?? '').toString()).toSet().length;
+    final int kontrollersActivos = maps.map((m) => (m['kontroller'] ?? '').toString()).toSet().length;
+
+    // Promedio, mejor, menor basados en porcentaje recalculado
+    final List<double> porcentajes = checklists.map((c) => (c.porcentajeCumplimiento ?? 0.0)).toList();
+    final double promedioCumplimiento = porcentajes.isNotEmpty
+        ? (porcentajes.reduce((a, b) => a + b) / porcentajes.length)
+        : 0.0;
+    final double mejorCumplimiento = porcentajes.isNotEmpty ? porcentajes.reduce((a, b) => a > b ? a : b) : 0.0;
+    final double menorCumplimiento = porcentajes.isNotEmpty ? porcentajes.reduce((a, b) => a < b ? a : b) : 0.0;
+
+    // Sumar métricas de todos los checklists con la lógica actual
+    int totalEvaluacionesSuma = 0;
+    int totalConformesSuma = 0;
+    int totalNoConformesSuma = 0;
+    for (final c in checklists) {
+      final metricas = _calcularMetricas(c);
+      // Adaptar a la nueva visualización si fuese necesario: aquí mantenemos métricas originales
+      totalEvaluacionesSuma += (metricas['totalEvaluaciones'] as int);
+      totalConformesSuma += (metricas['totalConformes'] as int);
+      totalNoConformesSuma += (metricas['totalNoConformes'] as int);
+    }
+
     return {
-      'totalChecklists': 0,
-      'enviados': 0,
-      'pendientes': 0,
-      'promedioCumplimiento': 0.0,
-      'mejorCumplimiento': 0.0,
-      'menorCumplimiento': 0.0,
-      'fincasEvaluadas': 0,
-      'kontrollersActivos': 0,
-      'totalEvaluacionesSuma': 0,
-      'totalConformesSuma': 0,
-      'totalNoConformesSuma': 0,
+      'totalChecklists': totalChecklists,
+      'enviados': enviados,
+      'pendientes': pendientes,
+      'promedioCumplimiento': promedioCumplimiento,
+      'mejorCumplimiento': mejorCumplimiento,
+      'menorCumplimiento': menorCumplimiento,
+      'fincasEvaluadas': fincasEvaluadas,
+      'kontrollersActivos': kontrollersActivos,
+      'totalEvaluacionesSuma': totalEvaluacionesSuma,
+      'totalConformesSuma': totalConformesSuma,
+      'totalNoConformesSuma': totalNoConformesSuma,
     };
   }
 
@@ -442,6 +487,29 @@ class ChecklistLaboresPermanentesStorageService {
       finca = Finca(nombre: map['finca_nombre'].toString());
     }
 
+    // Recalcular porcentaje según la nueva regla (conformes = no marcados)
+    double porcentajeRecalculado = 0.0;
+    if (items.isNotEmpty && cuadrantes.isNotEmpty) {
+      final int itemsPorParada = items.length;
+      final int paradasPorCuadrante = 5;
+      final int totalSlots = itemsPorParada * cuadrantes.length * paradasPorCuadrante;
+      if (totalSlots > 0) {
+        int marcados = 0;
+        for (var item in items) {
+          for (var cuadrante in cuadrantes) {
+            for (int parada = 1; parada <= 5; parada++) {
+              String? resultado = item.getResultado(cuadrante.claveUnica, parada);
+              if (resultado != null && resultado.trim().isNotEmpty) {
+                marcados++;
+              }
+            }
+          }
+        }
+        final int conformes = totalSlots - marcados;
+        porcentajeRecalculado = (conformes / totalSlots) * 100;
+      }
+    }
+
     return ChecklistLaboresPermanentes(
       id: map['id'],
       fecha: map['fecha'] != null ? DateTime.parse(map['fecha']) : null,
@@ -452,7 +520,7 @@ class ChecklistLaboresPermanentesStorageService {
       cuadrantes: cuadrantes,
       items: items,
       fechaEnvio: map['fecha_envio'] != null ? DateTime.parse(map['fecha_envio']) : null,
-      porcentajeCumplimiento: map['porcentaje_cumplimiento']?.toDouble(),
+      porcentajeCumplimiento: porcentajeRecalculado,
       observacionesGenerales: map['observaciones_generales']?.toString(),
     );
   }

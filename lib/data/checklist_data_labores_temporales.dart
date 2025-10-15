@@ -203,46 +203,57 @@ class ChecklistLaboresTemporales {
 
   // Calcular porcentaje general de cumplimiento
   double calcularPorcentajeCumplimiento() {
-    if (items.isEmpty) return 0.0;
+    // Nueva regla: 100% cuando no hay nada marcado; al marcar baja el porcentaje
+    if (items.isEmpty || cuadrantes.isEmpty) return 0.0;
 
-    double sumaPorcentajes = 0.0;
-    int itemsConEvaluaciones = 0;
+    final int itemsPorParada = items.length;
+    final int paradasPorCuadrante = 5;
+    final int totalSlots = itemsPorParada * cuadrantes.length * paradasPorCuadrante;
+    if (totalSlots == 0) return 0.0;
 
+    int marcados = 0;
     for (var item in items) {
-      double porcentajeItem = item.calcularPorcentajeCumplimiento();
-      if (porcentajeItem > 0) {
-        sumaPorcentajes += porcentajeItem;
-        itemsConEvaluaciones++;
+      for (var cuadrante in cuadrantes) {
+        for (int parada = 1; parada <= 5; parada++) {
+          String? resultado = item.getResultado(cuadrante.claveUnica, parada);
+          if (resultado != null && resultado.trim().isNotEmpty) {
+            marcados++;
+          }
+        }
       }
     }
 
-    return itemsConEvaluaciones > 0 ? sumaPorcentajes / itemsConEvaluaciones : 0.0;
+    final int conformes = totalSlots - marcados; // no marcados
+    return (conformes / totalSlots) * 100;
   }
 
   // Obtener estadísticas generales
   Map<String, int> obtenerEstadisticas() {
-    int totalEvaluaciones = 0;
-    int conformes = 0;
-    int noConformes = 0;
-
-    for (var item in items) {
-      item.resultadosPorCuadranteParada.forEach((cuadrante, paradas) {
-        paradas.forEach((parada, resultado) {
-          if (resultado != null && resultado.trim().isNotEmpty) {
-            totalEvaluaciones++;
-            String resultadoLower = resultado.toLowerCase().trim();
-            if (resultadoLower == 'c' || resultadoLower == '1') {
-              conformes++;
-            } else if (resultadoLower == 'nc' || resultadoLower == '0') {
-              noConformes++;
-            }
-          }
-        });
-      });
+    // Nueva regla: Conformes = no marcados; No Conformes = marcados
+    if (items.isEmpty || cuadrantes.isEmpty) {
+      return {'totalEvaluaciones': 0, 'conformes': 0, 'noConformes': 0};
     }
 
+    final int itemsPorParada = items.length;
+    final int paradasPorCuadrante = 5;
+    final int totalSlots = itemsPorParada * cuadrantes.length * paradasPorCuadrante;
+
+    int marcados = 0;
+    for (var item in items) {
+      for (var cuadrante in cuadrantes) {
+        for (int parada = 1; parada <= 5; parada++) {
+          String? resultado = item.getResultado(cuadrante.claveUnica, parada);
+          if (resultado != null && resultado.trim().isNotEmpty) {
+            marcados++;
+          }
+        }
+      }
+    }
+
+    final int conformes = totalSlots - marcados;
+    final int noConformes = marcados;
     return {
-      'totalEvaluaciones': totalEvaluaciones,
+      'totalEvaluaciones': totalSlots,
       'conformes': conformes,
       'noConformes': noConformes,
     };
