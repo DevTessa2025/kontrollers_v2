@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
+import 'dart:typed_data';
 import '../widget/share_dialog_widget.dart';
 
 class LaboresTemporalesDetailedAdminScreen extends StatefulWidget {
@@ -103,8 +104,10 @@ class _LaboresTemporalesDetailedAdminScreenState extends State<LaboresTemporales
     for (var cuadrante in _cuadrantes) {
       final cuadranteId = cuadrante['cuadrante']?.toString() ?? '';
       final bloque = cuadrante['bloque']?.toString() ?? '';
+      final supervisor = cuadrante['supervisor']?.toString() ?? (widget.record['supervisor']?.toString() ?? '');
       if (cuadranteId.isEmpty || bloque.isEmpty) continue;
-      final resultadoKey = 'test_${bloque}_${cuadranteId}';
+      // Debe coincidir con la claveUnica usada al guardar: supervisor_bloque_cuadrante
+      final resultadoKey = '${supervisor}_${bloque}_${cuadranteId}';
       int marcados = 0;
       const int paradas = 5;
       final int numItems = _items.length;
@@ -266,9 +269,20 @@ class _LaboresTemporalesDetailedAdminScreenState extends State<LaboresTemporales
     final bloque = cuadrante['bloque'] ?? 'N/A';
     final variedad = cuadrante['variedad'] ?? 'N/A';
     final supervisor = cuadrante['supervisor'] ?? widget.record['supervisor'] ?? 'N/A';
+    // 'fotos' puede venir como List o como String JSON
+    List<dynamic> fotos = [];
+    if (cuadrante['fotos'] is List) {
+      fotos = (cuadrante['fotos'] as List);
+    } else if (cuadrante['fotos'] is String && (cuadrante['fotos'] as String).isNotEmpty) {
+      try {
+        final decoded = jsonDecode(cuadrante['fotos'] as String);
+        if (decoded is List) fotos = decoded;
+      } catch (_) {}
+    }
+    final String? fotoBase64Principal = cuadrante['fotoBase64']?.toString();
     
     // Construir el key correcto para buscar en _resultados
-    final resultadoKey = 'test_${bloque}_${cuadranteId}';
+    final resultadoKey = '${supervisor}_${bloque}_${cuadranteId}';
     
     print('=== DEBUG: _buildCuadranteCard ===');
     print('cuadrante: $cuadrante');
@@ -309,11 +323,167 @@ class _LaboresTemporalesDetailedAdminScreenState extends State<LaboresTemporales
                 Text('Supervisor: $supervisor', style: TextStyle(fontSize: 14)),
               ],
             ),
+            SizedBox(height: 12),
+            _buildFotosSection(fotos, fotoBase64Principal),
             SizedBox(height: 16),
             _buildParadasTable(resultadoKey),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildFotosSection(List<dynamic> fotos, String? fotoBase64Principal) {
+    final List<_FotoItem> fotosAmostrar = [];
+    for (final f in fotos) {
+      if (f is Map<String, dynamic>) {
+        final String? base64 = f['base64']?.toString();
+        final String? etiqueta = f['etiqueta']?.toString();
+        if (base64 != null && base64.isNotEmpty) {
+          fotosAmostrar.add(_FotoItem(base64: base64, etiqueta: etiqueta));
+        }
+      }
+    }
+    if (fotosAmostrar.isEmpty && fotoBase64Principal != null && fotoBase64Principal.isNotEmpty) {
+      fotosAmostrar.add(_FotoItem(base64: fotoBase64Principal, etiqueta: null));
+    }
+    if (fotosAmostrar.isEmpty) {
+      return Text(
+        'Sin fotos adjuntas',
+        style: TextStyle(fontSize: 12, color: Colors.grey[600], fontStyle: FontStyle.italic),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Fotos (${fotosAmostrar.length}):', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.purple[800])),
+        SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: fotosAmostrar.map((f) => _buildFotoPreviewChip(f)).toList(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFotoPreviewChip(_FotoItem foto) {
+    try {
+      final Uint8List bytes = base64Decode(foto.base64);
+      final String etiquetaText = _getItemNameFromEtiqueta(foto.etiqueta);
+      return GestureDetector(
+        onTap: () => _showFullImage(bytes, etiquetaText),
+        child: Container(
+          width: 120,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.purple[200]!),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(8),
+                  topRight: Radius.circular(8),
+                ),
+                child: Image.memory(bytes, width: 120, height: 120, fit: BoxFit.cover),
+              ),
+              if (etiquetaText.isNotEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.purple[600],
+                    borderRadius: BorderRadius.only(
+                      bottomLeft: Radius.circular(8),
+                      bottomRight: Radius.circular(8),
+                    ),
+                  ),
+                  child: Text(
+                    etiquetaText,
+                    style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    } catch (e) {
+      return Container(
+        width: 80,
+        height: 80,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: Colors.red[50],
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.red[200]!),
+        ),
+        child: Icon(Icons.broken_image, color: Colors.red[300]),
+      );
+    }
+  }
+
+  String _getItemNameFromEtiqueta(String? etiqueta) {
+    if (etiqueta == null || etiqueta.isEmpty) return '';
+    final int? id = int.tryParse(etiqueta);
+    if (id == null) return '';
+    try {
+      final found = _items.firstWhere((it) => (it['id']?.toString() ?? '') == id.toString(), orElse: () => {});
+      final proceso = found['proceso']?.toString();
+      return proceso ?? '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  void _showFullImage(Uint8List bytes, String etiquetaText) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (etiquetaText.isNotEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.purple[600],
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(8),
+                      topRight: Radius.circular(8),
+                    ),
+                  ),
+                  child: Text(
+                    etiquetaText,
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              Container(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width * 0.9,
+                  maxHeight: MediaQuery.of(context).size.height * 0.8,
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.only(
+                    bottomLeft: Radius.circular(8),
+                    bottomRight: Radius.circular(8),
+                  ),
+                  child: Image.memory(bytes, fit: BoxFit.contain),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text('Cerrar'),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -356,11 +526,8 @@ class _LaboresTemporalesDetailedAdminScreenState extends State<LaboresTemporales
   }
 
   Widget _buildParadasTable(String resultadoKey) {
-    if (!_resultados.containsKey(resultadoKey)) {
-      return Text('Sin datos disponibles', style: TextStyle(color: Colors.grey));
-    }
-
-    final cuadranteResultados = _resultados[resultadoKey]!;
+    // Mostrar tabla aunque no haya resultados; usar celdas vacías
+    final cuadranteResultados = _resultados[resultadoKey] ?? <String, Map<int, String?>>{};
     
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -373,7 +540,7 @@ class _LaboresTemporalesDetailedAdminScreenState extends State<LaboresTemporales
         ],
         rows: _items.map((item) {
           final itemProceso = item['proceso']?.toString() ?? '';
-          final paradas = cuadranteResultados[itemProceso] ?? {};
+          final Map<int, String?> paradas = cuadranteResultados[itemProceso] ?? <int, String?>{};
           
           return DataRow(
             cells: [
@@ -449,3 +616,8 @@ class _LaboresTemporalesDetailedAdminScreenState extends State<LaboresTemporales
   }
 }
 
+class _FotoItem {
+  final String base64;
+  final String? etiqueta;
+  _FotoItem({required this.base64, this.etiqueta});
+}

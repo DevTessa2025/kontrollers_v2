@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:intl/intl.dart';
+import 'dart:convert';
+import 'dart:typed_data';
 import '../data/checklist_data_labores_temporales.dart';
 import '../services/checklist_labores_temporales_storage_service.dart';
 import 'checklist_labores_temporales_screen.dart';
@@ -702,13 +704,7 @@ class _ChecklistLaboresTemporalesRecordsScreenState extends State<ChecklistLabor
                     ),
                     SizedBox(height: 8),
                     ...checklist.cuadrantes.map((cuadrante) => 
-                      Padding(
-                        padding: EdgeInsets.only(left: 8, bottom: 4),
-                        child: Text(
-                          '• ${cuadrante.supervisor} - ${cuadrante.cuadrante}${cuadrante.bloque != null ? ' (Bl. ${cuadrante.bloque})' : ''}${cuadrante.variedad != null ? ' - ${cuadrante.variedad}' : ''}',
-                          style: TextStyle(fontSize: 14),
-                        ),
-                      ),
+                      _buildCuadranteWithPhotos(cuadrante),
                     ),
                   ],
                 ],
@@ -752,6 +748,236 @@ class _ChecklistLaboresTemporalesRecordsScreenState extends State<ChecklistLabor
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildCuadranteWithPhotos(CuadranteLaboresTemporalesInfo cuadrante) {
+    return Card(
+      margin: EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Información del cuadrante
+            Row(
+              children: [
+                Icon(Icons.location_on, size: 16, color: Colors.deepPurple[600]),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '${cuadrante.supervisor} - ${cuadrante.cuadrante} (Bl. ${cuadrante.bloque}) - ${cuadrante.variedad}',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            
+            // Fotos del cuadrante
+            if (cuadrante.fotos.isNotEmpty) ...[
+              SizedBox(height: 12),
+              Text(
+                'Fotos adjuntas (${cuadrante.fotos.length}):',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[700],
+                ),
+              ),
+              SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: cuadrante.fotos.map((foto) => _buildPhotoPreview(foto)).toList(),
+              ),
+            ] else ...[
+              SizedBox(height: 8),
+              Text(
+                'Sin fotos adjuntas',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[500],
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPhotoPreview(Map<String, dynamic> foto) {
+    final base64Image = foto['base64'] as String?;
+    final etiqueta = foto['etiqueta'] as String?;
+    
+    if (base64Image == null || base64Image.isEmpty) {
+      return Container(
+        width: 80,
+        height: 80,
+        decoration: BoxDecoration(
+          color: Colors.grey[200],
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey[300]!),
+        ),
+        child: Icon(Icons.broken_image, color: Colors.grey[500]),
+      );
+    }
+    
+    try {
+      final bytes = base64Decode(base64Image);
+      return GestureDetector(
+        onTap: () => _showFullImage(bytes, etiqueta),
+        child: Container(
+          width: 80,
+          height: 80,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.deepPurple[300]!),
+          ),
+          child: Stack(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(7),
+                child: Image.memory(
+                  bytes,
+                  width: 80,
+                  height: 80,
+                  fit: BoxFit.cover,
+                ),
+              ),
+              if (etiqueta != null)
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: Container(
+                    padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.deepPurple[600],
+                      borderRadius: BorderRadius.only(
+                        bottomLeft: Radius.circular(7),
+                        bottomRight: Radius.circular(7),
+                      ),
+                    ),
+                    child: Text(
+                      _getItemName(etiqueta),
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    } catch (e) {
+      return Container(
+        width: 80,
+        height: 80,
+        decoration: BoxDecoration(
+          color: Colors.red[100],
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.red[300]!),
+        ),
+        child: Icon(Icons.error, color: Colors.red[500]),
+      );
+    }
+  }
+
+  String _getItemName(String etiqueta) {
+    switch (etiqueta) {
+      case '1': return 'Alzado';
+      case '2': return 'Hormonado';
+      case '3': return 'Paloteo';
+      case '4': return 'Materia Org.';
+      case '5': return 'Limpieza';
+      default: return 'Sin etiqueta';
+    }
+  }
+
+  void _showFullImage(Uint8List bytes, String? etiqueta) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          child: Container(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.9,
+              maxHeight: MediaQuery.of(context).size.height * 0.8,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header con etiqueta
+                if (etiqueta != null)
+                  Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.deepPurple[600],
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(8),
+                        topRight: Radius.circular(8),
+                      ),
+                    ),
+                    child: Text(
+                      'Ítem: ${_getItemName(etiqueta)}',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                // Imagen
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: etiqueta != null 
+                          ? BorderRadius.only(
+                              bottomLeft: Radius.circular(8),
+                              bottomRight: Radius.circular(8),
+                            )
+                          : BorderRadius.circular(8),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: etiqueta != null 
+                          ? BorderRadius.only(
+                              bottomLeft: Radius.circular(8),
+                              bottomRight: Radius.circular(8),
+                            )
+                          : BorderRadius.circular(8),
+                      child: Image.memory(
+                        bytes,
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                  ),
+                ),
+                // Botón cerrar
+                Padding(
+                  padding: EdgeInsets.all(8),
+                  child: TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: Text('Cerrar'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 

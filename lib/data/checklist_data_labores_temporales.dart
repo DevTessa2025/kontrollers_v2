@@ -95,13 +95,18 @@ class CuadranteLaboresTemporalesInfo {
   final String variedad;
   final String cuadrante;
   final String claveUnica;
+  final String? fotoBase64;
+  final List<Map<String, dynamic>> fotos;
 
   CuadranteLaboresTemporalesInfo({
     required this.supervisor,
     required this.bloque,
     required this.variedad,
     required this.cuadrante,
-  }) : claveUnica = '${supervisor}_${bloque}_${cuadrante}';
+    this.fotoBase64,
+    List<Map<String, dynamic>>? fotos,
+  }) : claveUnica = '${supervisor}_${bloque}_${cuadrante}',
+       fotos = fotos ?? [];
 
   Map<String, dynamic> toJson() {
     return {
@@ -110,15 +115,24 @@ class CuadranteLaboresTemporalesInfo {
       'variedad': variedad,
       'cuadrante': cuadrante,
       'claveUnica': claveUnica,
+      'fotoBase64': fotoBase64,
+      'fotos': fotos,
     };
   }
 
   factory CuadranteLaboresTemporalesInfo.fromJson(Map<String, dynamic> json) {
+    List<Map<String, dynamic>> fotos = [];
+    if (json['fotos'] != null) {
+      fotos = List<Map<String, dynamic>>.from(json['fotos']);
+    }
+    
     return CuadranteLaboresTemporalesInfo(
       supervisor: json['supervisor'] ?? '',
       bloque: json['bloque'] ?? '',
       variedad: json['variedad'] ?? '',
       cuadrante: json['cuadrante'] ?? '',
+      fotoBase64: json['fotoBase64'],
+      fotos: fotos,
     );
   }
 }
