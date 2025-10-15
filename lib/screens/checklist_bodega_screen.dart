@@ -25,7 +25,7 @@ class ChecklistBodegaScreen extends StatefulWidget {
   _ChecklistBodegaScreenState createState() => _ChecklistBodegaScreenState();
 }
 
-class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
+class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> with WidgetsBindingObserver {
   late ChecklistBodega checklist;
   int _currentSectionIndex = 0;
   
@@ -46,6 +46,7 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initializeDateFormatting();
     _isEditMode = widget.checklistToEdit != null;
     
@@ -58,8 +59,94 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
     _loadDropdownData();
   }
 
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
   Future<void> _initializeDateFormatting() async {
     await initializeDateFormatting('es_ES', null);
+  }
+
+  // Método para detectar si hay cambios sin guardar
+  bool _hasUnsavedChanges() {
+    // Verificar si hay datos básicos completos
+    if (selectedFinca == null || selectedSupervisor == null || selectedPesador == null) {
+      return false; // No hay datos para perder
+    }
+
+    // Verificar si hay respuestas en los items
+    for (var seccion in checklist.secciones) {
+      for (var item in seccion.items) {
+        if (item.respuesta != null || item.observaciones != null || item.fotoBase64 != null) {
+          return true; // Hay datos sin guardar
+        }
+      }
+    }
+    return false;
+  }
+
+  // Método para mostrar diálogo de confirmación
+  Future<bool> _showExitConfirmation() async {
+    if (!_hasUnsavedChanges()) {
+      return true; // No hay cambios, puede salir
+    }
+
+    return await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Text(
+            '¿Salir sin guardar?',
+            style: TextStyle(
+              color: Colors.red[800],
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: Text(
+            'Tienes cambios sin guardar. ¿Estás seguro de que quieres salir?',
+            style: TextStyle(fontSize: 16),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(
+                'Cancelar',
+                style: TextStyle(color: Colors.grey[600]),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red[600],
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: Text('Salir'),
+            ),
+          ],
+        );
+      },
+    ) ?? false;
+  }
+
+  // Manejar el botón atrás del sistema
+  @override
+  Future<bool> didPopRoute() async {
+    if (_hasUnsavedChanges()) {
+      bool shouldExit = await _showExitConfirmation();
+      if (!shouldExit) {
+        return false; // No permitir salir
+      }
+    }
+    return true; // Permitir salir
   }
 
   void _loadExistingChecklist() {
@@ -868,9 +955,23 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
 
     double progressPercentage = totalItemsGeneral > 0 ? itemsRespondidosGeneral / totalItemsGeneral : 0;
 
-    return Scaffold(
-      backgroundColor: Colors.grey[50],
-      body: CustomScrollView(
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) async {
+        if (didPop) return;
+        
+        if (_hasUnsavedChanges()) {
+          bool shouldExit = await _showExitConfirmation();
+          if (shouldExit) {
+            Navigator.of(context).pop();
+          }
+        } else {
+          Navigator.of(context).pop();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: Colors.grey[50],
+        body: CustomScrollView(
         slivers: [
           // AppBar moderno con gradiente y progreso
           SliverAppBar(
@@ -879,6 +980,19 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
             pinned: true,
             elevation: 0,
             backgroundColor: _isEditMode ? Colors.blue[700] : Colors.red[700],
+            leading: IconButton(
+              icon: Icon(Icons.arrow_back, color: Colors.white),
+              onPressed: () async {
+                if (_hasUnsavedChanges()) {
+                  bool shouldExit = await _showExitConfirmation();
+                  if (shouldExit) {
+                    Navigator.of(context).pop();
+                  }
+                } else {
+                  Navigator.of(context).pop();
+                }
+              },
+            ),
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
                 decoration: BoxDecoration(
@@ -1365,13 +1479,10 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> {
           ),
         ],
       ),
+      ),
     );
   }
 
-  @override
-  void dispose() {
-    super.dispose();
-  }
 
   // Widget para dropdowns modernos
   Widget _buildModernDropdown<T>({

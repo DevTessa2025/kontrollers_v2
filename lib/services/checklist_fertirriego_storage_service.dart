@@ -1,4 +1,3 @@
-import 'dart:convert';
 import '../data/checklist_data_fertirriego.dart';
 import '../models/dropdown_models.dart';
 import '../services/auth_service.dart';
@@ -9,6 +8,7 @@ class ChecklistFertiriegoStorageService {
 
   // Crear tabla si no existe (método auxiliar)
   static Future<void> _ensureTableExists() async {
+    print('Verificando existencia de tabla checklist_fertirriego...');
     final db = await _databaseHelper.database;
     
     // Verificar si la tabla existe
@@ -16,8 +16,14 @@ class ChecklistFertiriegoStorageService {
       "SELECT name FROM sqlite_master WHERE type='table' AND name='checklist_fertirriego'"
     );
     
+    print('Resultado de verificación de tabla: $result');
+    
     if (result.isEmpty) {
+      print('Tabla no existe, creándola...');
       await _createTable(db);
+      print('Tabla creada exitosamente');
+    } else {
+      print('Tabla ya existe');
     }
   }
 
@@ -324,12 +330,21 @@ class ChecklistFertiriegoStorageService {
   // Obtener todos los checklists
   static Future<List<Map<String, dynamic>>> getAllChecklists() async {
     try {
+      print('Iniciando getAllChecklists...');
       await _ensureTableExists();
+      print('Tabla verificada/creada');
       final db = await _databaseHelper.database;
+      print('Base de datos obtenida');
+      
       final results = await db.query(
         'checklist_fertirriego',
         orderBy: 'fecha_creacion DESC',
       );
+      
+      print('Consulta ejecutada - Resultados: ${results.length}');
+      if (results.isNotEmpty) {
+        print('Primer registro: ${results.first}');
+      }
       
       return results;
       
@@ -677,6 +692,7 @@ class ChecklistFertiriegoStorageService {
   // Obtener estadísticas locales (compatible con la UI modernizada)
   static Future<Map<String, int>> getLocalStats() async {
     try {
+      print('Obteniendo estadísticas locales...');
       await _ensureTableExists();
       final db = await _databaseHelper.database;
       
@@ -684,13 +700,16 @@ class ChecklistFertiriegoStorageService {
       List<Map<String, dynamic>> totalResult = await db.rawQuery(
         'SELECT COUNT(*) as total FROM checklist_fertirriego'
       );
+      print('Total registros: ${totalResult.first['total']}');
       
       List<Map<String, dynamic>> enviadosResult = await db.rawQuery(
         'SELECT COUNT(*) as enviados FROM checklist_fertirriego WHERE enviado = 1'
       );
+      print('Registros enviados: ${enviadosResult.first['enviados']}');
       
       // Obtener todos los registros para calcular completos/incompletos
       List<Map<String, dynamic>> allRecords = await db.query('checklist_fertirriego');
+      print('Registros para análisis: ${allRecords.length}');
       
       int completos = 0;
       int incompletos = 0;
@@ -716,12 +735,15 @@ class ChecklistFertiriegoStorageService {
         }
       }
       
-      return {
+      Map<String, int> stats = {
         'total': totalResult.first['total'] ?? 0,
         'completos': completos,
         'incompletos': incompletos,
         'enviados': enviadosResult.first['enviados'] ?? 0,
       };
+      
+      print('Estadísticas calculadas: $stats');
+      return stats;
       
     } catch (e) {
       print('Error obteniendo estadísticas locales de fertirriego: $e');

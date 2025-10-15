@@ -1,4 +1,3 @@
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:image_picker/image_picker.dart';
@@ -26,29 +25,28 @@ class ChecklistAplicacionesScreen extends StatefulWidget {
   _ChecklistAplicacionesScreenState createState() => _ChecklistAplicacionesScreenState();
 }
 
-class _ChecklistAplicacionesScreenState extends State<ChecklistAplicacionesScreen> {
+class _ChecklistAplicacionesScreenState extends State<ChecklistAplicacionesScreen> with WidgetsBindingObserver {
   late ChecklistAplicaciones checklist;
   int _currentSectionIndex = 0;
   
   // Datos para los dropdowns
   List<Finca> fincas = [];
   List<Bloque> bloques = [];
-  List<Bomba> bombas = [];
   
   // Valores seleccionados
   Finca? selectedFinca;
   Bloque? selectedBloque;
-  Bomba? selectedBomba;
+  String bombaNumber = '';
   DateTime selectedDate = DateTime.now();
   
   bool _isLoadingDropdownData = true;
   bool _isLoadingBloques = false;
-  bool _isLoadingBombas = false;
   bool _isEditMode = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initializeDateFormatting();
     _isEditMode = widget.checklistToEdit != null;
     
@@ -61,15 +59,101 @@ class _ChecklistAplicacionesScreenState extends State<ChecklistAplicacionesScree
     _loadDropdownData();
   }
 
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
   Future<void> _initializeDateFormatting() async {
     await initializeDateFormatting('es_ES', null);
+  }
+
+  // Método para detectar si hay cambios sin guardar
+  bool _hasUnsavedChanges() {
+    // Verificar si hay datos básicos completos
+    if (selectedFinca == null || selectedBloque == null || bombaNumber.trim().isEmpty) {
+      return false; // No hay datos para perder
+    }
+
+    // Verificar si hay respuestas en los items
+    for (var seccion in checklist.secciones) {
+      for (var item in seccion.items) {
+        if (item.respuesta != null || item.observaciones != null || item.fotoBase64 != null) {
+          return true; // Hay datos sin guardar
+        }
+      }
+    }
+    return false;
+  }
+
+  // Método para mostrar diálogo de confirmación
+  Future<bool> _showExitConfirmation() async {
+    if (!_hasUnsavedChanges()) {
+      return true; // No hay cambios, puede salir
+    }
+
+    return await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Text(
+            '¿Salir sin guardar?',
+            style: TextStyle(
+              color: Colors.orange[800],
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: Text(
+            'Tienes cambios sin guardar. ¿Estás seguro de que quieres salir?',
+            style: TextStyle(fontSize: 16),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(
+                'Cancelar',
+                style: TextStyle(color: Colors.grey[600]),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange[600],
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: Text('Salir'),
+            ),
+          ],
+        );
+      },
+    ) ?? false;
+  }
+
+  // Manejar el botón atrás del sistema
+  @override
+  Future<bool> didPopRoute() async {
+    if (_hasUnsavedChanges()) {
+      bool shouldExit = await _showExitConfirmation();
+      if (!shouldExit) {
+        return false; // No permitir salir
+      }
+    }
+    return true; // Permitir salir
   }
 
   void _loadExistingChecklist() {
     checklist = widget.checklistToEdit!;
     selectedFinca = checklist.finca;
     selectedBloque = checklist.bloque;
-    selectedBomba = checklist.bomba;
+    bombaNumber = checklist.bomba?.nombre ?? '';
     selectedDate = checklist.fecha ?? DateTime.now();
     _currentSectionIndex = 0;
   }
@@ -130,11 +214,7 @@ class _ChecklistAplicacionesScreenState extends State<ChecklistAplicacionesScree
         print('Cargando bloques para finca: ${selectedFinca!.nombre}');
         await _loadBloquesForFinca(selectedFinca!.nombre);
         
-        // Si también tenemos un bloque seleccionado, cargar las bombas
-        if (selectedBloque != null) {
-          print('Cargando bombas para finca: ${selectedFinca!.nombre}, bloque: ${selectedBloque!.nombre}');
-          await _loadBombasForFincaAndBloque(selectedFinca!.nombre, selectedBloque!.nombre);
-        }
+        // No necesitamos cargar bombas ya que ahora es un input numérico
       }
     } catch (e) {
       print('Error cargando datos para modo edición aplicaciones: $e');
@@ -152,8 +232,7 @@ class _ChecklistAplicacionesScreenState extends State<ChecklistAplicacionesScree
       _isLoadingBloques = true;
       if (!_isEditMode) {
         selectedBloque = null;
-        selectedBomba = null;
-        bombas = [];
+        bombaNumber = '';
       }
       bloques = []; // Limpiar la lista de bloques
     });
@@ -186,8 +265,7 @@ class _ChecklistAplicacionesScreenState extends State<ChecklistAplicacionesScree
             print('Bloque seleccionado ${selectedBloque!.nombre} no encontrado en la lista aplicaciones');
             setState(() {
               selectedBloque = null;
-              selectedBomba = null;
-              bombas = [];
+              bombaNumber = '';
             });
           }
         }
@@ -205,311 +283,7 @@ class _ChecklistAplicacionesScreenState extends State<ChecklistAplicacionesScree
     }
   }
 
-  // ==================== VERSIÓN COMPLETA CORREGIDA ====================
-  
-  Future<void> _loadBloquesForFincaFixed(String finca) async {
-    print('🔄 Iniciando carga de bloques para finca: $finca');
-    
-    setState(() {
-      _isLoadingBloques = true;
-      if (!_isEditMode) {
-        selectedBloque = null;
-        selectedBomba = null;
-        bombas = [];
-      }
-      bloques = []; // Limpiar bloques existentes
-    });
 
-    try {
-      // Usar servicio optimizado con nombre de variable diferente
-      List<Bloque> loadedBloques = await AplicacionesDropdownServiceUltra.getBloquesByFinca(finca);
-      
-      print('📦 Bloques recibidos del servicio: ${loadedBloques.length}');
-      loadedBloques.forEach((bloque) => print('  - ${bloque.nombre}'));
-      
-      setState(() {
-        bloques = loadedBloques; // ✅ Asignar correctamente a la variable de instancia
-        _isLoadingBloques = false;
-      });
-
-      print('✅ Estado actualizado - Bloques disponibles: ${bloques.length}');
-
-      if (bloques.isEmpty) {
-        Fluttertoast.showToast(
-          msg: 'No se encontraron bloques para la finca $finca',
-          backgroundColor: Colors.orange[600],
-          textColor: Colors.white,
-        );
-      } else {
-        print('Bloques cargados aplicaciones: ${bloques.length} para finca $finca');
-        
-        // En modo edición, verificar que el bloque seleccionado esté en la lista
-        if (_isEditMode && selectedBloque != null) {
-          bool bloqueExists = bloques.any((b) => b.nombre == selectedBloque!.nombre);
-          if (!bloqueExists) {
-            print('⚠️ Bloque seleccionado ${selectedBloque!.nombre} no encontrado en la lista');
-            setState(() {
-              selectedBloque = null;
-              selectedBomba = null;
-              bombas = [];
-            });
-          } else {
-            print('✅ Bloque seleccionado ${selectedBloque!.nombre} encontrado en la lista');
-          }
-        }
-      }
-    } catch (e) {
-      print('❌ Error cargando bloques: $e');
-      setState(() {
-        _isLoadingBloques = false;
-        bloques = []; // Asegurar que la lista esté vacía en caso de error
-      });
-      
-      Fluttertoast.showToast(
-        msg: 'Error cargando bloques: $e',
-        backgroundColor: Colors.red[600],
-        textColor: Colors.white,
-      );
-    }
-  }
-
-  // ==================== TAMBIÉN CORREGIR EL MÉTODO DE BOMBAS ====================
-  
-  Future<void> _loadBombasForFincaAndBloqueFixed(String finca, String bloque) async {
-    print('🔄 Iniciando carga de bombas para finca: $finca, bloque: $bloque');
-    
-    setState(() {
-      _isLoadingBombas = true;
-      if (!_isEditMode) {
-        selectedBomba = null;
-      }
-      bombas = []; // Limpiar bombas existentes
-    });
-
-    try {
-      // ✅ Usar variable temporal con nombre diferente
-      List<Bomba> loadedBombas = await AplicacionesDropdownServiceUltra.getBombasByFincaAndBloque(finca, bloque);
-      
-      print('📦 Bombas recibidas del servicio: ${loadedBombas.length}');
-      loadedBombas.forEach((bomba) => print('  - ${bomba.nombre}'));
-      
-      setState(() {
-        bombas = loadedBombas; // ✅ Asignar correctamente a la variable de instancia
-        _isLoadingBombas = false;
-      });
-
-      print('✅ Estado actualizado - Bombas disponibles: ${bombas.length}');
-
-      if (bombas.isEmpty) {
-        Fluttertoast.showToast(
-          msg: 'No se encontraron bombas para finca $finca, bloque $bloque',
-          backgroundColor: Colors.orange[600],
-          textColor: Colors.white,
-        );
-      } else {
-        print('Bombas cargadas: ${bombas.length} para finca $finca, bloque $bloque');
-        
-        // En modo edición, verificar que la bomba seleccionada esté en la lista
-        if (_isEditMode && selectedBomba != null) {
-          bool bombaExists = bombas.any((b) => b.nombre == selectedBomba!.nombre);
-          if (!bombaExists) {
-            print('⚠️ Bomba seleccionada ${selectedBomba!.nombre} no encontrada en la lista');
-            setState(() {
-              selectedBomba = null;
-            });
-          } else {
-            print('✅ Bomba seleccionada ${selectedBomba!.nombre} encontrada en la lista');
-          }
-        }
-      }
-    } catch (e) {
-      print('❌ Error cargando bombas: $e');
-      setState(() {
-        _isLoadingBombas = false;
-        bombas = []; // Asegurar que la lista esté vacía en caso de error
-      });
-      
-      Fluttertoast.showToast(
-        msg: 'Error cargando bombas: $e',
-        backgroundColor: Colors.red[600],
-        textColor: Colors.white,
-      );
-    }
-  }
-
-  // ==================== MÉTODO DE DEPURACIÓN ====================
-  
-  void _debugDropdownState() {
-    print('🔍 === ESTADO ACTUAL DE DROPDOWNS ===');
-    print('Fincas disponibles: ${fincas.length}');
-    fincas.forEach((f) => print('  - ${f.nombre}'));
-    print('Finca seleccionada: ${selectedFinca?.nombre ?? 'null'}');
-    
-    print('Bloques disponibles: ${bloques.length}');
-    bloques.forEach((b) => print('  - ${b.nombre}'));
-    print('Bloque seleccionado: ${selectedBloque?.nombre ?? 'null'}');
-    print('¿Cargando bloques?: $_isLoadingBloques');
-    
-    print('Bombas disponibles: ${bombas.length}');
-    bombas.forEach((b) => print('  - ${b.nombre}'));
-    print('Bomba seleccionada: ${selectedBomba?.nombre ?? 'null'}');
-    print('¿Cargando bombas?: $_isLoadingBombas');
-    print('================================');
-  }
-
-  // ==================== DROPDOWN MEJORADO CON DEPURACIÓN ====================
-  
-  Widget _buildModernDropdownWithDebug<T>({
-    required String label,
-    required IconData icon,
-    required T? value,
-    required List<T> items,
-    required String Function(T) itemBuilder,
-    required void Function(T?) onChanged,
-    required String hint,
-    bool isLoading = false,
-    bool isEnabled = true,
-  }) {
-    // Agregar depuración
-    print('🎯 Construyendo dropdown $label:');
-    print('  - Items disponibles: ${items.length}');
-    print('  - Valor seleccionado: $value');
-    print('  - Está habilitado: $isEnabled');
-    print('  - Está cargando: $isLoading');
-    
-    return Container(
-      decoration: BoxDecoration(
-        color: isEnabled ? Colors.grey[50] : Colors.grey[100],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[200]!),
-      ),
-      child: DropdownButtonFormField<T>(
-        value: value,
-        decoration: InputDecoration(
-          labelText: '$label (${items.length} disponibles)', // Mostrar cantidad
-          labelStyle: TextStyle(
-            color: (_isEditMode ? Colors.blue[700] : Colors.orange[700])?.withOpacity(isEnabled ? 1.0 : 0.5),
-            fontWeight: FontWeight.w500,
-          ),
-          border: InputBorder.none,
-          contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          prefixIcon: Container(
-            margin: EdgeInsets.all(8),
-            padding: EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: (_isEditMode ? Colors.blue[700] : Colors.orange[700])?.withOpacity(isEnabled ? 0.1 : 0.05),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: isLoading 
-                ? SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: (_isEditMode ? Colors.blue[700] : Colors.orange[700])?.withOpacity(isEnabled ? 1.0 : 0.5),
-                    ),
-                  )
-                : Icon(
-                    icon,
-                    color: (_isEditMode ? Colors.blue[700] : Colors.orange[700])?.withOpacity(isEnabled ? 1.0 : 0.5),
-                    size: 20,
-                  ),
-          ),
-          suffixIcon: items.isNotEmpty && !isLoading
-              ? IconButton(
-                  icon: Icon(Icons.bug_report, size: 16),
-                  onPressed: _debugDropdownState,
-                  tooltip: 'Debug estado',
-                )
-              : null,
-        ),
-        items: isEnabled && items.isNotEmpty ? items.map((T item) {
-          return DropdownMenuItem<T>(
-            value: item,
-            child: Text(
-              itemBuilder(item),
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          );
-        }).toList() : [],
-        onChanged: isEnabled && !isLoading && items.isNotEmpty ? (T? newValue) {
-          print('🔄 Cambio en dropdown $label: $newValue');
-          onChanged(newValue);
-        } : null,
-        hint: Text(
-          isLoading 
-              ? 'Cargando...' 
-              : items.isEmpty && isEnabled
-                  ? 'No hay opciones disponibles'
-                  : hint,
-          style: TextStyle(color: Colors.grey[500]),
-        ),
-        isExpanded: true,
-        dropdownColor: Colors.white,
-        icon: Container(
-          margin: EdgeInsets.only(right: 8),
-          child: Icon(
-            Icons.keyboard_arrow_down,
-            color: (_isEditMode ? Colors.blue[700] : Colors.orange[700])?.withOpacity(isEnabled ? 1.0 : 0.5),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _loadBombasForFincaAndBloque(String finca, String bloque) async {
-    setState(() {
-      _isLoadingBombas = true;
-      if (!_isEditMode) {
-        selectedBomba = null;
-      }
-      bombas = [];
-    });
-
-    try {
-      List<Bomba> loadedBombas = await AplicacionesDropdownServiceUltra.getBombasByFincaAndBloque(finca, bloque);
-      
-      setState(() {
-        bombas = loadedBombas;
-        _isLoadingBombas = false;
-      });
-
-      if (bombas.isEmpty) {
-        Fluttertoast.showToast(
-          msg: 'No se encontraron bombas para finca $finca, bloque $bloque',
-          backgroundColor: Colors.orange[600],
-          textColor: Colors.white,
-        );
-      } else {
-        print('Bombas cargadas: ${bombas.length} para finca $finca, bloque $bloque');
-        
-        // En modo edición, verificar que la bomba seleccionada esté en la lista
-        if (_isEditMode && selectedBomba != null) {
-          bool bombaExists = bombas.any((b) => b.nombre == selectedBomba!.nombre);
-          if (!bombaExists) {
-            print('Bomba seleccionada ${selectedBomba!.nombre} no encontrada en la lista');
-            setState(() {
-              selectedBomba = null;
-            });
-          }
-        }
-      }
-    } catch (e) {
-      setState(() {
-        _isLoadingBombas = false;
-      });
-      
-      Fluttertoast.showToast(
-        msg: 'Error cargando bombas: $e',
-        backgroundColor: Colors.red[600],
-        textColor: Colors.white,
-      );
-    }
-  }
 
   void _updateItemResponse(int itemId, String respuesta, {double? valorNumerico}) {
     setState(() {
@@ -1114,9 +888,9 @@ class _ChecklistAplicacionesScreenState extends State<ChecklistAplicacionesScree
 
   void _saveLocalChecklist() async {
     // Validar que los datos básicos estén completos
-    if (selectedFinca == null || selectedBloque == null || selectedBomba == null) {
+    if (selectedFinca == null || selectedBloque == null || bombaNumber.trim().isEmpty) {
       Fluttertoast.showToast(
-        msg: 'Por favor complete todos los datos: Finca, Bloque, Bomba y Fecha',
+        msg: 'Por favor complete todos los datos: Finca, Bloque, Número de Bomba y Fecha',
         backgroundColor: Colors.orange[600],
         textColor: Colors.white,
       );
@@ -1164,7 +938,7 @@ class _ChecklistAplicacionesScreenState extends State<ChecklistAplicacionesScree
     try {
       checklist.finca = selectedFinca;
       checklist.bloque = selectedBloque;
-      checklist.bomba = selectedBomba;
+      checklist.bomba = Bomba(nombre: bombaNumber.trim());
       checklist.fecha = selectedDate;
 
       int recordId;
@@ -1214,8 +988,6 @@ class _ChecklistAplicacionesScreenState extends State<ChecklistAplicacionesScree
   @override
   Widget build(BuildContext context) {
     var currentSection = checklist.secciones[_currentSectionIndex];
-    int itemsRespondidosSeccionActual = currentSection.items.where((item) => item.respuesta != null).length;
-    int totalItemsSeccionActual = currentSection.items.length;
 
     // Calcular progreso general
     int totalItemsGeneral = 0;
@@ -1227,9 +999,23 @@ class _ChecklistAplicacionesScreenState extends State<ChecklistAplicacionesScree
 
     double progressPercentage = totalItemsGeneral > 0 ? itemsRespondidosGeneral / totalItemsGeneral : 0;
 
-    return Scaffold(
-      backgroundColor: Colors.grey[50],
-      body: CustomScrollView(
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) async {
+        if (didPop) return;
+        
+        if (_hasUnsavedChanges()) {
+          bool shouldExit = await _showExitConfirmation();
+          if (shouldExit) {
+            Navigator.of(context).pop();
+          }
+        } else {
+          Navigator.of(context).pop();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: Colors.grey[50],
+        body: CustomScrollView(
         slivers: [
           // AppBar moderno con gradiente naranja para aplicaciones
           SliverAppBar(
@@ -1238,6 +1024,19 @@ class _ChecklistAplicacionesScreenState extends State<ChecklistAplicacionesScree
             pinned: true,
             elevation: 0,
             backgroundColor: _isEditMode ? Colors.blue[700] : Colors.orange[700],
+            leading: IconButton(
+              icon: Icon(Icons.arrow_back, color: Colors.white),
+              onPressed: () async {
+                if (_hasUnsavedChanges()) {
+                  bool shouldExit = await _showExitConfirmation();
+                  if (shouldExit) {
+                    Navigator.of(context).pop();
+                  }
+                } else {
+                  Navigator.of(context).pop();
+                }
+              },
+            ),
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
                 decoration: BoxDecoration(
@@ -1542,9 +1341,8 @@ class _ChecklistAplicacionesScreenState extends State<ChecklistAplicacionesScree
                                       setState(() {
                                         selectedFinca = newValue;
                                         selectedBloque = null;
-                                        selectedBomba = null;
+                                        bombaNumber = '';
                                         bloques = [];
-                                        bombas = [];
                                       });
                                       if (newValue != null) {
                                         _loadBloquesForFinca(newValue.nombre);
@@ -1565,12 +1363,8 @@ class _ChecklistAplicacionesScreenState extends State<ChecklistAplicacionesScree
                                     onChanged: (Bloque? newValue) {
                                       setState(() {
                                         selectedBloque = newValue;
-                                        selectedBomba = null;
-                                        bombas = [];
+                                        bombaNumber = '';
                                       });
-                                      if (newValue != null && selectedFinca != null) {
-                                        _loadBombasForFincaAndBloque(selectedFinca!.nombre, newValue.nombre);
-                                      }
                                     },
                                     hint: 'Seleccione un bloque',
                                     isLoading: _isLoadingBloques,
@@ -1579,20 +1373,17 @@ class _ChecklistAplicacionesScreenState extends State<ChecklistAplicacionesScree
 
                                   SizedBox(height: 16),
 
-                                  // Dropdown de Bomba
-                                  _buildModernDropdown<Bomba>(
-                                    label: 'Bomba',
+                                  // Campo de número de bomba
+                                  _buildModernNumberField(
+                                    label: 'Número de Bomba',
                                     icon: Icons.water_drop,
-                                    value: selectedBomba,
-                                    items: bombas,
-                                    itemBuilder: (bomba) => bomba.nombre,
-                                    onChanged: (Bomba? newValue) {
+                                    value: bombaNumber,
+                                    onChanged: (String newValue) {
                                       setState(() {
-                                        selectedBomba = newValue;
+                                        bombaNumber = newValue;
                                       });
                                     },
-                                    hint: 'Seleccione una bomba',
-                                    isLoading: _isLoadingBombas,
+                                    hint: 'Ingrese el número de bomba',
                                     isEnabled: selectedBloque != null,
                                   ),
 
@@ -1735,6 +1526,7 @@ class _ChecklistAplicacionesScreenState extends State<ChecklistAplicacionesScree
           ),
         ],
       ),
+      ),
     );
   }
 
@@ -1815,6 +1607,59 @@ class _ChecklistAplicacionesScreenState extends State<ChecklistAplicacionesScree
             Icons.keyboard_arrow_down,
             color: (_isEditMode ? Colors.blue[700] : Colors.orange[700])?.withOpacity(isEnabled ? 1.0 : 0.5),
           ),
+        ),
+      ),
+    );
+  }
+
+  // Widget para el campo de número de bomba
+  Widget _buildModernNumberField({
+    required String label,
+    required IconData icon,
+    required String value,
+    required void Function(String) onChanged,
+    required String hint,
+    bool isEnabled = true,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isEnabled ? Colors.grey[50] : Colors.grey[100],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: TextFormField(
+        initialValue: value,
+        onChanged: onChanged,
+        enabled: isEnabled,
+        keyboardType: TextInputType.number,
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: TextStyle(
+            color: (_isEditMode ? Colors.blue[700] : Colors.orange[700])?.withOpacity(isEnabled ? 1.0 : 0.5),
+            fontWeight: FontWeight.w500,
+          ),
+          hintText: hint,
+          hintStyle: TextStyle(color: Colors.grey[500]),
+          border: InputBorder.none,
+          contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          prefixIcon: Container(
+            margin: EdgeInsets.all(8),
+            padding: EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: (_isEditMode ? Colors.blue[700] : Colors.orange[700])?.withOpacity(isEnabled ? 0.1 : 0.05),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              icon,
+              color: (_isEditMode ? Colors.blue[700] : Colors.orange[700])?.withOpacity(isEnabled ? 1.0 : 0.5),
+              size: 20,
+            ),
+          ),
+        ),
+        style: TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w500,
+          color: isEnabled ? Colors.grey[800] : Colors.grey[500],
         ),
       ),
     );

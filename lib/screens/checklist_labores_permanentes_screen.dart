@@ -24,7 +24,7 @@ class ChecklistLaboresPermanentesScreen extends StatefulWidget {
   _ChecklistLaboresPermanentesScreenState createState() => _ChecklistLaboresPermanentesScreenState();
 }
 
-class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPermanentesScreen> {
+class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPermanentesScreen> with WidgetsBindingObserver {
   late ChecklistLaboresPermanentes checklist;
   
   // Datos para los dropdowns
@@ -85,6 +85,7 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initializeDateFormatting();
     _isEditMode = widget.checklistToEdit != null;
     
@@ -99,6 +100,7 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _supervisorController.dispose();
     _cuadranteController.dispose();
     _semanaController.dispose();
@@ -109,6 +111,83 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
 
   Future<void> _initializeDateFormatting() async {
     await initializeDateFormatting('es_ES', null);
+  }
+
+  // Método para detectar si hay cambios sin guardar
+  bool _hasUnsavedChanges() {
+    // Verificar si hay datos básicos completos
+    if (selectedFinca == null || selectedBloque == null || selectedVariedad == null) {
+      return false; // No hay datos para perder
+    }
+
+    // Verificar si hay datos en la matriz de labores
+    if (matrizLabores.isNotEmpty) {
+      return true; // Hay datos sin guardar
+    }
+
+    return false;
+  }
+
+  // Método para mostrar diálogo de confirmación
+  Future<bool> _showExitConfirmation() async {
+    if (!_hasUnsavedChanges()) {
+      return true; // No hay cambios, puede salir
+    }
+
+    return await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Text(
+            '¿Salir sin guardar?',
+            style: TextStyle(
+              color: Colors.deepPurple[800],
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: Text(
+            'Tienes cambios sin guardar. ¿Estás seguro de que quieres salir?',
+            style: TextStyle(fontSize: 16),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(
+                'Cancelar',
+                style: TextStyle(color: Colors.grey[600]),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.deepPurple[600],
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: Text('Salir'),
+            ),
+          ],
+        );
+      },
+    ) ?? false;
+  }
+
+  // Manejar el botón atrás del sistema
+  @override
+  Future<bool> didPopRoute() async {
+    if (_hasUnsavedChanges()) {
+      bool shouldExit = await _showExitConfirmation();
+      if (!shouldExit) {
+        return false; // No permitir salir
+      }
+    }
+    return true; // Permitir salir
   }
 
   void _loadExistingChecklist() {
@@ -568,6 +647,70 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
           ],
         );
       },
+    );
+  }
+
+  // Duplica una fila existente generando una nueva clave con cuadrante incremental
+  void _duplicarFila(String clave) {
+    final data = matrizLabores[clave];
+    if (data == null) return;
+
+    final String supervisor = data['supervisor'] ?? '';
+    final String bloqueNombre = data['bloque']?.nombre ?? '';
+    final String cuadranteOriginal = (data['cuadrante'] ?? '').toString();
+
+    // Encontrar siguiente cuadrante numérico disponible para este supervisor+bloque
+    final Iterable<String> clavesMismoSB = matrizLabores.keys.where((k) =>
+        (matrizLabores[k]?['supervisor'] ?? '') == supervisor &&
+        (matrizLabores[k]?['bloque']?.nombre ?? '') == bloqueNombre);
+
+    final Set<int> cuadrantesNumericos = {};
+    for (final k in clavesMismoSB) {
+      final String? cuad = matrizLabores[k]?['cuadrante'];
+      final match = RegExp(r'^\d+').firstMatch(cuad ?? '');
+      if (match != null) {
+        cuadrantesNumericos.add(int.parse(match.group(0)!));
+      }
+    }
+    int nextCuadrante = 1;
+    while (cuadrantesNumericos.contains(nextCuadrante)) {
+      nextCuadrante++;
+    }
+
+    // Construir nueva clave manteniendo el mismo número visible de cuadrante
+    String nuevaClave = '${supervisor}_${bloqueNombre}_${cuadranteOriginal}';
+    int intento = 1;
+    while (matrizLabores.containsKey(nuevaClave)) {
+      intento++;
+      nuevaClave = '${supervisor}_${bloqueNombre}_${cuadranteOriginal} *$intento';
+    }
+
+    // Clonar paradas pero SIN ítems seleccionados (todo null)
+    final Map<int, Map<int, String?>> paradasOriginal = data['paradas'];
+    final Map<int, Map<int, String?>> nuevasParadas = {};
+    paradasOriginal.forEach((p, items) {
+      final Map<int, String?> nuevosItems = {};
+      items.forEach((itemId, _) {
+        nuevosItems[itemId] = null;
+      });
+      nuevasParadas[p] = nuevosItems;
+    });
+
+    setState(() {
+      matrizLabores[nuevaClave] = {
+        'supervisor': supervisor,
+        'bloque': data['bloque'],
+        'variedad': data['variedad'],
+        // Mantener el mismo número visible de cuadrante
+        'cuadrante': cuadranteOriginal,
+        'paradas': nuevasParadas,
+      };
+    });
+
+    Fluttertoast.showToast(
+      msg: 'Fila duplicada: $supervisor - Cuadrante $cuadranteOriginal',
+      backgroundColor: Colors.blue[600],
+      textColor: Colors.white,
     );
   }
 
@@ -1131,7 +1274,7 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
         ),
       DataColumn(
         label: Container(
-          width: 120,
+          width: 160,
           child: Text(
             'Acciones',
             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
@@ -1201,7 +1344,7 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
             // Acciones
             DataCell(
               Container(
-                width: 120,
+                width: 160,
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -1211,6 +1354,13 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
                       padding: EdgeInsets.zero,
                       constraints: BoxConstraints(minWidth: 30, minHeight: 30),
                       tooltip: 'Editar Fila',
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.copy, color: Colors.purple, size: 18),
+                      onPressed: () => _duplicarFila(clave),
+                      padding: EdgeInsets.zero,
+                      constraints: BoxConstraints(minWidth: 30, minHeight: 30),
+                      tooltip: 'Duplicar Fila',
                     ),
                     IconButton(
                       icon: Icon(Icons.delete, color: Colors.red, size: 18),
@@ -1846,12 +1996,39 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) async {
+        if (didPop) return;
+        
+        if (_hasUnsavedChanges()) {
+          bool shouldExit = await _showExitConfirmation();
+          if (shouldExit) {
+            Navigator.of(context).pop();
+          }
+        } else {
+          Navigator.of(context).pop();
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
         title: Text('Labores Permanentes'),
         backgroundColor: Colors.deepPurple[700],
         foregroundColor: Colors.white,
         elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () async {
+            if (_hasUnsavedChanges()) {
+              bool shouldExit = await _showExitConfirmation();
+              if (shouldExit) {
+                Navigator.of(context).pop();
+              }
+            } else {
+              Navigator.of(context).pop();
+            }
+          },
+        ),
         actions: [
           IconButton(
             icon: Icon(Icons.info_outline),
@@ -1941,6 +2118,7 @@ class _ChecklistLaboresPermanentesScreenState extends State<ChecklistLaboresPerm
                 ],
               ),
             ),
+      ),
     );
   }
 }

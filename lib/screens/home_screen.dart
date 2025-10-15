@@ -166,16 +166,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         print('Excepción en cosecha: $e');
       }
 
-      // 3. Sincronizar datos de aplicaciones
+      // 3. Sincronizar datos de aplicaciones (solo fincas y bloques, sin bombas)
       print('Sincronizando datos de aplicaciones...');
       try {
         Map<String, dynamic> aplicacionesResult = await AplicacionesDropdownService.getAplicacionesDropdownData(forceSync: true);
         print('Resultado aplicaciones: $aplicacionesResult');
         if (aplicacionesResult['success']) {
-          print('Sincronizando datos de aplicaciones...');
+          print('Sincronizando fincas y bloques de aplicaciones...');
           await AplicacionesDropdownService.syncAplicacionesData();
           totalSynced += (aplicacionesResult['fincas'] as List?)?.length ?? 0;
-          print('Aplicaciones sincronizada: ${(aplicacionesResult['fincas'] as List?)?.length ?? 0} fincas');
+          print('Aplicaciones sincronizada: ${(aplicacionesResult['fincas'] as List?)?.length ?? 0} fincas (sin bombas)');
         } else {
           errors.add('Aplicaciones: Error en sincronización');
           print('Error en aplicaciones: ${aplicacionesResult['message']}');
@@ -447,8 +447,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   bool _isAplicacionesModuleActive() {
     return (_aplicacionesDbStats['fincas'] ?? 0) > 0 &&
-           (_aplicacionesDbStats['bloques'] ?? 0) > 0 &&
-           (_aplicacionesDbStats['bombas'] ?? 0) > 0;
+           (_aplicacionesDbStats['bloques'] ?? 0) > 0;
   }
 
   bool _isCortesModuleActive() {
@@ -781,7 +780,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               _buildCounterCard('Fincas', _dbStats['fincas'] ?? 0, Icons.location_on, Colors.green, isTablet),
               _buildCounterCard('Bloques', _cosechaDbStats['bloques'] ?? 0, Icons.grid_view, Colors.orange, isTablet),
               _buildCounterCard('Variedades', _cosechaDbStats['variedades'] ?? 0, Icons.eco, Colors.purple, isTablet),
-              _buildCounterCard('Bombas', _aplicacionesDbStats['bombas'] ?? 0, Icons.water_drop, Colors.cyan, isTablet),
               _buildCounterCard('Supervisores', _dbStats['supervisores'] ?? 0, Icons.supervisor_account, Colors.indigo, isTablet),
               _buildCounterCard('Pesadores', _dbStats['pesadores'] ?? 0, Icons.scale, Colors.brown, isTablet),
               //_buildCounterCard('Cortes', _cortesDbStats['totalChecklists'] ?? 0, Icons.content_cut, Colors.red, isTablet),

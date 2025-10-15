@@ -32,24 +32,33 @@ class _ChecklistFertiriegoRecordsScreenState
     });
 
     try {
+      print('Cargando registros de fertirriego...');
       List<Map<String, dynamic>> loadedRecords =
           await ChecklistFertiriegoStorageService.getAllChecklists();
+      print('Registros cargados: ${loadedRecords.length}');
+      
       Map<String, int> loadedStats =
           await ChecklistFertiriegoStorageService.getLocalStats();
+      print('Estadísticas cargadas: $loadedStats');
 
       // Ordenar por fecha de creación (más recientes primero)
-      loadedRecords.sort((a, b) {
-        DateTime dateA = DateTime.parse(a['fecha_creacion']);
-        DateTime dateB = DateTime.parse(b['fecha_creacion']);
-        return dateB.compareTo(dateA);
-      });
+      if (loadedRecords.isNotEmpty) {
+        loadedRecords.sort((a, b) {
+          DateTime dateA = DateTime.parse(a['fecha_creacion']);
+          DateTime dateB = DateTime.parse(b['fecha_creacion']);
+          return dateB.compareTo(dateA);
+        });
+      }
 
       setState(() {
         records = loadedRecords;
         stats = loadedStats;
         _isLoading = false;
       });
+      
+      print('Estado actualizado - Records: ${records.length}, Stats: $stats');
     } catch (e) {
+      print('Error cargando registros fertirriego: $e');
       setState(() {
         _isLoading = false;
       });
@@ -323,59 +332,60 @@ class _ChecklistFertiriegoRecordsScreenState
     return 'INSERT INTO check_fertirriego (${columnNames.join(', ')}) VALUES (${values.join(', ')})';
   }
 
-  Future<void> _deleteRecord(int recordId) async {
-    // Verificar si ya fue enviado
-    var record = records.firstWhere((r) => r['id'] == recordId);
-    bool enviado = record['enviado'] == 1;
+  // Método de eliminación comentado por ahora
+  // Future<void> _deleteRecord(int recordId) async {
+  //   // Verificar si ya fue enviado
+  //   var record = records.firstWhere((r) => r['id'] == recordId);
+  //   bool enviado = record['enviado'] == 1;
 
-    String confirmMessage = enviado
-        ? '¿Está seguro que desea eliminar este registro enviado? Esta acción no se puede deshacer.'
-        : '¿Está seguro que desea eliminar este registro? Esta acción no se puede deshacer.';
+  //   String confirmMessage = enviado
+  //       ? '¿Está seguro que desea eliminar este registro enviado? Esta acción no se puede deshacer.'
+  //       : '¿Está seguro que desea eliminar este registro? Esta acción no se puede deshacer.';
 
-    bool? confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          'Confirmar Eliminación',
-          style: TextStyle(color: Colors.red[800], fontWeight: FontWeight.bold),
-        ),
-        content: Text(confirmMessage),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text('Cancelar', style: TextStyle(color: Colors.grey[600])),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red[700],
-              foregroundColor: Colors.white,
-            ),
-            child: Text('Eliminar'),
-          ),
-        ],
-      ),
-    );
+  //   bool? confirm = await showDialog<bool>(
+  //     context: context,
+  //     builder: (context) => AlertDialog(
+  //       title: Text(
+  //         'Confirmar Eliminación',
+  //         style: TextStyle(color: Colors.red[800], fontWeight: FontWeight.bold),
+  //       ),
+  //       content: Text(confirmMessage),
+  //       actions: [
+  //         TextButton(
+  //           onPressed: () => Navigator.pop(context, false),
+  //           child: Text('Cancelar', style: TextStyle(color: Colors.grey[600])),
+  //         ),
+  //         ElevatedButton(
+  //           onPressed: () => Navigator.pop(context, true),
+  //           style: ElevatedButton.styleFrom(
+  //             backgroundColor: Colors.red[700],
+  //             foregroundColor: Colors.white,
+  //           ),
+  //           child: Text('Eliminar'),
+  //         ),
+  //       ],
+  //     ),
+  //   );
 
-    if (confirm == true) {
-      try {
-        await ChecklistFertiriegoStorageService.deleteChecklist(recordId);
-        await _loadRecords();
+  //   if (confirm == true) {
+  //     try {
+  //       await ChecklistFertiriegoStorageService.deleteChecklist(recordId);
+  //       await _loadRecords();
 
-        Fluttertoast.showToast(
-          msg: 'Registro eliminado correctamente',
-          backgroundColor: Colors.orange[600],
-          textColor: Colors.white,
-        );
-      } catch (e) {
-        Fluttertoast.showToast(
-          msg: 'Error eliminando registro: $e',
-          backgroundColor: Colors.red[600],
-          textColor: Colors.white,
-        );
-      }
-    }
-  }
+  //       Fluttertoast.showToast(
+  //         msg: 'Registro eliminado correctamente',
+  //         backgroundColor: Colors.orange[600],
+  //         textColor: Colors.white,
+  //       );
+  //     } catch (e) {
+  //       Fluttertoast.showToast(
+  //         msg: 'Error eliminando registro: $e',
+  //         backgroundColor: Colors.red[600],
+  //         textColor: Colors.white,
+  //       );
+  //     }
+  //   }
+  // }
 
   Future<void> _viewChecklistDetails(int recordId) async {
     try {

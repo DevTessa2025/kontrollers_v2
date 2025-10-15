@@ -21,7 +21,7 @@ class ObservacionesAdicionalesScreen extends StatefulWidget {
   State<ObservacionesAdicionalesScreen> createState() => _ObservacionesAdicionalesScreenState();
 }
 
-class _ObservacionesAdicionalesScreenState extends State<ObservacionesAdicionalesScreen> {
+class _ObservacionesAdicionalesScreenState extends State<ObservacionesAdicionalesScreen> with WidgetsBindingObserver {
   // Datos para los dropdowns
   List<Finca> fincas = [];
   List<Bloque> bloques = [];
@@ -135,8 +135,94 @@ class _ObservacionesAdicionalesScreenState extends State<ObservacionesAdicionale
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadDropdownData();
     _cargarDatosParaEditar();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  // Método para detectar si hay cambios sin guardar
+  bool _hasUnsavedChanges() {
+    // Verificar si hay datos básicos completos
+    if (selectedFinca == null || selectedBloque == null || selectedVariedad == null) {
+      return false; // No hay datos para perder
+    }
+
+    // Verificar si hay contenido en los campos
+    if (_obsController.text.trim().isNotEmpty || 
+        _imagenes.isNotEmpty || 
+        _tipo.isNotEmpty) {
+      return true; // Hay datos sin guardar
+    }
+
+    return false;
+  }
+
+  // Método para mostrar diálogo de confirmación
+  Future<bool> _showExitConfirmation() async {
+    if (!_hasUnsavedChanges()) {
+      return true; // No hay cambios, puede salir
+    }
+
+    return await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Text(
+            '¿Salir sin guardar?',
+            style: TextStyle(
+              color: Colors.teal[800],
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: Text(
+            'Tienes cambios sin guardar. ¿Estás seguro de que quieres salir?',
+            style: TextStyle(fontSize: 16),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(
+                'Cancelar',
+                style: TextStyle(color: Colors.grey[600]),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.teal[600],
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: Text('Salir'),
+            ),
+          ],
+        );
+      },
+    ) ?? false;
+  }
+
+  // Manejar el botón atrás del sistema
+  @override
+  Future<bool> didPopRoute() async {
+    if (_hasUnsavedChanges()) {
+      bool shouldExit = await _showExitConfirmation();
+      if (!shouldExit) {
+        return false; // No permitir salir
+      }
+    }
+    return true; // Permitir salir
   }
 
   void _cargarDatosParaEditar() {
@@ -465,14 +551,41 @@ class _ObservacionesAdicionalesScreenState extends State<ObservacionesAdicionale
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) async {
+        if (didPop) return;
+        
+        if (_hasUnsavedChanges()) {
+          bool shouldExit = await _showExitConfirmation();
+          if (shouldExit) {
+            Navigator.of(context).pop();
+          }
+        } else {
+          Navigator.of(context).pop();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: Colors.grey[50],
+        appBar: AppBar(
         title: Text(widget.observacionParaEditar != null 
             ? 'Editar Observación' 
             : 'Observaciones Adicionales'),
         backgroundColor: Colors.teal[700],
         foregroundColor: Colors.white,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () async {
+            if (_hasUnsavedChanges()) {
+              bool shouldExit = await _showExitConfirmation();
+              if (shouldExit) {
+                Navigator.of(context).pop();
+              }
+            } else {
+              Navigator.of(context).pop();
+            }
+          },
+        ),
         elevation: 0,
         actions: [
           IconButton(
@@ -612,6 +725,7 @@ class _ObservacionesAdicionalesScreenState extends State<ObservacionesAdicionale
                 ],
               ),
             ),
+        ),
     );
   }
 

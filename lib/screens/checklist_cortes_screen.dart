@@ -21,7 +21,7 @@ class ChecklistCortesScreen extends StatefulWidget {
   _ChecklistCortesScreenState createState() => _ChecklistCortesScreenState();
 }
 
-class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> {
+class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> with WidgetsBindingObserver {
   late ChecklistCortes checklist;
   
   // Datos para los dropdowns
@@ -69,6 +69,7 @@ class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initializeDateFormatting();
     _isEditMode = widget.checklistToEdit != null;
     
@@ -83,6 +84,7 @@ class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _supervisorController.dispose();
     _cuadranteController.dispose();
     super.dispose();
@@ -95,6 +97,83 @@ class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> {
       print('Error inicializando formateo de fechas: $e');
       // Continuar sin formateo específico si falla
     }
+  }
+
+  // Método para detectar si hay cambios sin guardar
+  bool _hasUnsavedChanges() {
+    // Verificar si hay datos básicos completos
+    if (selectedFinca == null) {
+      return false; // No hay datos para perder
+    }
+
+    // Verificar si hay datos en la matriz de cortes
+    if (matrizCortes.isNotEmpty) {
+      return true; // Hay datos sin guardar
+    }
+
+    return false;
+  }
+
+  // Método para mostrar diálogo de confirmación
+  Future<bool> _showExitConfirmation() async {
+    if (!_hasUnsavedChanges()) {
+      return true; // No hay cambios, puede salir
+    }
+
+    return await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Text(
+            '¿Salir sin guardar?',
+            style: TextStyle(
+              color: Colors.purple[800],
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: Text(
+            'Tienes cambios sin guardar. ¿Estás seguro de que quieres salir?',
+            style: TextStyle(fontSize: 16),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(
+                'Cancelar',
+                style: TextStyle(color: Colors.grey[600]),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.purple[600],
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: Text('Salir'),
+            ),
+          ],
+        );
+      },
+    ) ?? false;
+  }
+
+  // Manejar el botón atrás del sistema
+  @override
+  Future<bool> didPopRoute() async {
+    if (_hasUnsavedChanges()) {
+      bool shouldExit = await _showExitConfirmation();
+      if (!shouldExit) {
+        return false; // No permitir salir
+      }
+    }
+    return true; // Permitir salir
   }
 
   String? _nombreDe(dynamic value) {
@@ -145,6 +224,7 @@ class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> {
       matrizCortes[supervisor]![cuadrante.cuadrante] = {
         'bloque': cuadrante.bloque,
         'variedad': cuadrante.variedad,
+        'cuadranteDisplay': cuadrante.cuadrante,
         'muestras': muestras, // muestra -> [lista de items de control evaluados]
       };
       
@@ -340,6 +420,7 @@ class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> {
       matrizCortes[supervisor]![cuadrante] = {
         'bloque': _selectedBloqueForm,
         'variedad': _selectedVariedadForm,
+        'cuadranteDisplay': cuadrante,
         'muestras': muestras,
       };
     });
@@ -391,6 +472,69 @@ class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> {
           ],
         );
       },
+    );
+  }
+
+  // Duplica una fila existente generando un nuevo cuadrante disponible
+  void _duplicarFila(String supervisor, String cuadrante) {
+    final Map<String, Map<String, dynamic>> cuadrantesDelSupervisor = matrizCortes[supervisor] ?? {};
+
+    // Obtener siguiente número de cuadrante disponible (incremental)
+    int nextCuadranteNum = 1;
+    final RegExp soloNumero = RegExp(r'^\d+\u0000?');
+    // Recolectar números existentes si los cuadrantes son numéricos
+    final Set<int> existentes = {};
+    for (final key in cuadrantesDelSupervisor.keys) {
+      final match = RegExp(r'^\d+').firstMatch(key);
+      if (match != null) {
+        existentes.add(int.parse(match.group(0)!));
+      }
+    }
+    while (existentes.contains(nextCuadranteNum)) {
+      nextCuadranteNum++;
+    }
+
+    final String nuevoCuadrante = existentes.isEmpty
+        ? (cuadrante + ' (cópia)')
+        : nextCuadranteNum.toString();
+
+    final Map<String, dynamic>? original = cuadrantesDelSupervisor[cuadrante];
+    if (original == null) return;
+
+    // Clonar estructura de muestras pero SIN ítems seleccionados (todas vacías)
+    Map<int, List<int>> nuevasMuestras = {};
+    final Map<int, List<int>> muestrasOriginal = Map<int, List<int>>.from(original['muestras'] ?? {});
+    if (muestrasOriginal.isNotEmpty) {
+      muestrasOriginal.forEach((muestra, _) {
+        nuevasMuestras[muestra] = <int>[];
+      });
+    } else {
+      for (int muestra = 1; muestra <= 10; muestra++) {
+        nuevasMuestras[muestra] = <int>[];
+      }
+    }
+
+    setState(() {
+      if (!matrizCortes.containsKey(supervisor)) {
+        matrizCortes[supervisor] = {};
+      }
+      // Ajuste: crear clave interna única manteniendo el mismo número visible
+      String nuevaClave = cuadrante;
+      while (cuadrantesDelSupervisor.containsKey(nuevaClave) || matrizCortes[supervisor]!.containsKey(nuevaClave)) {
+        nuevaClave = nuevaClave + ' *';
+      }
+      matrizCortes[supervisor]![nuevaClave] = {
+        'bloque': original['bloque'],
+        'variedad': original['variedad'],
+        'cuadranteDisplay': original['cuadranteDisplay'] ?? cuadrante,
+        'muestras': nuevasMuestras,
+      };
+    });
+
+    Fluttertoast.showToast(
+      msg: 'Fila duplicada: $supervisor - Cuadrante ${original['cuadranteDisplay'] ?? cuadrante}',
+      backgroundColor: Colors.blue[600],
+      textColor: Colors.white,
     );
   }
 
@@ -1055,7 +1199,7 @@ class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> {
         ),
       DataColumn(
         label: Container(
-          width: 120,
+          width: 150,
           child: Text(
             'Acciones',
             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
@@ -1087,7 +1231,7 @@ class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> {
                 Container(
                   width: 80,
                   child: Text(
-                    cuadrante,
+                    (cuadranteData['cuadranteDisplay']) ?? cuadrante,
                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                     textAlign: TextAlign.center,
                   ),
@@ -1126,7 +1270,7 @@ class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> {
               // Acciones
               DataCell(
                 Container(
-                  width: 120,
+                  width: 150,
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -1136,6 +1280,13 @@ class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> {
                         padding: EdgeInsets.zero,
                         constraints: BoxConstraints(minWidth: 30, minHeight: 30),
                         tooltip: 'Editar Bloque y Variedad',
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.copy, color: Colors.purple, size: 18),
+                        onPressed: () => _duplicarFila(supervisor, cuadrante),
+                        padding: EdgeInsets.zero,
+                        constraints: BoxConstraints(minWidth: 30, minHeight: 30),
+                        tooltip: 'Duplicar Fila',
                       ),
                       IconButton(
                         icon: Icon(Icons.delete, color: Colors.red, size: 18),
@@ -1518,12 +1669,39 @@ class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) async {
+        if (didPop) return;
+        
+        if (_hasUnsavedChanges()) {
+          bool shouldExit = await _showExitConfirmation();
+          if (shouldExit) {
+            Navigator.of(context).pop();
+          }
+        } else {
+          Navigator.of(context).pop();
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
         title: Text('Cortes del Día'),
         backgroundColor: Colors.green[700],
         foregroundColor: Colors.white,
         elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () async {
+            if (_hasUnsavedChanges()) {
+              bool shouldExit = await _showExitConfirmation();
+              if (shouldExit) {
+                Navigator.of(context).pop();
+              }
+            } else {
+              Navigator.of(context).pop();
+            }
+          },
+        ),
         actions: [
           IconButton(
             icon: Icon(Icons.info_outline),
@@ -1606,6 +1784,7 @@ class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> {
                 ],
               ),
             ),
+      ),
     );
   }
 }
