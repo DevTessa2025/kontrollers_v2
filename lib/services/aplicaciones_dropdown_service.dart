@@ -530,17 +530,17 @@ class AplicacionesDropdownService {
         errors.add('Bloques aplicaciones: $e');
       }
 
-      // Sincronizar bombas (opcional)
-      try {
-        await _syncAllBombasFromServerWithTimeout();
-        
-        DatabaseHelper dbHelper = DatabaseHelper();
-        Map<String, int> stats = await dbHelper.getAplicacionesDatabaseStats();
-        totalSynced += stats['bombas'] ?? 0;
-        print('Bombas sincronizadas: ${stats['bombas']}');
-      } catch (e) {
-        errors.add('Bombas aplicaciones: $e');
-      }
+      // Sincronizar bombas (deshabilitado - ya no se sincronizan las bombas)
+      // try {
+      //   await _syncAllBombasFromServerWithTimeout();
+      //   
+      //   DatabaseHelper dbHelper = DatabaseHelper();
+      //   Map<String, int> stats = await dbHelper.getAplicacionesDatabaseStats();
+      //   totalSynced += stats['bombas'] ?? 0;
+      //   print('Bombas sincronizadas: ${stats['bombas']}');
+      // } catch (e) {
+      //   errors.add('Bombas aplicaciones: $e');
+      // }
 
       if (errors.isEmpty) {
         return {
