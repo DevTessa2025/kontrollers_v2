@@ -202,7 +202,7 @@ class _CortesAdminScreenState extends State<CortesAdminScreen> {
     return _records.where((record) {
       final finca = record['finca_nombre']?.toString().toLowerCase() ?? '';
       final supervisor = record['supervisor']?.toString().toLowerCase() ?? '';
-      final fecha = record['fecha_creacion']?.toString().toLowerCase() ?? '';
+      final fecha = record['fecha']?.toString().toLowerCase() ?? '';
       
       return finca.contains(_searchQuery.toLowerCase()) ||
              supervisor.contains(_searchQuery.toLowerCase()) ||
@@ -378,7 +378,7 @@ class _CortesAdminScreenState extends State<CortesAdminScreen> {
                           ),
                         ),
                         Text(
-                          'Fecha: ${_formatDate(record['fecha_creacion'])}',
+                          'Fecha: ${_formatDate(record['fecha'])}',
                           style: TextStyle(
                             fontSize: 14,
                             color: Colors.grey[600],
@@ -475,8 +475,34 @@ class _CortesAdminScreenState extends State<CortesAdminScreen> {
   String _formatDate(dynamic date) {
     if (date == null) return 'N/A';
     try {
-      final d = DateTime.parse(date.toString());
-      return DateFormat('dd/MM/yyyy HH:mm').format(d);
+      DateTime? dt;
+      if (date is DateTime) {
+        dt = date;
+      } else if (date is num) {
+        // milliseconds since epoch
+        dt = DateTime.fromMillisecondsSinceEpoch(date.toInt());
+      } else if (date is String) {
+        final raw = date.trim();
+        // Intento directo
+        dt = DateTime.tryParse(raw);
+        // Reintentos con patrones comunes de SQL
+        if (dt == null) {
+          final candidates = [
+            'yyyy-MM-dd HH:mm:ss.SSS',
+            'yyyy-MM-dd HH:mm:ss',
+            'yyyy-MM-ddTHH:mm:ss.SSS',
+            'yyyy-MM-ddTHH:mm:ss',
+          ];
+          for (final p in candidates) {
+            try {
+              dt = DateFormat(p).parseStrict(raw);
+              break;
+            } catch (_) {}
+          }
+        }
+      }
+      if (dt == null) return date.toString();
+      return DateFormat('dd/MM/yyyy HH:mm').format(dt);
     } catch (e) {
       return date.toString();
     }

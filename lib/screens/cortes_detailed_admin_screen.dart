@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'dart:convert';
+import 'dart:typed_data';
 import '../widget/share_dialog_widget.dart';
 
 class CortesDetailedAdminScreen extends StatefulWidget {
@@ -87,6 +88,17 @@ class _CortesDetailedAdminScreenState extends State<CortesDetailedAdminScreen> {
           _cuadrantes = List<Map<String, dynamic>>.from(cuadrantesData);
         }
         print('_cuadrantes parsed: ${_cuadrantes.length} items');
+        
+        // Parsear fotos de cada cuadrante
+        for (var cuadrante in _cuadrantes) {
+          if (cuadrante['fotos'] is String && (cuadrante['fotos'] as String).isNotEmpty) {
+            try {
+              cuadrante['fotos'] = jsonDecode(cuadrante['fotos'] as String);
+            } catch (e) {
+              print('Error parseando fotos del cuadrante ${cuadrante['cuadrante']}: $e');
+            }
+          }
+        }
       }
 
       // Parsear items
@@ -169,7 +181,7 @@ class _CortesDetailedAdminScreenState extends State<CortesDetailedAdminScreen> {
                       style: TextStyle(fontSize: 16, color: Colors.grey[700]),
                     ),
                     Text(
-                      'Fecha: ${_formatDate(widget.record['fecha_creacion'])}',
+                      'Fecha: ${_formatDate(widget.record['fecha'])}',
                       style: TextStyle(fontSize: 16, color: Colors.grey[700]),
                     ),
                   ],
@@ -337,6 +349,8 @@ class _CortesDetailedAdminScreenState extends State<CortesDetailedAdminScreen> {
                 _buildCuadranteStats(cuadranteId),
               ],
             ),
+            SizedBox(height: 16),
+            _buildFotosSection(cuadrante),
             SizedBox(height: 16),
             _buildMuestrasTable(cuadranteId),
           ],
@@ -512,6 +526,186 @@ class _CortesDetailedAdminScreenState extends State<CortesDetailedAdminScreen> {
     return 'Bajo';
   }
 
+  Widget _buildFotosSection(Map<String, dynamic> cuadrante) {
+    final List<Map<String, dynamic>> fotos = _getFotosFromCuadrante(cuadrante);
+    
+    if (fotos.isEmpty) {
+      return Container(
+        padding: EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.grey[100],
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.photo_camera, color: Colors.grey[500], size: 20),
+            SizedBox(width: 8),
+            Text('Sin fotos adjuntas', style: TextStyle(color: Colors.grey[600], fontSize: 14)),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Fotos adjuntas (${fotos.length}):',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blue[800]),
+        ),
+        SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: fotos.map((foto) => _buildPhotoWidget(foto)).toList(),
+        ),
+      ],
+    );
+  }
+
+  List<Map<String, dynamic>> _getFotosFromCuadrante(Map<String, dynamic> cuadrante) {
+    List<Map<String, dynamic>> fotos = [];
+    if (cuadrante['fotos'] is List) {
+      fotos = List<Map<String, dynamic>>.from(cuadrante['fotos']);
+    } else if (cuadrante['fotos'] is String && (cuadrante['fotos'] as String).isNotEmpty) {
+      try {
+        final decoded = jsonDecode(cuadrante['fotos'] as String);
+        if (decoded is List) fotos = List<Map<String, dynamic>>.from(decoded);
+      } catch (_) {}
+    }
+    if (fotos.isEmpty && cuadrante['fotoBase64'] != null && (cuadrante['fotoBase64'] as String).isNotEmpty) {
+      fotos.add({'base64': cuadrante['fotoBase64'], 'etiqueta': null});
+    }
+    return fotos;
+  }
+
+  Widget _buildPhotoWidget(Map<String, dynamic> foto) {
+    final base64Image = foto['base64']?.toString();
+    final etiqueta = foto['etiqueta']?.toString();
+    
+    if (base64Image == null || base64Image.isEmpty) {
+      return Container(
+        width: 120,
+        height: 120,
+        decoration: BoxDecoration(
+          color: Colors.grey[200],
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(Icons.broken_image, color: Colors.grey),
+      );
+    }
+
+    try {
+      final bytes = base64Decode(base64Image);
+      final etiquetaText = _getItemNameFromEtiqueta(etiqueta);
+      
+      return GestureDetector(
+        onTap: () => _showFullImage(bytes, etiquetaText),
+        child: Container(
+          width: 120,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.memory(
+                  bytes,
+                  width: 120,
+                  height: 120,
+                  fit: BoxFit.cover,
+                ),
+              ),
+              if (etiquetaText.isNotEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.green[700],
+                    borderRadius: BorderRadius.only(
+                      bottomLeft: Radius.circular(8),
+                      bottomRight: Radius.circular(8),
+                    ),
+                  ),
+                  child: Text(
+                    etiquetaText,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    } catch (e) {
+      return Container(
+        width: 120,
+        height: 120,
+        decoration: BoxDecoration(
+          color: Colors.red[100],
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(Icons.error, color: Colors.red),
+      );
+    }
+  }
+
+  String _getItemNameFromEtiqueta(String? etiqueta) {
+    if (etiqueta == null || etiqueta.isEmpty) return '';
+    final int? id = int.tryParse(etiqueta);
+    if (id == null) return '';
+    
+    try {
+      final found = _items.firstWhere((it) => (it['id']?.toString() ?? '') == id.toString());
+      return found['proceso']?.toString() ?? '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  void _showFullImage(Uint8List bytes, String etiquetaText) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (etiquetaText.isNotEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.all(12),
+                  color: Colors.green[700],
+                  child: Text(
+                    etiquetaText,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              Container(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width * 0.9,
+                  maxHeight: MediaQuery.of(context).size.height * 0.8,
+                ),
+                child: Image.memory(bytes, fit: BoxFit.contain),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text('Cerrar'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _showShareDialog() async {
     showDialog(
       context: context,
@@ -529,8 +723,28 @@ class _CortesDetailedAdminScreenState extends State<CortesDetailedAdminScreen> {
   String _formatDate(dynamic date) {
     if (date == null) return 'N/A';
     try {
-      final d = DateTime.parse(date.toString());
-      return DateFormat('dd/MM/yyyy HH:mm').format(d);
+      DateTime? dt;
+      if (date is DateTime) {
+        dt = date;
+      } else if (date is num) {
+        dt = DateTime.fromMillisecondsSinceEpoch(date.toInt());
+      } else if (date is String) {
+        final raw = date.trim();
+        dt = DateTime.tryParse(raw);
+        if (dt == null) {
+          final candidates = [
+            'yyyy-MM-dd HH:mm:ss.SSS',
+            'yyyy-MM-dd HH:mm:ss',
+            'yyyy-MM-ddTHH:mm:ss.SSS',
+            'yyyy-MM-ddTHH:mm:ss',
+          ];
+          for (final p in candidates) {
+            try { dt = DateFormat(p).parseStrict(raw); break; } catch (_) {}
+          }
+        }
+      }
+      if (dt == null) return date.toString();
+      return DateFormat('dd/MM/yyyy HH:mm').format(dt);
     } catch (e) {
       return date.toString();
     }

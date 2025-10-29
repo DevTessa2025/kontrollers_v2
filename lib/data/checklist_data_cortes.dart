@@ -1,4 +1,5 @@
 import '../models/dropdown_models.dart';
+import 'dart:convert';
 
 // ==================== MODELOS ESPECÍFICOS PARA CORTES ====================
 
@@ -74,13 +75,17 @@ class CuadranteInfo {
   final String? bloque;
   final String? variedad;
   final String? supervisor;
+  final String? fotoBase64;
+  final List<Map<String, dynamic>> fotos;
 
   CuadranteInfo({
     required this.cuadrante,
     this.bloque,
     this.variedad,
     this.supervisor,
-  });
+    this.fotoBase64,
+    List<Map<String, dynamic>>? fotos,
+  }) : fotos = fotos ?? [];
 
   Map<String, dynamic> toJson() {
     return {
@@ -88,15 +93,28 @@ class CuadranteInfo {
       'bloque': bloque,
       'variedad': variedad,
       'supervisor': supervisor,
+      'fotoBase64': fotoBase64,
+      'fotos': fotos,
     };
   }
 
   factory CuadranteInfo.fromJson(Map<String, dynamic> json) {
+    List<Map<String, dynamic>> fotos = [];
+    if (json['fotos'] is List) {
+      fotos = List<Map<String, dynamic>>.from(json['fotos']);
+    } else if (json['fotos'] is String && (json['fotos'] as String).isNotEmpty) {
+      try {
+        final decoded = jsonDecode(json['fotos'] as String);
+        if (decoded is List) fotos = List<Map<String, dynamic>>.from(decoded);
+      } catch (_) {}
+    }
     return CuadranteInfo(
       cuadrante: json['cuadrante'],
       bloque: json['bloque'],
       variedad: json['variedad'],
       supervisor: json['supervisor'],
+      fotoBase64: json['fotoBase64'],
+      fotos: fotos,
     );
   }
 }

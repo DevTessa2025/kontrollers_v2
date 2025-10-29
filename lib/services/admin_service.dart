@@ -414,7 +414,7 @@ class AdminService {
             WHEN u.username IS NOT NULL AND u.username != '' THEN u.username
             ELSE c.usuario_creacion
           END as usuario_nombre,
-          c.fecha_creacion,
+          c.fecha as fecha,
           c.fecha_modificacion as fecha_envio,
           c.porcentaje_cumplimiento,
           c.cuadrantes_json,
@@ -994,7 +994,7 @@ class AdminService {
         camposBase = [
           'id', 'id as checklist_uuid', 'finca_nombre', 
           'supervisor', 'usuario_creacion as usuario_id', 'usuario_creacion as usuario_nombre', 
-          'fecha_creacion', 'fecha_modificacion as fecha_envio', 
+          'fecha as fecha', 'fecha_modificacion as fecha_envio', 
           'porcentaje_cumplimiento', 'supervisor as bloque_nombre',
           'cuadrantes_json', 'items_json', 'total_evaluaciones', 'total_conformes', 'total_no_conformes'
         ];

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'dart:convert';
+import 'package:image_picker/image_picker.dart';
 import '../data/checklist_data_cortes.dart';
 import '../models/dropdown_models.dart';
 import '../services/cosecha_dropdown_service.dart';
@@ -226,6 +228,8 @@ class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> with Widg
         'variedad': cuadrante.variedad,
         'cuadranteDisplay': cuadrante.cuadrante,
         'muestras': muestras, // muestra -> [lista de items de control evaluados]
+        'foto': cuadrante.fotoBase64,
+        'fotos': List<Map<String, dynamic>>.from(cuadrante.fotos),
       };
       
       // Cargar resultados existentes (convertir desde estructura anterior)
@@ -422,6 +426,8 @@ class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> with Widg
         'variedad': _selectedVariedadForm,
         'cuadranteDisplay': cuadrante,
         'muestras': muestras,
+        'foto': null,
+        'fotos': <Map<String, dynamic>>[],
       };
     });
 
@@ -1270,7 +1276,7 @@ class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> with Widg
               // Acciones
               DataCell(
                 Container(
-                  width: 150,
+                  width: 200,
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -1295,6 +1301,7 @@ class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> with Widg
                         constraints: BoxConstraints(minWidth: 30, minHeight: 30),
                         tooltip: 'Eliminar Fila',
                       ),
+                      _buildCameraButtonWithCounter(supervisor, cuadrante),
                     ],
                   ),
                 ),
@@ -1371,6 +1378,184 @@ class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> with Widg
         ),
       ),
     );
+  }
+
+  Widget _buildCameraButtonWithCounter(String supervisor, String cuadrante) {
+    final data = matrizCortes[supervisor]?[cuadrante];
+    final fotos = data?['fotos'] as List<Map<String, dynamic>>? ?? [];
+    final fotoCount = fotos.length;
+    return Stack(
+      children: [
+        IconButton(
+          icon: Icon(Icons.camera_alt, color: Colors.teal, size: 18),
+          onPressed: () => _showPhotoManagementModal(supervisor, cuadrante),
+          padding: EdgeInsets.zero,
+          constraints: BoxConstraints(minWidth: 30, minHeight: 30),
+          tooltip: 'Gestionar Fotos',
+        ),
+        if (fotoCount > 0)
+          Positioned(
+            right: 0,
+            top: 0,
+            child: Container(
+              padding: EdgeInsets.all(2),
+              decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(10)),
+              constraints: BoxConstraints(minWidth: 16, minHeight: 16),
+              child: Text('$fotoCount', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+            ),
+          ),
+      ],
+    );
+  }
+
+  void _showPhotoManagementModal(String supervisor, String cuadrante) {
+    final data = matrizCortes[supervisor]?[cuadrante];
+    final fotos = data?['fotos'] as List<Map<String, dynamic>>? ?? [];
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: Text('Gestión de Fotos'),
+              content: Container(
+                width: double.maxFinite,
+                height: 420,
+                child: Column(
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: () => _showImageSourceSelection(supervisor, cuadrante, setState),
+                      icon: Icon(Icons.add_a_photo),
+                      label: Text('Agregar Foto'),
+                    ),
+                    SizedBox(height: 12),
+                    Expanded(
+                      child: fotos.isEmpty
+                          ? Center(child: Text('No hay fotos agregadas', style: TextStyle(color: Colors.grey[600])))
+                          : ListView.builder(
+                              itemCount: fotos.length,
+                              itemBuilder: (context, index) {
+                                final foto = fotos[index];
+                                return _buildPhotoItem(foto, index, supervisor, cuadrante, setState);
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.of(context).pop(), child: Text('Cerrar')),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildPhotoItem(Map<String, dynamic> foto, int index, String supervisor, String cuadrante, StateSetter setState) {
+    final base64Image = foto['base64'] as String?;
+    final etiqueta = foto['etiqueta'] as String?;
+    return Card(
+      margin: EdgeInsets.symmetric(vertical: 4),
+      child: Padding(
+        padding: EdgeInsets.all(8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (base64Image != null && base64Image.isNotEmpty)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: Image.memory(base64Decode(base64Image), height: 140, width: double.infinity, fit: BoxFit.cover),
+              ),
+            SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              value: etiqueta,
+              decoration: InputDecoration(labelText: 'Etiqueta del ítem', border: OutlineInputBorder()),
+              items: [
+                DropdownMenuItem(value: null, child: Text('Sin etiqueta')),
+                ...itemsControl.asMap().entries.map((e) => DropdownMenuItem(value: (e.key + 1).toString(), child: Text('${e.key + 1}. ${e.value}'))),
+              ],
+              onChanged: (String? newValue) {
+                setState(() {
+                  foto['etiqueta'] = newValue;
+                  _updateFotosInMatrix(supervisor, cuadrante);
+                });
+              },
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      matrizCortes[supervisor]![cuadrante]!['fotos'].removeAt(index);
+                      _updateFotosInMatrix(supervisor, cuadrante);
+                    });
+                  },
+                  icon: Icon(Icons.delete, color: Colors.red),
+                  label: Text('Eliminar', style: TextStyle(color: Colors.red)),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showImageSourceSelection(String supervisor, String cuadrante, StateSetter setState) {
+    showModalBottomSheet(
+      context: context,
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: Icon(Icons.camera_alt),
+                title: Text('Tomar foto'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _takePhoto(supervisor, cuadrante, setState, ImageSource.camera);
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.photo_library),
+                title: Text('Seleccionar de galería'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _takePhoto(supervisor, cuadrante, setState, ImageSource.gallery);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _takePhoto(String supervisor, String cuadrante, StateSetter setState, ImageSource source) async {
+    try {
+      final picker = ImagePicker();
+      final XFile? image = await picker.pickImage(source: source, maxWidth: 1920, maxHeight: 1080, imageQuality: 85);
+      if (image == null) return;
+      final bytes = await image.readAsBytes();
+      final base64Image = base64Encode(bytes);
+      setState(() {
+        matrizCortes[supervisor]![cuadrante]!['fotos'].add({'base64': base64Image, 'etiqueta': null});
+        _updateFotosInMatrix(supervisor, cuadrante);
+      });
+    } catch (e) {
+      Fluttertoast.showToast(msg: 'Error con la imagen: $e', backgroundColor: Colors.red[600], textColor: Colors.white);
+    }
+  }
+
+  void _updateFotosInMatrix(String supervisor, String cuadrante) {
+    setState(() {
+      final fotos = matrizCortes[supervisor]![cuadrante]!['fotos'] as List<Map<String, dynamic>>;
+      matrizCortes[supervisor]![cuadrante]!['foto'] = fotos.isNotEmpty ? fotos.first['base64'] : null;
+    });
   }
 
   Widget _buildResumenEstadisticas() {
@@ -1583,6 +1768,8 @@ class _ChecklistCortesScreenState extends State<ChecklistCortesScreen> with Widg
             bloque: _nombreDe(cuadranteData['bloque']),
             variedad: _nombreDe(cuadranteData['variedad']),
             supervisor: supervisor, // Supervisor específico del cuadrante
+            fotoBase64: cuadranteData['foto'],
+            fotos: List<Map<String, dynamic>>.from(cuadranteData['fotos'] ?? []),
           ));
 
           // Procesar muestras y convertir a la estructura de items

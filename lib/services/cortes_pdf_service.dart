@@ -116,7 +116,7 @@ class CortesPdfService {
           pw.SizedBox(height: 20),
           _buildResumenCumplimiento(record, cuadrantes, resultados),
           pw.SizedBox(height: 20),
-          _buildTablaResultados(record, cuadrantes, items, resultados),
+        _buildTablaResultados(record, cuadrantes, items, resultados),
         ],
       ),
     );
@@ -462,6 +462,8 @@ class CortesPdfService {
           ),
           pw.SizedBox(height: 6),
           _buildMuestrasTable(cuadranteId, items, resultados),
+          pw.SizedBox(height: 8),
+          _buildFotosSection(cuadrante, items),
         ],
       ),
     );
@@ -564,6 +566,85 @@ class CortesPdfService {
         }).toList(),
       ],
     );
+  }
+
+  static pw.Widget _buildFotosSection(Map<String, dynamic> cuadrante, List<Map<String, dynamic>> items) {
+    final fotos = _getFotosFromCuadrante(cuadrante);
+    if (fotos.isEmpty) {
+      return pw.SizedBox.shrink();
+    }
+
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text(
+          'Fotos adjuntas (${fotos.length}):',
+          style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: COLOR_NEGRO),
+        ),
+        pw.SizedBox(height: 4),
+        pw.Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: fotos.map((f) => _buildFotoWidget(f, items)).toList(),
+        ),
+      ],
+    );
+  }
+
+  static List<Map<String, dynamic>> _getFotosFromCuadrante(Map<String, dynamic> cuadrante) {
+    List<Map<String, dynamic>> fotos = [];
+    if (cuadrante['fotos'] is List) {
+      fotos = List<Map<String, dynamic>>.from(cuadrante['fotos']);
+    } else if (cuadrante['fotos'] is String && (cuadrante['fotos'] as String).isNotEmpty) {
+      try {
+        final decoded = jsonDecode(cuadrante['fotos'] as String);
+        if (decoded is List) fotos = List<Map<String, dynamic>>.from(decoded);
+      } catch (_) {}
+    }
+    if (fotos.isEmpty && cuadrante['fotoBase64'] != null && (cuadrante['fotoBase64'] as String).isNotEmpty) {
+      fotos.add({'base64': cuadrante['fotoBase64'], 'etiqueta': null});
+    }
+    return fotos;
+  }
+
+  static pw.Widget _buildFotoWidget(Map<String, dynamic> foto, List<Map<String, dynamic>> items) {
+    final base64Image = foto['base64']?.toString();
+    final etiqueta = foto['etiqueta']?.toString();
+    if (base64Image == null || base64Image.isEmpty) {
+      return pw.Container(width: 60, height: 60, color: COLOR_GRIS_CLARO, child: pw.Center(child: pw.Text('Sin imagen', style: pw.TextStyle(fontSize: 8, color: COLOR_GRIS_OSCURO))));
+    }
+    try {
+      final bytes = base64Decode(base64Image);
+      final image = pw.MemoryImage(bytes);
+      String etiquetaText = '';
+      if (etiqueta != null && etiqueta.isNotEmpty) {
+        final int? id = int.tryParse(etiqueta);
+        if (id != null) {
+          try {
+            final found = items.firstWhere((it) => (it['id']?.toString() ?? '') == id.toString(), orElse: () => {});
+            etiquetaText = found['proceso']?.toString() ?? '';
+          } catch (_) {}
+        }
+      }
+      return pw.Container(
+        width: 90,
+        child: pw.Column(
+          mainAxisSize: pw.MainAxisSize.min,
+          children: [
+            pw.ClipRRect(child: pw.Image(image, width: 90, height: 90, fit: pw.BoxFit.cover)),
+            if (etiquetaText.isNotEmpty)
+              pw.Container(
+                width: double.infinity,
+                padding: pw.EdgeInsets.symmetric(horizontal: 3, vertical: 2),
+                color: COLOR_NEGRO,
+                child: pw.Text(etiquetaText, style: pw.TextStyle(color: PdfColors.white, fontSize: 8, fontWeight: pw.FontWeight.bold), textAlign: pw.TextAlign.center),
+              ),
+          ],
+        ),
+      );
+    } catch (_) {
+      return pw.Container(width: 60, height: 60, color: PdfColors.red100, child: pw.Center(child: pw.Text('Error', style: pw.TextStyle(fontSize: 8, color: PdfColors.red))));
+    }
   }
 
   static PdfColor _getResultadoColor(String? resultado) {

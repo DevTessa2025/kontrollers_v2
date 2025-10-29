@@ -1,4 +1,3 @@
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:image_picker/image_picker.dart';
@@ -31,14 +30,16 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> with Widg
   
   // Datos para los dropdowns
   List<Finca> fincas = [];
-  List<Supervisor> supervisores = [];
-  List<Pesador> pesadores = [];
   
   // Valores seleccionados
   Finca? selectedFinca;
-  Supervisor? selectedSupervisor;
-  Pesador? selectedPesador;
+  String supervisorText = '';
+  String pesadorText = '';
   DateTime selectedDate = DateTime.now(); // Fecha seleccionada
+  
+  // Controladores de texto
+  late TextEditingController supervisorController;
+  late TextEditingController pesadorController;
   
   bool _isLoadingDropdownData = true;
   bool _isEditMode = false;
@@ -49,6 +50,10 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> with Widg
     WidgetsBinding.instance.addObserver(this);
     _initializeDateFormatting();
     _isEditMode = widget.checklistToEdit != null;
+    
+    // Inicializar controladores
+    supervisorController = TextEditingController();
+    pesadorController = TextEditingController();
     
     if (_isEditMode) {
       _loadExistingChecklist();
@@ -62,6 +67,8 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> with Widg
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    supervisorController.dispose();
+    pesadorController.dispose();
     super.dispose();
   }
 
@@ -72,7 +79,7 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> with Widg
   // Método para detectar si hay cambios sin guardar
   bool _hasUnsavedChanges() {
     // Verificar si hay datos básicos completos
-    if (selectedFinca == null || selectedSupervisor == null || selectedPesador == null) {
+    if (selectedFinca == null || supervisorText.trim().isEmpty || pesadorText.trim().isEmpty) {
       return false; // No hay datos para perder
     }
 
@@ -152,8 +159,10 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> with Widg
   void _loadExistingChecklist() {
     checklist = widget.checklistToEdit!;
     selectedFinca = checklist.finca;
-    selectedSupervisor = checklist.supervisor;
-    selectedPesador = checklist.pesador;
+    supervisorText = checklist.supervisor?.nombre ?? '';
+    pesadorText = checklist.pesador?.nombre ?? '';
+    supervisorController.text = supervisorText;
+    pesadorController.text = pesadorText;
     selectedDate = checklist.fecha ?? DateTime.now(); // Cargar fecha existente o actual
     _currentSectionIndex = 0;
   }
@@ -175,12 +184,10 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> with Widg
       
       setState(() {
         fincas = dropdownData['fincas'] ?? [];
-        supervisores = dropdownData['supervisores'] ?? [];
-        pesadores = dropdownData['pesadores'] ?? [];
         _isLoadingDropdownData = false;
       });
 
-      if (fincas.isEmpty || supervisores.isEmpty || pesadores.isEmpty) {
+      if (fincas.isEmpty) {
         Fluttertoast.showToast(
           msg: 'Algunos datos no se pudieron cargar. Verifique la conexión.',
           backgroundColor: Colors.orange[600],
@@ -828,7 +835,7 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> with Widg
 
   void _saveLocalChecklist() async {
     // Validar que los datos básicos estén completos
-    if (selectedFinca == null || selectedSupervisor == null || selectedPesador == null) {
+    if (selectedFinca == null || supervisorText.trim().isEmpty || pesadorText.trim().isEmpty) {
       Fluttertoast.showToast(
         msg: 'Por favor complete todos los datos: Finca, Supervisor, Pesador y Fecha',
         backgroundColor: Colors.orange[600],
@@ -877,8 +884,8 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> with Widg
 
     try {
       checklist.finca = selectedFinca;
-      checklist.supervisor = selectedSupervisor;
-      checklist.pesador = selectedPesador;
+      checklist.supervisor = Supervisor(id: 0, nombre: supervisorText.trim().toUpperCase());
+      checklist.pesador = Pesador(id: 0, nombre: pesadorText.trim().toUpperCase());
       checklist.fecha = selectedDate; // Usar la fecha seleccionada
 
       int recordId;
@@ -921,16 +928,6 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> with Widg
     }
   }
 
-  bool _isChecklistComplete() {
-    for (var seccion in checklist.secciones) {
-      for (var item in seccion.items) {
-        if (item.respuesta == null) {
-          return false;
-        }
-      }
-    }
-    return true;
-  }
 
   void _navigateToRecords() {
     Navigator.push(
@@ -942,8 +939,6 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> with Widg
   @override
   Widget build(BuildContext context) {
     var currentSection = checklist.secciones[_currentSectionIndex];
-    int itemsRespondidosSeccionActual = currentSection.items.where((item) => item.respuesta != null).length;
-    int totalItemsSeccionActual = currentSection.items.length;
 
     // Calcular progreso general
     int totalItemsGeneral = 0;
@@ -1307,34 +1302,32 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> with Widg
                                   Row(
                                     children: [
                                       Expanded(
-                                        child: _buildModernDropdown<Supervisor>(
+                                        child: _buildModernTextField(
                                           label: 'Supervisor',
                                           icon: Icons.supervisor_account,
-                                          value: selectedSupervisor,
-                                          items: supervisores,
-                                          itemBuilder: (supervisor) => supervisor.nombre,
-                                          onChanged: (Supervisor? newValue) {
+                                          controller: supervisorController,
+                                          onChanged: (String value) {
                                             setState(() {
-                                              selectedSupervisor = newValue;
+                                              supervisorText = value;
                                             });
                                           },
-                                          hint: 'Supervisor',
+                                          hint: 'Ingrese el nombre del supervisor',
+                                          forceUpperCase: true,
                                         ),
                                       ),
                                       SizedBox(width: 16),
                                       Expanded(
-                                        child: _buildModernDropdown<Pesador>(
+                                        child: _buildModernTextField(
                                           label: 'Pesador',
                                           icon: Icons.scale,
-                                          value: selectedPesador,
-                                          items: pesadores,
-                                          itemBuilder: (pesador) => pesador.nombre,
-                                          onChanged: (Pesador? newValue) {
+                                          controller: pesadorController,
+                                          onChanged: (String value) {
                                             setState(() {
-                                              selectedPesador = newValue;
+                                              pesadorText = value;
                                             });
                                           },
-                                          hint: 'Pesador',
+                                          hint: 'Ingrese el nombre del pesador',
+                                          forceUpperCase: true,
                                         ),
                                       ),
                                     ],
@@ -1550,6 +1543,70 @@ class _ChecklistBodegaScreenState extends State<ChecklistBodegaScreen> with Widg
             Icons.keyboard_arrow_down,
             color: _isEditMode ? Colors.blue[700] : Colors.red[700],
           ),
+        ),
+      ),
+    );
+  }
+
+  // Widget para campos de texto modernos
+  Widget _buildModernTextField({
+    required String label,
+    required IconData icon,
+    required TextEditingController controller,
+    required void Function(String) onChanged,
+    required String hint,
+    bool forceUpperCase = false,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: TextFormField(
+        controller: controller,
+        onChanged: (value) {
+          String processedValue = value;
+          if (forceUpperCase) {
+            processedValue = value.toUpperCase();
+            // Actualizar el controlador con el valor en mayúsculas
+            if (controller.text != processedValue) {
+              controller.value = controller.value.copyWith(
+                text: processedValue,
+                selection: TextSelection.collapsed(offset: processedValue.length),
+              );
+            }
+          }
+          onChanged(processedValue);
+        },
+        textCapitalization: forceUpperCase ? TextCapitalization.characters : TextCapitalization.none,
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: TextStyle(
+            color: _isEditMode ? Colors.blue[700] : Colors.red[700],
+            fontWeight: FontWeight.w500,
+          ),
+          hintText: hint,
+          hintStyle: TextStyle(color: Colors.grey[500]),
+          border: InputBorder.none,
+          contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          prefixIcon: Container(
+            margin: EdgeInsets.all(8),
+            padding: EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: (_isEditMode ? Colors.blue[700] : Colors.red[700])?.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              icon,
+              color: _isEditMode ? Colors.blue[700] : Colors.red[700],
+              size: 20,
+            ),
+          ),
+        ),
+        style: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
         ),
       ),
     );
