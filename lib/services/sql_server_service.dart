@@ -7,11 +7,19 @@ import 'package:mssql_connection/mssql_connection.dart';
 import 'date_helper.dart';
 
 class SqlServerService {
+  // Configuración ORIGEN (para SELECTs de dropdowns y consultas generales)
   static const String _server = '181.198.42.194';
   static const String _port = '5010';
   static const String _database = 'Kontrollers';
   static const String _username = 'sa';
   static const String _password = '\$DataWareHouse\$';
+
+  // Configuración DESTINO (para INSERTs y consultas de reportería)
+  static const String _destinoServer = '181.198.42.195';
+  static const String _destinoPort = '5010';
+  static const String _destinoDatabase = 'Kontrollers';
+  static const String _destinoUsername = 'sa';
+  static const String _destinoPassword = '6509';
 
   // Configuración de timeouts optimizada para dispositivos físicos
   static const int _connectionTimeout = 30;  // Aumentado para dispositivos físicos
@@ -19,10 +27,11 @@ class SqlServerService {
   
   // ==================== CONEXIÓN BÁSICA ====================
   
+  // Conexión ORIGEN (para SELECTs de dropdowns y consultas generales)
   static Future<MssqlConnection?> _getConnection() async {
     return await PhysicalDeviceOptimizer.executeOptimizedOperation(
       () async {
-        print('Conectando a SQL Server...');
+        print('Conectando a SQL Server ORIGEN...');
         
         MssqlConnection connection = MssqlConnection.getInstance();
         
@@ -41,14 +50,48 @@ class SqlServerService {
         ));
         
         if (isConnected) {
-          print('Conexión exitosa a SQL Server (timeout: ${timeoutSeconds}s)');
+          print('Conexión exitosa a SQL Server ORIGEN (timeout: ${timeoutSeconds}s)');
           return connection;
         } else {
-          print('No se pudo conectar a SQL Server');
+          print('No se pudo conectar a SQL Server ORIGEN');
           return null;
         }
       },
-      operationName: 'SQL Server Connection',
+      operationName: 'SQL Server Connection (Origin)',
+    );
+  }
+
+  // Conexión DESTINO (para INSERTs y consultas de reportería)
+  static Future<MssqlConnection?> _getDestinationConnection() async {
+    return await PhysicalDeviceOptimizer.executeOptimizedOperation(
+      () async {
+        print('Conectando a SQL Server DESTINO...');
+        
+        MssqlConnection connection = MssqlConnection.getInstance();
+        
+        // Usar timeout optimizado según el tipo de dispositivo
+        int timeoutSeconds = PhysicalDeviceOptimizer.getConnectionTimeout().inSeconds;
+        
+        bool isConnected = (await connection.connect(
+          ip: _destinoServer,
+          port: _destinoPort,
+          databaseName: _destinoDatabase,
+          username: _destinoUsername,
+          password: _destinoPassword,
+          server: _destinoServer,
+          database: _destinoDatabase,
+          timeoutInSeconds: timeoutSeconds,
+        ));
+        
+        if (isConnected) {
+          print('Conexión exitosa a SQL Server DESTINO (timeout: ${timeoutSeconds}s)');
+          return connection;
+        } else {
+          print('No se pudo conectar a SQL Server DESTINO');
+          return null;
+        }
+      },
+      operationName: 'SQL Server Connection (Destination)',
     );
   }
 
@@ -62,6 +105,49 @@ class SqlServerService {
         try {
           print('Ejecutando query optimizada');
           print('Query: ${query.substring(0, query.length.clamp(0, 200))}...');
+          
+          // Determinar tipo de consulta primero
+          String upperCaseQuery = query.trim().toUpperCase();
+          
+          // Tablas de reportería que deben usar conexión DESTINO
+          List<String> reporteriaTables = [
+            'CHECK_FERTIRRIEGO',
+            'CHECK_APLICACIONES',
+            'CHECK_CORTES',
+            'CHECK_LABORES_PERMANENTES',
+            'CHECK_LABORES_TEMPORALES',
+            'CHECK_BODEGA',
+            'CHECK_COSECHA',
+            'OBSERVACIONES_ADICIONALES',
+          ];
+          
+          // Detectar si es un INSERT (siempre usar DESTINO)
+          bool isInsert = upperCaseQuery.startsWith('INSERT') || 
+                         upperCaseQuery.startsWith('UPDATE') || 
+                         upperCaseQuery.startsWith('DELETE');
+          
+          // Detectar si es una consulta de reportería (SELECT de tablas check_* o observaciones_adicionales)
+          bool isReporteriaQuery = false;
+          if (upperCaseQuery.startsWith('SELECT')) {
+            for (String table in reporteriaTables) {
+              if (upperCaseQuery.contains('FROM $table ') || 
+                  upperCaseQuery.contains('FROM [$table]') ||
+                  upperCaseQuery.contains('FROM "$table"') ||
+                  upperCaseQuery.contains('FROM $table\n') ||
+                  upperCaseQuery.contains('FROM $table\t') ||
+                  upperCaseQuery.contains('FROM $table;') ||
+                  upperCaseQuery.contains('FROM $table)') ||
+                  upperCaseQuery.contains('FROM $table WHERE') ||
+                  upperCaseQuery.contains('FROM $table ORDER') ||
+                  upperCaseQuery.contains('FROM $table JOIN') ||
+                  upperCaseQuery.contains('FROM $table INNER') ||
+                  upperCaseQuery.contains('FROM $table LEFT') ||
+                  upperCaseQuery.contains('FROM $table RIGHT')) {
+                isReporteriaQuery = true;
+                break;
+              }
+            }
+          }
           
           // Debug específico para fechas
           if (query.toUpperCase().contains('INSERT') && query.contains('fecha_creacion')) {
@@ -77,24 +163,42 @@ class SqlServerService {
             }
           }
           
-          connection = await _getConnection();
-          if (connection == null) {
-            throw Exception('No se pudo conectar a SQL Server');
-          }
-
-          // Determinar tipo de consulta y ejecutar
-          String upperCaseQuery = query.trim().toUpperCase();
           String result;
           
-          if (upperCaseQuery.startsWith('SELECT')) {
+          // Determinar qué conexión usar
+          if (isInsert || isReporteriaQuery) {
+            // Para INSERTs y consultas de reportería: usar conexión DESTINO
+            if (isInsert) {
+              print('🔄 INSERT/UPDATE/DELETE detectado - usando conexión DESTINO');
+            } else {
+              print('📊 Consulta de reportería detectada - usando conexión DESTINO');
+            }
+            connection = await _getDestinationConnection();
+            if (connection == null) {
+              throw Exception('No se pudo conectar a SQL Server DESTINO');
+            }
+            
+            if (upperCaseQuery.startsWith('SELECT')) {
+              result = (await connection.getData(query).timeout(
+                PhysicalDeviceOptimizer.getConnectionTimeout(),
+                onTimeout: () => throw TimeoutException('SELECT timeout', PhysicalDeviceOptimizer.getConnectionTimeout()),
+              ));
+            } else {
+              result = (await connection.writeData(query).timeout(
+                PhysicalDeviceOptimizer.getConnectionTimeout(),
+                onTimeout: () => throw TimeoutException('WRITE timeout', PhysicalDeviceOptimizer.getConnectionTimeout()),
+              ));
+            }
+          } else {
+            // Para otros SELECTs (dropdowns, etc.): usar conexión ORIGEN
+            print('📖 SELECT general - usando conexión ORIGEN');
+            connection = await _getConnection();
+            if (connection == null) {
+              throw Exception('No se pudo conectar a SQL Server ORIGEN');
+            }
             result = (await connection.getData(query).timeout(
               PhysicalDeviceOptimizer.getConnectionTimeout(),
               onTimeout: () => throw TimeoutException('SELECT timeout', PhysicalDeviceOptimizer.getConnectionTimeout()),
-            ));
-          } else {
-            result = (await connection.writeData(query).timeout(
-              PhysicalDeviceOptimizer.getConnectionTimeout(),
-              onTimeout: () => throw TimeoutException('WRITE timeout', PhysicalDeviceOptimizer.getConnectionTimeout()),
             ));
           }
           
@@ -558,11 +662,28 @@ class SqlServerService {
     };
   }
 
+  static Map<String, dynamic> getDestinationConnectionConfig() {
+    return {
+      'server': _destinoServer,
+      'port': _destinoPort,
+      'database': _destinoDatabase,
+      'username': _destinoUsername,
+      'connection_timeout': _connectionTimeout,
+      'max_retries': _maxRetries,
+    };
+  }
+
   static void printConnectionInfo() {
     print('=== SQL Server Configuration ===');
-    print('Server: $_server:$_port');
-    print('Database: $_database');
-    print('Username: $_username');
+    print('ORIGEN (SELECTs de dropdowns y consultas generales):');
+    print('  Server: $_server:$_port');
+    print('  Database: $_database');
+    print('  Username: $_username');
+    print('DESTINO (INSERTs y consultas de reportería):');
+    print('  Server: $_destinoServer:$_destinoPort');
+    print('  Database: $_destinoDatabase');
+    print('  Username: $_destinoUsername');
+    print('  Tablas: check_fertirriego, check_aplicaciones, check_cortes, check_labores_*, check_bodega, check_cosecha, observaciones_adicionales');
     print('Connection Timeout: ${_connectionTimeout}s');
     print('Max Retries: $_maxRetries');
     print('================================');
