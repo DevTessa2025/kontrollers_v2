@@ -644,6 +644,12 @@ class _ChecklistRecordsScreenState extends State<ChecklistRecordsScreen> {
         backgroundColor: _getChecklistColor(),
         foregroundColor: Colors.white,
         elevation: 0,
+        automaticallyImplyLeading: false,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+          tooltip: 'Regresar',
+        ),
         actions: [
         if (widget.checklistType == 'observaciones_adicionales')
           IconButton(
@@ -2081,6 +2087,12 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
         backgroundColor: _getChecklistColor(),
         foregroundColor: Colors.white,
         elevation: 0,
+        automaticallyImplyLeading: false,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+          tooltip: 'Regresar',
+        ),
         actions: [
           // Botón de compartir mejorado
           PopupMenuButton<String>(

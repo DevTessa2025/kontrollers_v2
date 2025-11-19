@@ -41,9 +41,14 @@ class _ChecklistFertiriegoRecordsScreenState
           await ChecklistFertiriegoStorageService.getLocalStats();
       print('Estadísticas cargadas: $loadedStats');
 
+      // Crear copia mutable de los registros (los resultados de SQLite son read-only)
+      List<Map<String, dynamic>> mutableRecords = loadedRecords.map((record) {
+        return Map<String, dynamic>.from(record);
+      }).toList();
+
       // Ordenar por fecha de creación (más recientes primero)
-      if (loadedRecords.isNotEmpty) {
-        loadedRecords.sort((a, b) {
+      if (mutableRecords.isNotEmpty) {
+        mutableRecords.sort((a, b) {
           DateTime dateA = DateTime.parse(a['fecha_creacion']);
           DateTime dateB = DateTime.parse(b['fecha_creacion']);
           return dateB.compareTo(dateA);
@@ -51,7 +56,7 @@ class _ChecklistFertiriegoRecordsScreenState
       }
 
       setState(() {
-        records = loadedRecords;
+        records = mutableRecords;
         stats = loadedStats;
         _isLoading = false;
       });

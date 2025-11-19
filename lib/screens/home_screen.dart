@@ -17,6 +17,7 @@ import 'checklist_labores_permanentes_screen.dart';
 import '../services/checklist_labores_permanentes_storage_service.dart';
 import 'checklist_labores_temporales_screen.dart';
 import '../services/checklist_labores_temporales_storage_service.dart';
+import 'checklist_aforo_screen.dart';
 import 'admin_screen.dart';
 import 'observaciones_adicionales_screen.dart';
 import 'observaciones_adicionales_records_screen.dart';
@@ -399,6 +400,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         Navigator.push(
           context,
           MaterialPageRoute(builder: (context) => ChecklistLaboresTemporalesScreen()),
+        );
+        break;
+      case 'Cálculo de Aforo':
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => ChecklistAforoScreen()),
         );
         break;
       case 'Reportería':
@@ -855,6 +862,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             _buildModuleCard('Cosecha', Icons.grass, Colors.green[600]!, _isCosechaModuleActive(), isTablet),
             _buildModuleCard('Aplicaciones', Icons.spa, Colors.orange[600]!, _isAplicacionesModuleActive(), isTablet),
             _buildModuleCard('Fertirriego', Icons.water_drop, Colors.blue[600]!, true, isTablet),
+            _buildModuleCard('Cálculo de Aforo', Icons.calculate, Colors.cyan[600]!, true, isTablet),
           ],
           isTablet,
         ),

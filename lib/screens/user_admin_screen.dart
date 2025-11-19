@@ -164,6 +164,11 @@ class _UserAdminScreenState extends State<UserAdminScreen> {
         backgroundColor: Colors.deepOrange[600],
         foregroundColor: Colors.white,
         elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+          tooltip: 'Regresar',
+        ),
         actions: [
           IconButton(
             onPressed: _loadUsers,
